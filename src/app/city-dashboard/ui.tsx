@@ -5,8 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Script from "next/script";
 import Link from "next/link";
-import ClockCard from "../components/ClockCard";
-import { popularCities } from "../components/popularCities";
 
 type GeoResult = {
   id: number;
@@ -35,24 +33,15 @@ type WeatherResp = {
   daily: WeatherDaily | null;
 };
 
-function weatherLabelFromCode(code: number): string {
-  if (code === 0) return "Clear";
-  if ([1, 2, 3].includes(code)) return "Cloudy";
-  if ([45, 48].includes(code)) return "Fog";
-  if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
-  if ([61, 63, 65, 66, 67].includes(code)) return "Rain";
-  if ([71, 73, 75, 77].includes(code)) return "Snow";
-  if ([80, 81, 82].includes(code)) return "Showers";
-  if ([95, 96, 99].includes(code)) return "Thunder";
-  return "Conditions";
-}
-
-function cToF(c: number) {
-  return (c * 9) / 5 + 32;
-}
-
 const KEY_TIME_24H = "ltd_pref_time_24h";
 const KEY_TEMP_UNIT = "ltd_pref_temp_unit";
+
+function safeText(v: unknown) {
+  const s = typeof v === "string" ? v : "";
+  if (!s) return "";
+  if (s.toLowerCase() === "undefined" || s.toLowerCase() === "null") return "";
+  return s;
+}
 
 function labelForGeo(g: GeoResult) {
   return `${g.name}${g.admin1 ? `, ${g.admin1}` : ""}, ${g.country}`;
@@ -67,19 +56,28 @@ function slugify(parts: string[]) {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
-  return s || "time";
+  return s || "city";
+}
+
+function cToF(c: number) {
+  return (c * 9) / 5 + 32;
+}
+
+function weatherLabelFromCode(code: number): string {
+  if (code === 0) return "Clear";
+  if ([1, 2, 3].includes(code)) return "Cloudy";
+  if ([45, 48].includes(code)) return "Fog";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
+  if ([61, 63, 65, 66, 67].includes(code)) return "Rain";
+  if ([71, 73, 75, 77].includes(code)) return "Snow";
+  if ([80, 81, 82].includes(code)) return "Showers";
+  if ([95, 96, 99].includes(code)) return "Thunder";
+  return "Conditions";
 }
 
 function dayLabel(isoDate: string, tz: string) {
   const d = new Date(`${isoDate}T12:00:00`);
   return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(d);
-}
-
-function safeText(v: unknown) {
-  const s = typeof v === "string" ? v : "";
-  if (!s) return "";
-  if (s.toLowerCase() === "undefined" || s.toLowerCase() === "null") return "";
-  return s;
 }
 
 function AdSlot({ label, size = "normal" }: { label: string; size?: "normal" | "small" }) {
@@ -88,9 +86,80 @@ function AdSlot({ label, size = "normal" }: { label: string; size?: "normal" | "
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
       <div className="text-xs font-semibold text-gray-500">{label}</div>
       <div className={`mt-2 ${heightClass} rounded-xl bg-gray-100`} />
-      <div className="mt-2 text-[11px] text-gray-500">
-        Ad placeholder (we’ll replace with real ad code later).
+      <div className="mt-2 text-[11px] text-gray-500">Ad placeholder (we’ll replace with real ad code later).</div>
+    </div>
+  );
+}
+
+/**
+ * Popular cities (kept here to avoid module-not-found deploy failures)
+ */
+const popularCities = [
+  { slug: "new-york-new-york-united-states", name: "New York", admin1: "New York", country: "United States", lat: 40.7128, lon: -74.006 },
+  { slug: "los-angeles-california-united-states", name: "Los Angeles", admin1: "California", country: "United States", lat: 34.0522, lon: -118.2437 },
+  { slug: "chicago-illinois-united-states", name: "Chicago", admin1: "Illinois", country: "United States", lat: 41.8781, lon: -87.6298 },
+  { slug: "dallas-texas-united-states", name: "Dallas", admin1: "Texas", country: "United States", lat: 32.7767, lon: -96.797 },
+  { slug: "miami-florida-united-states", name: "Miami", admin1: "Florida", country: "United States", lat: 25.7617, lon: -80.1918 },
+  { slug: "london-united-kingdom", name: "London", admin1: "", country: "United Kingdom", lat: 51.5072, lon: -0.1276 },
+  { slug: "paris-france", name: "Paris", admin1: "", country: "France", lat: 48.8566, lon: 2.3522 },
+  { slug: "tokyo-japan", name: "Tokyo", admin1: "", country: "Japan", lat: 35.6895, lon: 139.6917 },
+];
+
+function ClockCardLite({
+  locationLine,
+  tz,
+  is24h,
+  onToggle24h,
+}: {
+  locationLine: string;
+  tz: string;
+  is24h: boolean;
+  onToggle24h: () => void;
+}) {
+  const [now, setNow] = useState<Date>(() => new Date());
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const timeText = useMemo(() => {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: !is24h,
+    });
+    return fmt.format(now);
+  }, [now, tz, is24h]);
+
+  const ampm = useMemo(() => {
+    if (is24h) return "";
+    const fmt = new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: true });
+    const parts = fmt.formatToParts(now);
+    const dp = parts.find((p) => p.type === "dayPeriod")?.value;
+    return dp ? String(dp).toUpperCase() : "";
+  }, [now, tz, is24h]);
+
+  return (
+    <div className="w-full rounded-2xl bg-black p-6 text-white">
+      <div className="flex items-start justify-between">
+        <button
+          type="button"
+          onClick={onToggle24h}
+          className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs hover:bg-white/20"
+          title="Toggle 12/24 hour"
+        >
+          {is24h ? "24h" : "12h"}
+        </button>
+        <div className="text-xs text-white/70">{tz}</div>
       </div>
+
+      <div className="mt-6 text-6xl font-semibold leading-none">{timeText}</div>
+      {!is24h && <div className="mt-1 text-sm text-white/70">{ampm}</div>}
+
+      <div className="mt-4 text-sm text-white/80 truncate">{locationLine}</div>
+      <div className="mt-1 text-xs text-white/60">Live</div>
     </div>
   );
 }
@@ -118,11 +187,10 @@ export default function CityDashboardClient({
   const router = useRouter();
   const pathname = usePathname();
 
-  const qFromUrl = safeText(sp.get("q"));
   const latFromUrl = safeText(sp.get("lat"));
   const lonFromUrl = safeText(sp.get("lon"));
 
-  const [queryInput, setQueryInput] = useState(safeText(qFromUrl || initialQuery || ""));
+  const [queryInput, setQueryInput] = useState(safeText(sp.get("q") || initialQuery || ""));
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   const [results, setResults] = useState<GeoResult[]>([]);
@@ -139,11 +207,7 @@ export default function CityDashboardClient({
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // When the page auto-loads from /time/<slug> or /weather/<slug>, we DO want to auto-run a geocode.
-  // But we DO NOT want to auto-pick the first result if multiple are returned.
-  const isAutoBootRef = useRef(true);
-
-  // ✅ load prefs
+  // load prefs
   useEffect(() => {
     try {
       if (localStorage.getItem(KEY_TIME_24H) === "1") setIs24h(true);
@@ -152,7 +216,7 @@ export default function CityDashboardClient({
     } catch {}
   }, []);
 
-  // ✅ persist prefs
+  // persist prefs
   useEffect(() => {
     try {
       localStorage.setItem(KEY_TIME_24H, is24h ? "1" : "0");
@@ -165,7 +229,7 @@ export default function CityDashboardClient({
     } catch {}
   }, [tempUnit]);
 
-  // ✅ If URL has lat/lon, use them (highest priority)
+  // If URL has lat/lon, use them
   useEffect(() => {
     if (latFromUrl && lonFromUrl) {
       const name = safeText(sp.get("name")) || initialName || "—";
@@ -176,12 +240,12 @@ export default function CityDashboardClient({
       const lon = Number(lonFromUrl);
 
       if (Number.isFinite(lat) && Number.isFinite(lon)) {
-        setSelected({ id: 0, name, latitude: lat, longitude: lon, country, admin1 });
+        setSelected({ id: 0, name, latitude: lat, longitude: lon, country, admin1, timezone: initialTimezone });
       }
     }
-  }, [latFromUrl, lonFromUrl, sp, initialName, initialCountry, initialAdmin1]);
+  }, [latFromUrl, lonFromUrl, sp, initialName, initialCountry, initialAdmin1, initialTimezone]);
 
-  // ✅ If slug page passed initial lat/lon, pick it immediately
+  // If server passed initial lat/lon, pick it
   useEffect(() => {
     if (
       !selected &&
@@ -190,23 +254,19 @@ export default function CityDashboardClient({
       Number.isFinite(initialLat) &&
       Number.isFinite(initialLon)
     ) {
-      const name = initialName || initialQuery || "—";
-      const country = initialCountry || "—";
-      const admin1 = initialAdmin1 || undefined;
-
       setSelected({
         id: 0,
-        name,
+        name: initialName || initialQuery || "—",
         latitude: initialLat,
         longitude: initialLon,
-        country,
-        admin1,
+        country: initialCountry || "—",
+        admin1: initialAdmin1 || undefined,
         timezone: initialTimezone || undefined,
       });
     }
-  }, [initialLat, initialLon, initialName, initialAdmin1, initialCountry, initialTimezone, initialQuery, selected]);
+  }, [selected, initialLat, initialLon, initialName, initialQuery, initialCountry, initialAdmin1, initialTimezone]);
 
-  // ✅ auto-run geocode on first load for slug routes (but do not auto-pick if multiple)
+  // auto-run geocode when landing on slug route with initialQuery (but do NOT auto-pick if multiple)
   useEffect(() => {
     if (selected) return;
     if (latFromUrl && lonFromUrl) return;
@@ -214,10 +274,7 @@ export default function CityDashboardClient({
     const isSlugRoute = pathname.startsWith("/time/") || pathname.startsWith("/weather/");
     const q = safeText(initialQuery);
 
-    if (isSlugRoute && q && isAutoBootRef.current) {
-      setSearchTerm(q);
-      // keep isAutoBootRef.current = true until results come back
-    }
+    if (isSlugRoute && q) setSearchTerm(q);
   }, [pathname, initialQuery, selected, latFromUrl, lonFromUrl]);
 
   // geocode search
@@ -246,15 +303,8 @@ export default function CityDashboardClient({
 
         setResults(list);
 
-        // ✅ IMPORTANT FIX:
-        // Only auto-select if there is EXACTLY ONE result.
-        // If multiple results, show the dropdown so the user can choose Paris TX vs Paris France, etc.
-        if (list.length === 1) {
-          chooseCity(list[0]);
-        }
-
-        // After first auto boot search runs once, stop considering subsequent searches as “auto boot”
-        isAutoBootRef.current = false;
+        // Only auto-select when there is exactly 1
+        if (list.length === 1) chooseCity(list[0]);
       } catch {
         if (!cancelled) setErr("Geocode failed.");
       } finally {
@@ -308,9 +358,7 @@ export default function CityDashboardClient({
       setErr(null);
 
       try {
-        const res = await fetch(`/api/weather?lat=${selected.latitude}&lon=${selected.longitude}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/weather?lat=${selected.latitude}&lon=${selected.longitude}`, { cache: "no-store" });
         const data = await res.json();
 
         if (!res.ok) {
@@ -403,8 +451,6 @@ export default function CityDashboardClient({
                   e.preventDefault();
                   const q = queryInput.trim();
                   if (!q) return;
-                  // user-initiated search → never auto-pick among multiple
-                  isAutoBootRef.current = false;
                   setSearchTerm(q);
                 }}
                 className="flex gap-3"
@@ -474,8 +520,8 @@ export default function CityDashboardClient({
               <>
                 <section className="mt-6 grid gap-4 lg:grid-cols-2">
                   <div className="rounded-2xl border bg-white p-3 shadow-sm">
-                    <div className="min-h-[120px] flex items-center justify-center">
-                      <ClockCard
+                    <div className="min-h-[120px]">
+                      <ClockCardLite
                         locationLine={labelForGeo(selected)}
                         tz={tz}
                         is24h={is24h}
@@ -545,81 +591,4 @@ export default function CityDashboardClient({
                             <span className="text-gray-500">
                               {" "}
                               /{" "}
-                              {typeof d.lo === "number" ? `${d.lo.toFixed(0)}°${tempUnit.toUpperCase()}` : "—"}
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-sm text-gray-600">{wxLoading ? "Loading…" : "—"}</div>
-                    )}
-                  </div>
-                </section>
-
-                <div className="mt-4">
-                  <AdSlot label="Ad Slot (below forecast)" size="normal" />
-                </div>
-
-                <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700">Popular searches</div>
-                    <div className="mt-1 text-xs text-gray-500">Quick links to high-traffic cities.</div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {popularCities.map((c) => {
-                      const params = new URLSearchParams({
-                        lat: String(c.lat),
-                        lon: String(c.lon),
-                        name: c.name,
-                        country: c.country,
-                        admin1: c.admin1 || "",
-                      }).toString();
-
-                      return (
-                        <div key={c.slug} className="rounded-xl border bg-white px-4 py-3">
-                          <div className="font-semibold">{c.name}</div>
-                          <div className="mt-1 text-xs text-gray-500">
-                            {(c.admin1 ? `${c.admin1}, ` : "") + c.country}
-                          </div>
-
-                          <div className="mt-3 flex gap-2">
-                            <Link href={`/time/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
-                              Time
-                            </Link>
-                            <Link href={`/weather/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
-                              Weather
-                            </Link>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              </>
-            )}
-          </div>
-
-          <aside className="lg:sticky lg:top-6">
-            <div className="rounded-2xl border bg-white p-5 shadow-sm">
-              <div className="text-sm font-semibold text-gray-700">Live webcams</div>
-              <div className="mt-1 text-xs text-gray-500">Coming soon (Phase 2).</div>
-
-              <div className="mt-4 space-y-3">
-                <div className="rounded-xl border bg-gray-50 p-3 text-sm text-gray-700">
-                  No cams yet.
-                  <div className="mt-1 text-xs text-gray-500">Phase 2.</div>
-                </div>
-
-                <AdSlot label="Ad Slot" size="small" />
-                <AdSlot label="Ad Slot" size="small" />
-                <AdSlot label="Ad Slot" size="small" />
-                <AdSlot label="Ad Slot" size="small" />
-              </div>
-            </div>
-          </aside>
-        </div>
-      </div>
-    </main>
-  );
-}
+                              {typeof d.lo === "number" ? `${d.lo.toFixed(0)}°${tempUnit.toUpperCase
