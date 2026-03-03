@@ -22,20 +22,15 @@ export default function ContactPage() {
           </p>
 
           <div className="mt-4 rounded-xl border bg-white p-4">
-            <a
-              className="text-blue-600 underline"
-              href="mailto:LiveTimeData@gmail.com"
-            >
+            <a className="text-blue-600 underline" href="mailto:LiveTimeData@gmail.com">
               LiveTimeData@gmail.com
             </a>
           </div>
 
-          <p className="mt-4 text-xs text-gray-500">
-            We aim to respond within 1–2 business days.
-          </p>
+          <p className="mt-4 text-xs text-gray-500">We aim to respond within 1–2 business days.</p>
 
           <div className="mt-8">
-            <BackToPrevious />
+            <BackToPrevious label="Back to site" />
           </div>
         </div>
       </div>
