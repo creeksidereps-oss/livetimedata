@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Script from "next/script";
 import Link from "next/link";
-import ClockCard from "../../components/ClockCard";
-import { popularCities } from "../../components/popularCities";
+import ClockCard from "../components/ClockCard";
+import { popularCities } from "../components/popularCities";
 
 type GeoResult = {
   id: number;
@@ -78,8 +78,7 @@ function dayLabel(isoDate: string, tz: string) {
 function safeText(v: unknown) {
   const s = typeof v === "string" ? v : "";
   if (!s) return "";
-  const lower = s.toLowerCase();
-  if (lower === "undefined" || lower === "null") return "";
+  if (s.toLowerCase() === "undefined" || s.toLowerCase() === "null") return "";
   return s;
 }
 
@@ -89,33 +88,11 @@ function AdSlot({ label, size = "normal" }: { label: string; size?: "normal" | "
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
       <div className="text-xs font-semibold text-gray-500">{label}</div>
       <div className={`mt-2 ${heightClass} rounded-xl bg-gray-100`} />
-      <div className="mt-2 text-[11px] text-gray-500">Ad placeholder (we’ll replace with real ad code later).</div>
+      <div className="mt-2 text-[11px] text-gray-500">
+        Ad placeholder (we’ll replace with real ad code later).
+      </div>
     </div>
   );
-}
-
-function readTempUnit(): "c" | "f" {
-  try {
-    const u = localStorage.getItem(KEY_TEMP_UNIT);
-    if (u === "c" || u === "f") return u;
-  } catch {}
-  return "c";
-}
-function writeTempUnit(u: "c" | "f") {
-  try {
-    localStorage.setItem(KEY_TEMP_UNIT, u);
-  } catch {}
-}
-function read24h(): boolean {
-  try {
-    return localStorage.getItem(KEY_TIME_24H) === "1";
-  } catch {}
-  return false;
-}
-function write24h(v: boolean) {
-  try {
-    localStorage.setItem(KEY_TIME_24H, v ? "1" : "0");
-  } catch {}
 }
 
 export default function CityDashboardClient({
@@ -145,8 +122,6 @@ export default function CityDashboardClient({
   const latFromUrl = safeText(sp.get("lat"));
   const lonFromUrl = safeText(sp.get("lon"));
 
-  const isSlugRoute = pathname.startsWith("/time/") || pathname.startsWith("/weather/");
-
   const [queryInput, setQueryInput] = useState(safeText(qFromUrl || initialQuery || ""));
   const [searchTerm, setSearchTerm] = useState<string>("");
 
@@ -163,30 +138,34 @@ export default function CityDashboardClient({
   const [copied, setCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
 
+  // When the page auto-loads from /time/<slug> or /weather/<slug>, we DO want to auto-run a geocode.
+  // But we DO NOT want to auto-pick the first result if multiple are returned.
+  const isAutoBootRef = useRef(true);
+
+  // ✅ load prefs
   useEffect(() => {
-    setIs24h(read24h());
-    setTempUnit(readTempUnit());
+    try {
+      if (localStorage.getItem(KEY_TIME_24H) === "1") setIs24h(true);
+      const u = localStorage.getItem(KEY_TEMP_UNIT);
+      if (u === "c" || u === "f") setTempUnit(u);
+    } catch {}
   }, []);
 
-  function toggle24h() {
-    setIs24h((v) => {
-      const next = !v;
-      write24h(next);
-      return next;
-    });
-  }
+  // ✅ persist prefs
+  useEffect(() => {
+    try {
+      localStorage.setItem(KEY_TIME_24H, is24h ? "1" : "0");
+    } catch {}
+  }, [is24h]);
 
-  function toggleTempUnit() {
-    setTempUnit((u) => {
-      const next: "c" | "f" = u === "c" ? "f" : "c";
-      writeTempUnit(next);
-      return next;
-    });
-  }
+  useEffect(() => {
+    try {
+      localStorage.setItem(KEY_TEMP_UNIT, tempUnit);
+    } catch {}
+  }, [tempUnit]);
 
-  // URL lat/lon highest priority
+  // ✅ If URL has lat/lon, use them (highest priority)
   useEffect(() => {
     if (latFromUrl && lonFromUrl) {
       const name = safeText(sp.get("name")) || initialName || "—";
@@ -200,10 +179,9 @@ export default function CityDashboardClient({
         setSelected({ id: 0, name, latitude: lat, longitude: lon, country, admin1 });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latFromUrl, lonFromUrl]);
+  }, [latFromUrl, lonFromUrl, sp, initialName, initialCountry, initialAdmin1]);
 
-  // slug initial lat/lon (if provided)
+  // ✅ If slug page passed initial lat/lon, pick it immediately
   useEffect(() => {
     if (
       !selected &&
@@ -212,36 +190,87 @@ export default function CityDashboardClient({
       Number.isFinite(initialLat) &&
       Number.isFinite(initialLon)
     ) {
+      const name = initialName || initialQuery || "—";
+      const country = initialCountry || "—";
+      const admin1 = initialAdmin1 || undefined;
+
       setSelected({
         id: 0,
-        name: initialName || initialQuery || "—",
+        name,
         latitude: initialLat,
         longitude: initialLon,
-        country: initialCountry || "—",
-        admin1: initialAdmin1 || undefined,
+        country,
+        admin1,
         timezone: initialTimezone || undefined,
       });
     }
   }, [initialLat, initialLon, initialName, initialAdmin1, initialCountry, initialTimezone, initialQuery, selected]);
 
-  // auto-run geocode once on /time/<slug> or /weather/<slug>
-  const didAutoRunRef = useRef(false);
+  // ✅ auto-run geocode on first load for slug routes (but do not auto-pick if multiple)
   useEffect(() => {
-    if (didAutoRunRef.current) return;
     if (selected) return;
     if (latFromUrl && lonFromUrl) return;
 
+    const isSlugRoute = pathname.startsWith("/time/") || pathname.startsWith("/weather/");
     const q = safeText(initialQuery);
-    if (isSlugRoute && q) {
-      didAutoRunRef.current = true;
+
+    if (isSlugRoute && q && isAutoBootRef.current) {
       setSearchTerm(q);
+      // keep isAutoBootRef.current = true until results come back
     }
-  }, [isSlugRoute, initialQuery, selected, latFromUrl, lonFromUrl]);
+  }, [pathname, initialQuery, selected, latFromUrl, lonFromUrl]);
+
+  // geocode search
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      const q = searchTerm.trim();
+      if (!q) return;
+
+      setErr(null);
+      setResults([]);
+      setGeoLoading(true);
+
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+        const data = await res.json();
+        const list: GeoResult[] = data?.results ?? [];
+
+        if (cancelled) return;
+
+        if (!list.length) {
+          setErr("No results found. Try: city + state/country (ex: Paris TX, New York USA).");
+          return;
+        }
+
+        setResults(list);
+
+        // ✅ IMPORTANT FIX:
+        // Only auto-select if there is EXACTLY ONE result.
+        // If multiple results, show the dropdown so the user can choose Paris TX vs Paris France, etc.
+        if (list.length === 1) {
+          chooseCity(list[0]);
+        }
+
+        // After first auto boot search runs once, stop considering subsequent searches as “auto boot”
+        isAutoBootRef.current = false;
+      } catch {
+        if (!cancelled) setErr("Geocode failed.");
+      } finally {
+        if (!cancelled) setGeoLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm]);
 
   function chooseCity(city: GeoResult) {
     setSelected(city);
     setResults([]);
-    setShowDropdown(false);
     setErr(null);
     setCopied(false);
 
@@ -257,61 +286,6 @@ export default function CityDashboardClient({
     const base = mode === "weather" || pathname.startsWith("/weather/") ? "/weather" : "/time";
     router.replace(`${base}/${slug}?${params.toString()}`);
   }
-
-  // geocode search
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      const q = searchTerm.trim();
-      if (!q) return;
-
-      setErr(null);
-      setGeoLoading(true);
-
-      try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, { cache: "no-store" });
-        const data = await res.json();
-        const list: GeoResult[] = data?.results ?? [];
-
-        if (cancelled) return;
-
-        if (!list.length) {
-          setResults([]);
-          setShowDropdown(false);
-          setErr("No results found. Try: city + state/country (ex: Dallas NC, Paris TX, New York USA).");
-          return;
-        }
-
-        // ✅ FIX: On /time/<slug> and /weather/<slug>, auto-pick first result and DO NOT show dropdown
-        if (isSlugRoute) {
-          chooseCity(list[0]);
-          return;
-        }
-
-        setResults(list);
-        setShowDropdown(true);
-
-        // If only one result (non-slug), auto-pick
-        if (list.length === 1) {
-          chooseCity(list[0]);
-        }
-      } catch {
-        if (!cancelled) {
-          setResults([]);
-          setShowDropdown(false);
-          setErr("Geocode failed.");
-        }
-      } finally {
-        if (!cancelled) setGeoLoading(false);
-      }
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [searchTerm, isSlugRoute]);
 
   async function copyShareLink() {
     try {
@@ -407,52 +381,8 @@ export default function CityDashboardClient({
     };
   }, [selected]);
 
-  function PopularSection({ title = "Popular searches" }: { title?: string }) {
-    return (
-      <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
-        <div>
-          <div className="text-sm font-semibold text-gray-700">{title}</div>
-          <div className="mt-1 text-xs text-gray-500">Quick links to high-traffic cities.</div>
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {popularCities.map((c) => {
-            const params = new URLSearchParams({
-              lat: String(c.lat),
-              lon: String(c.lon),
-              name: c.name,
-              country: c.country,
-              admin1: c.admin1 || "",
-            }).toString();
-
-            return (
-              <div key={c.slug} className="rounded-xl border bg-white px-4 py-3">
-                <div className="font-semibold">{c.name}</div>
-                <div className="mt-1 text-xs text-gray-500">{(c.admin1 ? `${c.admin1}, ` : "") + c.country}</div>
-
-                <div className="mt-3 flex gap-2">
-                  <Link href={`/time/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
-                    Time
-                  </Link>
-                  <Link href={`/weather/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
-                    Weather
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ✅ Ad card under Popular Cities */}
-        <div className="mt-4">
-          <AdSlot label="Ad Slot (below popular cities)" size="normal" />
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <main className="bg-[#f6f6f6] text-gray-900 overflow-x-hidden pb-16">
+    <main className="min-h-screen bg-[#f6f6f6] text-gray-900 overflow-x-hidden">
       {placeJsonLd && (
         <Script
           id="ld-place"
@@ -473,6 +403,8 @@ export default function CityDashboardClient({
                   e.preventDefault();
                   const q = queryInput.trim();
                   if (!q) return;
+                  // user-initiated search → never auto-pick among multiple
+                  isAutoBootRef.current = false;
                   setSearchTerm(q);
                 }}
                 className="flex gap-3"
@@ -482,21 +414,17 @@ export default function CityDashboardClient({
                     ref={inputRef}
                     value={queryInput}
                     onChange={(e) => setQueryInput(e.target.value)}
-                    onFocus={() => {
-                      if (!isSlugRoute && results.length) setShowDropdown(true);
-                    }}
                     placeholder="Search a city (ex: Dallas NC, Paris TX, New York USA)"
                     className="w-full rounded-xl border px-4 py-3 pr-10 outline-none"
                     autoComplete="off"
                   />
-
-                  {/* ✅ X button (works on ALL pages, including home) */}
-                  {queryInput.length > 0 && (
+                  {queryInput && (
                     <button
                       type="button"
                       onClick={() => {
                         setQueryInput("");
-                        setShowDropdown(false);
+                        setResults([]);
+                        setErr(null);
                         requestAnimationFrame(() => inputRef.current?.focus());
                       }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
@@ -506,42 +434,53 @@ export default function CityDashboardClient({
                       ✕
                     </button>
                   )}
-
-                  {showDropdown && results.length > 0 && (
-                    <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border bg-white shadow-lg">
-                      {results.slice(0, 10).map((r) => (
-                        <button
-                          key={`${r.id}-${r.latitude}-${r.longitude}`}
-                          type="button"
-                          className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50"
-                          onClick={() => chooseCity(r)}
-                        >
-                          <div className="font-semibold">{r.name}</div>
-                          <div className="text-xs text-gray-500">{(r.admin1 ? `${r.admin1}, ` : "") + r.country}</div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 <button className="shrink-0 rounded-xl bg-black px-5 py-3 text-white" type="submit">
                   {geoLoading ? "Searching…" : "Search"}
                 </button>
               </form>
+
+              {/* dropdown results */}
+              {results.length > 0 && (
+                <div className="mt-3 overflow-hidden rounded-xl border bg-white">
+                  {results.slice(0, 10).map((r) => (
+                    <button
+                      key={`${r.id}-${r.latitude}-${r.longitude}`}
+                      type="button"
+                      onClick={() => chooseCity(r)}
+                      className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-semibold">{r.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {(r.admin1 ? `${r.admin1}, ` : "") + r.country}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {r.latitude.toFixed(2)}, {r.longitude.toFixed(2)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {err && (
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
             )}
 
-            {!selected && <PopularSection />}
-
             {selected && (
               <>
                 <section className="mt-6 grid gap-4 lg:grid-cols-2">
                   <div className="rounded-2xl border bg-white p-3 shadow-sm">
                     <div className="min-h-[120px] flex items-center justify-center">
-                      <ClockCard locationLine={labelForGeo(selected)} tz={tz} is24h={is24h} onToggle24h={toggle24h} />
+                      <ClockCard
+                        locationLine={labelForGeo(selected)}
+                        tz={tz}
+                        is24h={is24h}
+                        onToggle24h={() => setIs24h((v) => !v)}
+                      />
                     </div>
                   </div>
 
@@ -573,7 +512,7 @@ export default function CityDashboardClient({
                       <div className="text-sm text-gray-600">Temperature</div>
                       <button
                         type="button"
-                        onClick={toggleTempUnit}
+                        onClick={() => setTempUnit((u) => (u === "c" ? "f" : "c"))}
                         className="rounded-full border px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
                         aria-label="Toggle temperature unit"
                         title="Toggle °C/°F"
@@ -621,8 +560,42 @@ export default function CityDashboardClient({
                   <AdSlot label="Ad Slot (below forecast)" size="normal" />
                 </div>
 
-                {/* ✅ Popular cities restored on time/weather pages + ad slot under it */}
-                <PopularSection title="Popular cities" />
+                <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-700">Popular searches</div>
+                    <div className="mt-1 text-xs text-gray-500">Quick links to high-traffic cities.</div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {popularCities.map((c) => {
+                      const params = new URLSearchParams({
+                        lat: String(c.lat),
+                        lon: String(c.lon),
+                        name: c.name,
+                        country: c.country,
+                        admin1: c.admin1 || "",
+                      }).toString();
+
+                      return (
+                        <div key={c.slug} className="rounded-xl border bg-white px-4 py-3">
+                          <div className="font-semibold">{c.name}</div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {(c.admin1 ? `${c.admin1}, ` : "") + c.country}
+                          </div>
+
+                          <div className="mt-3 flex gap-2">
+                            <Link href={`/time/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
+                              Time
+                            </Link>
+                            <Link href={`/weather/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
+                              Weather
+                            </Link>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               </>
             )}
           </div>
