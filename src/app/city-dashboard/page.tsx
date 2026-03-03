@@ -8,5 +8,5 @@ export default function CityDashboardPage({
 }: {
   searchParams?: { q?: string };
 }) {
-  return <CityDashboardClient initialQuery={searchParams?.q ?? ""} autoPickFirst={false} mode="time" />;
+  return <CityDashboardClient initialQuery={searchParams?.q ?? ""} />;
 }
