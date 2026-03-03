@@ -1,26 +1,82 @@
-export type PopularCity = {
-  name: string;
-  admin1: string;
-  country: string;
-  slug: string;
-};
-
-export const popularCities: PopularCity[] = [
-  { name: "New York", admin1: "New York", country: "United States", slug: "new-york-new-york-united-states" },
-  { name: "Los Angeles", admin1: "California", country: "United States", slug: "los-angeles-california-united-states" },
-  { name: "Chicago", admin1: "Illinois", country: "United States", slug: "chicago-illinois-united-states" },
-  { name: "Houston", admin1: "Texas", country: "United States", slug: "houston-texas-united-states" },
-  { name: "Miami", admin1: "Florida", country: "United States", slug: "miami-florida-united-states" },
-
-  { name: "London", admin1: "England", country: "United Kingdom", slug: "london-england-united-kingdom" },
-  { name: "Paris", admin1: "Île-de-France", country: "France", slug: "paris-ile-de-france-france" },
-  { name: "Berlin", admin1: "Berlin", country: "Germany", slug: "berlin-berlin-germany" },
-  { name: "Rome", admin1: "Lazio", country: "Italy", slug: "rome-lazio-italy" },
-  { name: "Madrid", admin1: "Madrid", country: "Spain", slug: "madrid-madrid-spain" },
-
-  { name: "Tokyo", admin1: "Tokyo", country: "Japan", slug: "tokyo-tokyo-japan" },
-  { name: "Seoul", admin1: "Seoul", country: "South Korea", slug: "seoul-seoul-south-korea" },
-  { name: "Singapore", admin1: "Singapore", country: "Singapore", slug: "singapore-singapore-singapore" },
-  { name: "Sydney", admin1: "New South Wales", country: "Australia", slug: "sydney-new-south-wales-australia" },
-  { name: "Toronto", admin1: "Ontario", country: "Canada", slug: "toronto-ontario-canada" },
-];
+export const popularCities = [
+  {
+    slug: "new-york-new-york-united-states",
+    name: "New York",
+    admin1: "New York",
+    country: "United States",
+    latitude: 40.7128,
+    longitude: -74.006,
+  },
+  {
+    slug: "los-angeles-california-united-states",
+    name: "Los Angeles",
+    admin1: "California",
+    country: "United States",
+    latitude: 34.0522,
+    longitude: -118.2437,
+  },
+  {
+    slug: "chicago-illinois-united-states",
+    name: "Chicago",
+    admin1: "Illinois",
+    country: "United States",
+    latitude: 41.8781,
+    longitude: -87.6298,
+  },
+  {
+    slug: "dallas-texas-united-states",
+    name: "Dallas",
+    admin1: "Texas",
+    country: "United States",
+    latitude: 32.7767,
+    longitude: -96.797,
+  },
+  {
+    slug: "miami-florida-united-states",
+    name: "Miami",
+    admin1: "Florida",
+    country: "United States",
+    latitude: 25.7617,
+    longitude: -80.1918,
+  },
+  {
+    slug: "london-england-united-kingdom",
+    name: "London",
+    admin1: "England",
+    country: "United Kingdom",
+    latitude: 51.5072,
+    longitude: -0.1276,
+  },
+  {
+    slug: "paris-ile-de-france-france",
+    name: "Paris",
+    admin1: "Île-de-France",
+    country: "France",
+    latitude: 48.8566,
+    longitude: 2.3522,
+  },
+  {
+    slug: "tokyo-tokyo-japan",
+    name: "Tokyo",
+    admin1: "Tokyo",
+    country: "Japan",
+    latitude: 35.6895,
+    longitude: 139.6917,
+  },
+  {
+    slug: "sydney-new-south-wales-australia",
+    name: "Sydney",
+    admin1: "New South Wales",
+    country: "Australia",
+    latitude: -33.8688,
+    longitude: 151.2093,
+  },
+  {
+    slug: "dubai-dubai-united-arab-emirates",
+    name: "Dubai",
+    admin1: "Dubai",
+    country: "United Arab Emirates",
+    latitude: 25.2048,
+    longitude: 55.2708,
+  },
+] as const;
