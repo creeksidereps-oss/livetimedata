@@ -1,4 +1,3 @@
-// src/app/weather/[slug]/page.tsx
 import CityDashboardClient from "../../city-dashboard/ui";
 
 function slugToQuery(slug: string) {
@@ -8,11 +7,7 @@ function slugToQuery(slug: string) {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default function WeatherSlugPage({
-  params,
-}: {
-  params: { slug: string };
-}) {
-  void slugToQuery(params.slug);
-  return <CityDashboardClient />;
+export default function WeatherSlugPage({ params }: { params: { slug: string } }) {
+  const q = slugToQuery(params.slug);
+  return <CityDashboardClient initialQuery={q} autoPickFirst={true} mode="weather" />;
 }

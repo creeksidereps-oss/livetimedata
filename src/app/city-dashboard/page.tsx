@@ -1,6 +1,12 @@
-// src/app/city-dashboard/page.tsx
 import CityDashboardClient from "./ui";
 
-export default function CityDashboardPage() {
-  return <CityDashboardClient />;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export default function CityDashboardPage({
+  searchParams,
+}: {
+  searchParams?: { q?: string };
+}) {
+  return <CityDashboardClient initialQuery={searchParams?.q ?? ""} autoPickFirst={false} mode="time" />;
 }
