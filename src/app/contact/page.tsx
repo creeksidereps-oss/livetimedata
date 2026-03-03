@@ -1,89 +1,44 @@
 // src/app/contact/page.tsx
-"use client";
+import CloseLegalButton from "../components/CloseLegalButton";
+import BackToPrevious from "../components/BackToPrevious";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+export const metadata = {
+  title: "Contact — LiveTimeData",
+  description: "Contact LiveTimeData for questions, feedback, corrections, or business inquiries.",
+};
 
 export default function ContactPage() {
-  const router = useRouter();
-  const [fallbackHref, setFallbackHref] = useState("/city-dashboard");
-
-  // Remember the page the user came from (so “Back to site” returns correctly)
-  useEffect(() => {
-    try {
-      const ref = document.referrer || "";
-      if (ref) {
-        const u = new URL(ref);
-        // only keep same-site referrers
-        if (u.host === window.location.host) {
-          setFallbackHref(u.pathname + u.search + u.hash);
-        }
-      }
-    } catch {}
-  }, []);
-
-  function close() {
-    // Prefer history back (returns to current city page)
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-      return;
-    }
-    router.push(fallbackHref || "/city-dashboard");
-  }
-
   return (
-    <div className="fixed inset-0 z-50 bg-black/40">
-      {/* click outside closes */}
-      <button
-        type="button"
-        aria-label="Close"
-        className="absolute inset-0 h-full w-full cursor-default"
-        onClick={close}
-      />
-
-      <div className="relative mx-auto mt-10 w-[min(900px,calc(100%-24px))] rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b px-5 py-4">
+    <main className="min-h-screen bg-black/30 p-4 sm:p-8">
+      <div className="mx-auto w-full max-w-4xl rounded-2xl border bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b px-6 py-4">
           <div className="text-lg font-semibold">Contact</div>
-          <button
-            type="button"
-            onClick={close}
-            className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50"
-            aria-label="Close"
-            title="Close"
-          >
-            ✕
-          </button>
+          <CloseLegalButton />
         </div>
 
         <div className="px-6 py-6">
-          <p className="text-gray-700">
+          <p className="text-sm text-gray-700">
             For questions, feedback, corrections, or business inquiries, email us:
           </p>
 
-          <div className="mt-4 rounded-xl border bg-gray-50 p-4">
+          <div className="mt-4 rounded-xl border bg-white p-4">
             <a
-              href="mailto:LiveTimeData@gmail.com"
               className="text-blue-600 underline"
+              href="mailto:LiveTimeData@gmail.com"
             >
               LiveTimeData@gmail.com
             </a>
           </div>
 
-          <p className="mt-4 text-sm text-gray-500">
+          <p className="mt-4 text-xs text-gray-500">
             We aim to respond within 1–2 business days.
           </p>
-        </div>
 
-        <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
-          <button
-            type="button"
-            onClick={close}
-            className="rounded-xl border px-4 py-2 text-sm hover:bg-gray-50"
-          >
-            Back to site
-          </button>
+          <div className="mt-8">
+            <BackToPrevious />
+          </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
