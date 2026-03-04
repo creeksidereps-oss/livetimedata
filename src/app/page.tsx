@@ -1,13 +1,6 @@
 // src/app/page.tsx
-import CityDashboardClient from "./city-dashboard/ui";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-export default function HomePage({
-  searchParams,
-}: {
-  searchParams?: { q?: string };
-}) {
-  return <CityDashboardClient initialQuery={searchParams?.q ?? ""} />;
+export default function HomePage() {
+  redirect("/city-dashboard");
 }
