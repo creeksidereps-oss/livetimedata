@@ -93,6 +93,45 @@ function AdSlot({ label, size = "normal" }: { label: string; size?: "normal" | "
   );
 }
 
+function PopularSearchesSection() {
+  return (
+    <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
+      <div>
+        <div className="text-sm font-semibold text-gray-700">Popular searches</div>
+        <div className="mt-1 text-xs text-gray-500">Quick links to high-traffic cities.</div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {popularCities.map((c) => {
+          const params = new URLSearchParams({
+            lat: String(c.lat),
+            lon: String(c.lon),
+            name: c.name,
+            country: c.country,
+            admin1: c.admin1 || "",
+          }).toString();
+
+          return (
+            <div key={c.slug} className="rounded-xl border bg-white px-4 py-3">
+              <div className="font-semibold">{c.name}</div>
+              <div className="mt-1 text-xs text-gray-500">{(c.admin1 ? `${c.admin1}, ` : "") + c.country}</div>
+
+              <div className="mt-3 flex gap-2">
+                <Link href={`/time/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
+                  Time
+                </Link>
+                <Link href={`/weather/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
+                  Weather
+                </Link>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export default function CityDashboardClient({
   initialQuery,
   initialLat,
@@ -434,6 +473,16 @@ export default function CityDashboardClient({
               <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
             )}
 
+            {/* ✅ HOME PAGE: show Popular Cities even when no city is selected */}
+            {!selected && (
+              <>
+                <PopularSearchesSection />
+                <div className="mt-4">
+                  <AdSlot label="Ad Slot (below popular searches)" size="normal" />
+                </div>
+              </>
+            )}
+
             {selected && (
               <>
                 <section className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -522,40 +571,8 @@ export default function CityDashboardClient({
                   <AdSlot label="Ad Slot (below forecast)" size="normal" />
                 </div>
 
-                <section className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
-                  <div>
-                    <div className="text-sm font-semibold text-gray-700">Popular searches</div>
-                    <div className="mt-1 text-xs text-gray-500">Quick links to high-traffic cities.</div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {popularCities.map((c) => {
-                      const params = new URLSearchParams({
-                        lat: String(c.lat),
-                        lon: String(c.lon),
-                        name: c.name,
-                        country: c.country,
-                        admin1: c.admin1 || "",
-                      }).toString();
-
-                      return (
-                        <div key={c.slug} className="rounded-xl border bg-white px-4 py-3">
-                          <div className="font-semibold">{c.name}</div>
-                          <div className="mt-1 text-xs text-gray-500">{(c.admin1 ? `${c.admin1}, ` : "") + c.country}</div>
-
-                          <div className="mt-3 flex gap-2">
-                            <Link href={`/time/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
-                              Time
-                            </Link>
-                            <Link href={`/weather/${c.slug}?${params}`} className="rounded-lg border px-3 py-1 text-xs hover:bg-gray-50">
-                              Weather
-                            </Link>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
+                {/* keep the working Popular Cities section on city pages */}
+                <PopularSearchesSection />
               </>
             )}
           </div>
