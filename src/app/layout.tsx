@@ -1,23 +1,11 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import Link from "next/link";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "LiveTimeData",
-  description: "Search any city for the local time, current weather, and nearby cameras.",
+  description: "Search any city for the local time and current weather.",
 };
 
 export default function RootLayout({
@@ -27,12 +15,29 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        {children}
+      <body className="min-h-screen bg-white text-black">
+        <div className="min-h-screen flex flex-col">
+          <main className="flex-1">{children}</main>
 
-        {/* Vercel Analytics + Speed Insights */}
-        <Analytics />
-        <SpeedInsights />
+          {/* Footer links (global) */}
+          <footer className="border-t mt-10 py-6 text-sm text-center text-gray-600">
+            <div className="flex justify-center gap-6">
+              <Link href="/about" className="hover:underline">
+                About
+              </Link>
+              <Link href="/contact" className="hover:underline">
+                Contact
+              </Link>
+              <Link href="/privacy" className="hover:underline">
+                Privacy
+              </Link>
+              <Link href="/terms" className="hover:underline">
+                Terms
+              </Link>
+            </div>
+            <div className="mt-3 text-xs text-gray-500">© {new Date().getFullYear()} LiveTimeData</div>
+          </footer>
+        </div>
       </body>
     </html>
   );
