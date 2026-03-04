@@ -1,7 +1,10 @@
 // src/app/page.tsx
+import { redirect } from "next/navigation";
 
-import CityDashboardClient from "./city-dashboard/ui";
+// IMPORTANT: prevent prerendering "/" during build
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default function HomePage() {
-  return <CityDashboardClient initialQuery="" />;
+  redirect("/city-dashboard");
 }
