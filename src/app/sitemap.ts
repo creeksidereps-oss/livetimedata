@@ -1,27 +1,22 @@
 // src/app/sitemap.ts
-import type { MetadataRoute } from "next";
-import { popularCities } from "./components/popularCities";
+import { MetadataRoute } from "next";
+import { TOP_CITIES } from "@/lib/topCities";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://livetimedata.com";
+  const base = "https://livetimedata.com";
 
-  const core: MetadataRoute.Sitemap = [
-    { url: `${baseUrl}/`, changeFrequency: "daily", priority: 1.0 },
-    { url: `${baseUrl}/city-dashboard`, changeFrequency: "daily", priority: 0.9 },
+  const staticRoutes: MetadataRoute.Sitemap = [
+    { url: `${base}/`, changeFrequency: "daily", priority: 1 },
+    { url: `${base}/about`, changeFrequency: "monthly", priority: 0.4 },
+    { url: `${base}/terms`, changeFrequency: "monthly", priority: 0.4 },
+    { url: `${base}/privacy`, changeFrequency: "monthly", priority: 0.4 },
+    { url: `${base}/contact`, changeFrequency: "monthly", priority: 0.4 },
   ];
 
-  const cityPages: MetadataRoute.Sitemap = popularCities.flatMap((c) => [
-    {
-      url: `${baseUrl}/time/${c.slug}`,
-      changeFrequency: "daily",
-      priority: 0.8,
-    },
-    {
-      url: `${baseUrl}/weather/${c.slug}`,
-      changeFrequency: "daily",
-      priority: 0.8,
-    },
+  const cityRoutes: MetadataRoute.Sitemap = TOP_CITIES.flatMap((c) => [
+    { url: `${base}/time/${c.slug}`, changeFrequency: "daily", priority: 0.8 },
+    { url: `${base}/weather/${c.slug}`, changeFrequency: "daily", priority: 0.8 },
   ]);
 
-  return [...core, ...cityPages];
+  return [...staticRoutes, ...cityRoutes];
 }
