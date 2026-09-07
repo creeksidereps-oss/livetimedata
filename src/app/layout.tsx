@@ -14,8 +14,34 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LiveTimeData",
-  description: "Live time + weather by city.",
+  metadataBase: new URL("https://livetimedata.com"),
+  title: {
+    default: "LiveTimeData | Live City Time, Weather, Webcams & Community Events",
+    template: "%s | LiveTimeData",
+  },
+  description: "Real-time municipal intelligence, local time, weather forecast, live webcams, community events, photos, and historical city insights.",
+  openGraph: {
+    title: "LiveTimeData | Live City Time, Weather, Webcams & Community Events",
+    description: "Real-time municipal intelligence, local time, weather forecast, live webcams, community events, photos, and historical city insights.",
+    url: "https://livetimedata.com",
+    siteName: "LiveTimeData",
+    locale: "en_US",
+    type: "website",
+    images: [
+      {
+        url: "/assets/brand-placeholder.png",
+        width: 1200,
+        height: 630,
+        alt: "LiveTimeData Municipal Intelligence",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "LiveTimeData | Real-Time City Intelligence",
+    description: "Real-time municipal intelligence, local time, weather forecast, live webcams, and community events.",
+    images: ["/assets/brand-placeholder.png"],
+  },
 };
 
 export default function RootLayout({
@@ -32,7 +58,7 @@ export default function RootLayout({
           crossOrigin="anonymous"
         ></script>
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} bg-black text-white antialiased min-h-screen flex flex-col`}>
         {children}
         <Footer />
       </body>

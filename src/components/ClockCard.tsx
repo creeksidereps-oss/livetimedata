@@ -31,6 +31,30 @@ function formatDigital(tz: string, is24h: boolean, date = new Date()) {
   }).format(date);
 }
 
+function formatMonthDay(tz: string, date = new Date()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    month: "short",
+    day: "numeric",
+  }).format(date);
+}
+
+function formatDayOfWeek(tz: string, date = new Date()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "long",
+  }).format(date);
+}
+
+function formatFullDate(tz: string, date = new Date()) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  }).format(date);
+}
+
 export default function ClockCard({ locationLine, tz, is24h, onToggle24h }: Props) {
   const [now, setNow] = useState(() => new Date());
 
@@ -40,6 +64,9 @@ export default function ClockCard({ locationLine, tz, is24h, onToggle24h }: Prop
   }, []);
 
   const digital = useMemo(() => formatDigital(tz, is24h, now), [tz, is24h, now]);
+  const dateStrShort = useMemo(() => formatMonthDay(tz, now), [tz, now]);
+  const dayName = useMemo(() => formatDayOfWeek(tz, now), [tz, now]);
+  const fullDateStr = useMemo(() => formatFullDate(tz, now), [tz, now]);
   const { h, m, s } = useMemo(() => getTimePartsInTz(tz, now), [tz, now]);
 
   // analog angles
@@ -50,31 +77,45 @@ export default function ClockCard({ locationLine, tz, is24h, onToggle24h }: Prop
 
   return (
     <div className="w-full max-w-[820px] overflow-hidden rounded-3xl bg-black text-white shadow-sm">
-      {/* Header row (no overlap) */}
-      <div className="flex items-center justify-between px-5 pt-4">
-        <button
-          type="button"
-          onClick={onToggle24h}
-          className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/15"
-          aria-label="Toggle 12/24 hour format"
-          title="Toggle 12/24"
-        >
-          {is24h ? "24h" : "12h"}
-        </button>
+      <div className="flex items-center justify-between px-5 pt-3">
+        
+        {/* Real Toggle UI */}
+        <div className="flex bg-white/10 rounded-full p-[2px] border border-white/10">
+          <button 
+            type="button"
+            onClick={onToggle24h} 
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${!is24h ? "bg-white text-black shadow-sm" : "text-white/50 hover:text-white"}`}
+          >
+            12h
+          </button>
+          <button 
+            type="button"
+            onClick={onToggle24h} 
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${is24h ? "bg-white text-black shadow-sm" : "text-white/50 hover:text-white"}`}
+          >
+            24h
+          </button>
+        </div>
 
-        <div className="text-xs text-white/60">{tz}</div>
+        <div className="text-xs font-medium text-white/40 tracking-wider uppercase">{tz}</div>
       </div>
 
       {/* Main content */}
-      <div className="flex items-center justify-between gap-6 px-5 pb-5 pt-3">
-        <div className="min-w-0">
-          <div className="text-5xl font-semibold tracking-tight">{digital}</div>
-          <div className="mt-2 truncate text-sm text-white/80">{locationLine}</div>
-          <div className="mt-1 text-xs text-white/60">Live</div>
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 px-5 pb-4 pt-2">
+        <div className="min-w-0 text-center md:text-left">
+          <div className="text-4xl font-semibold tracking-tight">{digital}</div>
+          <div className="mt-1 truncate text-sm text-white/80">{locationLine}</div>
+          <div className="text-xs text-white/60">Live</div>
+        </div>
+
+        {/* Center: Day & Date */}
+        <div className="flex flex-col items-center justify-center text-center md:-mt-3">
+          <div className="text-2xl tracking-[0.25em] font-semibold text-white/90 uppercase">{dayName}</div>
+          <div className="text-xl font-bold text-white uppercase mt-1 tracking-wider">{fullDateStr}</div>
         </div>
 
         <div className="shrink-0">
-          <svg width="120" height="120" viewBox="0 0 120 120" aria-label="Analog clock">
+          <svg width="112" height="112" viewBox="0 0 120 120" aria-label="Analog clock">
             <circle
               cx="60"
               cy="60"
@@ -83,9 +124,18 @@ export default function ClockCard({ locationLine, tz, is24h, onToggle24h }: Prop
               stroke="rgba(255,255,255,0.25)"
               strokeWidth="2"
             />
+
             <circle cx="60" cy="60" r="2.8" fill="white" opacity="0.9" />
 
+            {/* Clock Numbers */}
+            <text x="60" y="20" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">12</text>
+            <text x="106" y="64" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">3</text>
+            <text x="60" y="108" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">6</text>
+            <text x="14" y="64" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">9</text>
+
             {Array.from({ length: 12 }).map((_, i) => {
+              if (i % 3 === 0) return null; // Skip drawing tick marks where the numbers 12, 3, 6, 9 are
+              
               const a = (i * 30 * Math.PI) / 180;
               const x1 = 60 + Math.sin(a) * 45;
               const y1 = 60 - Math.cos(a) * 45;

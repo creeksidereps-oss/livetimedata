@@ -36,14 +36,6 @@ export const liveCams: LiveCam[] = [
 
   // Europe
   {
-    id: "M3EYAY2MftI", // Abbey Road (often embeddable)
-    title: "Abbey Road Crossing Live",
-    city: "London",
-    country: "United Kingdom",
-    lat: 51.5321,
-    lon: -0.1774,
-  },
-  {
     id: "ph1vpnYIxJk", // Venice rolling cam (often embeddable)
     title: "Venice Rolling Cam Live",
     city: "Venice",

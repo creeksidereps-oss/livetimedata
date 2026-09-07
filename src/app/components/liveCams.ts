@@ -29,13 +29,6 @@ export const liveCams: LiveCam[] = [
     keywords: ["paris", "eiffel", "france"],
   },
   {
-    id: "M3EYAY2MftI",
-    title: "Abbey Road Crossing (London) Live",
-    city: "London",
-    country: "United Kingdom",
-    keywords: ["london", "abbey road", "united kingdom", "uk", "england"],
-  },
-  {
     id: "dq-mrcOopLM",
     title: "Waikiki Beach (Honolulu) Live",
     city: "Honolulu",

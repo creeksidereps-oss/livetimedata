@@ -1,2 +1,34 @@
-/* src/app/globals.css */
 @import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-geist-sans);
+}
+
+:root {
+  --header-height: 64px; /* Super slim profile */
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  line-height: 1.2; /* Tighter text spacing */
+}
+
+/* Rule II.A: Custom scrollbar for horizontal ribbons */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Remove all default margins from headings to stop "ghost" spacing */
+h1, h2, h3, p { margin: 0; padding: 0; }
+
+@layer utilities {
+  .animate-overlay-fade {
+    animation: overlayFade 4s ease forwards;
+  }
+}
+
+@keyframes overlayFade {
+  0% { opacity: 1; visibility: visible; }
+  85% { opacity: 1; visibility: visible; }
+  100% { opacity: 0; visibility: hidden; }
+}
