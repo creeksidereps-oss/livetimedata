@@ -69,7 +69,7 @@ export default function Page(props: {
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName, lat, lng: lon, type: 'on_this_day' }),
+          body: JSON.stringify({ cityName, stateName, lat, lng: lon, type: 'on_this_day', timezone: (sp.timezone as string) }),
         });
         fetch('/api/generate-report', {
           method: 'POST',
@@ -163,6 +163,7 @@ export default function Page(props: {
           cityName={cityName} 
           stateName={searchParams.admin1}
           countryName={(searchParams.country as string) || "United States"}
+          timezone={searchParams.timezone as string}
           lat={lat} lng={lon}
           onClose={() => setActiveModal(null)}
           onOpenInsights={() => {

@@ -9,12 +9,39 @@ function clean(val: any) {
 }
 
 // Custom delay utility for our background retry system
-const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Format YYYY-MM-DD for comparing calendar day
+function getDateStr(date: Date, tz?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz || 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  } catch {
+    return date.toISOString().split('T')[0];
+  }
+}
+
+// Format "Month Day" for AI prompt grounding
+function getFormattedDate(tz?: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: tz || 'America/New_York',
+      month: 'long',
+      day: 'numeric'
+    }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(new Date());
+  }
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { lat, lng, type = 'about', countryName = 'Global' } = body;
+    const { lat, lng, type = 'about', countryName = 'Global', timezone } = body;
     const apiKey = process.env.GEMINI_API_KEY;
 
     const cityName = clean(body.cityName);
@@ -28,7 +55,7 @@ export async function POST(req: Request) {
 
     // 1. SURGICAL MATCH AGAINST ACTIVE NEON-COQUELICOT-RIBBON SCHEMA
     const { rows } = await sql`
-      SELECT content FROM city_reports 
+      SELECT content, updated_at FROM city_reports 
       WHERE city_name = ${queryCityName} 
       AND state_name = ${queryStateName} 
       AND report_type = ${type}
@@ -36,20 +63,32 @@ export async function POST(req: Request) {
     `;
 
     if (rows.length > 0 && rows[0].content && rows[0].content.length > 100) {
-      console.log(`✅ [LIBRARY HIT]: Stored record pulled for ${cityName} [${type}]`);
-      return NextResponse.json({ report: rows[0].content, cached: true });
+      if (type === 'on_this_day') {
+        const cachedDateStr = getDateStr(new Date(rows[0].updated_at), timezone);
+        const todayDateStr = getDateStr(new Date(), timezone);
+
+        if (cachedDateStr === todayDateStr) {
+          console.log(`✅ [LIBRARY HIT]: Daily cached 'on_this_day' record pulled for ${cityName} (${cachedDateStr})`);
+          return NextResponse.json({ report: rows[0].content, cached: true });
+        } else {
+          console.log(`🔄 [DAILY EXPIRED]: Cached 'on_this_day' for ${cityName} is from ${cachedDateStr} (today is ${todayDateStr}). Generating fresh report for today...`);
+        }
+      } else {
+        console.log(`✅ [LIBRARY HIT]: Stored record pulled for ${cityName} [${type}]`);
+        return NextResponse.json({ report: rows[0].content, cached: true });
+      }
     }
 
-    // 2. PRODUCTION AI ENGINE AUTONOMOUS RECOVERY STRATEGY (Fallback if data isn't cached yet)
-    console.log(`📡 [AI GENERATE]: Compiling backup report asset for ${queryCityName} [${type}]`);
+    // 2. PRODUCTION AI ENGINE AUTONOMOUS RECOVERY STRATEGY (Fallback if data isn't cached yet or daily report expired)
+    console.log(`📡 [AI GENERATE]: Compiling fresh report asset for ${queryCityName} [${type}]`);
     
-    const todayStr = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric' }).format(new Date());
+    const todayStr = getFormattedDate(timezone);
     let prompt = "";
     
     if (type === 'facts') {
       prompt = `Provide 12 verified fun facts about ${cityName}, ${stateName}. You MUST use Google Search Grounding to verify every single fact. DO NOT hallucinate or invent history. If deep historical facts are scarce, you MUST provide real geographic data (exact lat/long, elevation, climate, regional geography, demographics). Use **Bold Titles** for each item and number them 1-12. CRITICAL: Do NOT include any introductory or concluding sentences (like "Here are 12 facts..."). Start immediately with "1. **[Title]**".`;
     } else if (type === 'on_this_day') {
-      prompt = `Today is ${todayStr}. Provide a bulleted list of 10 verified historical events that occurred on this exact date in history, focusing primarily on ${cityName}, ${stateName}, or ${countryName}. You MUST use Google Search Grounding to verify every single event. DO NOT hallucinate or invent dates. If local history is scarce, include verified major national or global events. Format with clean bold dates.`;
+      prompt = `Today is ${todayStr}. Provide a bulleted list of 10 verified historical events that occurred on this exact date (${todayStr}) in history, focusing primarily on ${cityName}, ${stateName}, or ${countryName}. You MUST use Google Search Grounding to verify every single event. DO NOT hallucinate or invent dates. If local history is scarce, include verified major national or global events that occurred on ${todayStr}. Format with clean bold dates.`;
     } else if (type === 'holidays') {
       prompt = `Write a verified travel and cultural guide to the national and regional holidays celebrated in ${stateName}, ${countryName}. You MUST use Google Search Grounding to verify every holiday and date. DO NOT hallucinate. CRITICAL: You must include a future planning calendar showing the exact dates for all mentioned holidays for the next 3 years (2026, 2027, and 2028). Use ### for headers.`;
     } else {
@@ -87,8 +126,19 @@ export async function POST(req: Request) {
     }
 
     if (!aiRes || !aiRes.ok) {
-      const errorText = aiRes ? await aiRes.text() : "No server response context reached.";
-      throw new Error(`AI Engine gateway rejected request: ${errorText}`);
+      let friendlyError = "AI Engine gateway rejected request.";
+      try {
+        const errorData = await aiRes?.json();
+        if (errorData?.error?.message?.includes("prepayment credits are depleted")) {
+          friendlyError = "Google AI prepayment credits are depleted. Please update billing or add credits in Google AI Studio to resume live AI generation.";
+        } else if (errorData?.error?.message) {
+          friendlyError = errorData.error.message;
+        }
+      } catch {
+        const errorText = aiRes ? await aiRes.text().catch(() => "") : "";
+        if (errorText) friendlyError += ` ${errorText}`;
+      }
+      throw new Error(friendlyError);
     }
 
     const data = await aiRes.json();

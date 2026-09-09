@@ -9,6 +9,7 @@ interface InfoModalProps {
   cityName: string;
   stateName?: string;
   countryName?: string;
+  timezone?: string;
   lat: number;
   lng: number;
   onClose: () => void;
@@ -16,7 +17,7 @@ interface InfoModalProps {
   onOpenWebcam?: () => void;
 }
 
-export default function InfoModal({ type, cityName, stateName, countryName, lat, lng, onClose, onOpenInsights, onOpenWebcam }: InfoModalProps) {
+export default function InfoModal({ type, cityName, stateName, countryName, timezone, lat, lng, onClose, onOpenInsights, onOpenWebcam }: InfoModalProps) {
   const [report, setReport] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
@@ -27,7 +28,7 @@ export default function InfoModal({ type, cityName, stateName, countryName, lat,
         const res = await fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName, countryName, lat, lng, type }),
+          body: JSON.stringify({ cityName, stateName, countryName, timezone, lat, lng, type }),
         });
         
         const data = await res.json();
@@ -46,7 +47,7 @@ export default function InfoModal({ type, cityName, stateName, countryName, lat,
       }
     }
     getIntelligence();
-  }, [cityName, type, lat, lng, stateName]);
+  }, [cityName, type, lat, lng, stateName, countryName, timezone]);
 
   return (
     <div 
