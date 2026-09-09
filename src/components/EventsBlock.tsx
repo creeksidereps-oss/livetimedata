@@ -538,29 +538,7 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
             </button>
           )}
 
-          {ev.official_info_url && (
-            <button 
-              type="button"
-              onClick={() => setIframeUrl(ev.official_info_url!)}
-              style={{
-                background: "#2563eb",
-                color: "white",
-                padding: "11px 22px",
-                borderRadius: "999px",
-                fontWeight: 900,
-                fontSize: "11px",
-                letterSpacing: "0.05em",
-                border: "none",
-                cursor: "pointer",
-                textTransform: "uppercase",
-                display: "inline-flex",
-                alignItems: "center",
-                boxShadow: "0 4px 12px rgba(37,99,235,0.25)"
-              }}
-            >
-              Official Info
-            </button>
-          )}
+
 
           <ShareButton 
             className=""
@@ -2064,17 +2042,6 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 <button type="button" disabled style={{ background: "#e5e7eb", color: "#9ca3af", padding: "9px 16px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", textTransform: "uppercase" }}>Register</button>
               ) : null}
 
-              {ev.official_info_url && iframeUrl !== ev.official_info_url ? (
-                <button
-                  type="button"
-                  onClick={() => setIframeUrl(ev.official_info_url!)}
-                  style={{ background: "#3b82f6", color: "white", padding: "9px 16px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", cursor: "pointer", textTransform: "uppercase" }}
-                >
-                  Official Info
-                </button>
-              ) : ev.official_info_url ? (
-                <button type="button" disabled style={{ background: "#e5e7eb", color: "#9ca3af", padding: "9px 16px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", textTransform: "uppercase" }}>Official Info</button>
-              ) : null}
 
               <ShareButton 
                 title={ev.title} 

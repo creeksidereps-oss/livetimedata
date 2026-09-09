@@ -59,17 +59,6 @@ export default function PremiumEventModal({ event, citySegment, stateSegment, on
         <button type="button" disabled style={{ background: "#e5e7eb", color: "#9ca3af", padding: "9px 12px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", textTransform: "uppercase" }}>Vendor Reg</button>
       )}
 
-      {event.official_info_url ? (
-        <button
-          type="button"
-          onClick={() => setIframeUrl(event.official_info_url!)}
-          style={{ background: "#3b82f6", color: "white", padding: "9px 12px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", cursor: "pointer", textTransform: "uppercase" }}
-        >
-          Official Info
-        </button>
-      ) : (
-        <button type="button" disabled style={{ background: "#e5e7eb", color: "#9ca3af", padding: "9px 12px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", textTransform: "uppercase" }}>Official Info</button>
-      )}
 
       <AddToCalendarButton 
         event={{
@@ -127,18 +116,6 @@ export default function PremiumEventModal({ event, citySegment, stateSegment, on
             <div style={{ marginTop: "16px" }}>
               <div style={{ fontSize: "12px", fontWeight: "bold", color: "#64748b", textTransform: "uppercase", marginBottom: "8px" }}>Event Flyer</div>
               <img src={fallbackGraphic} alt="Flyer" style={{ maxWidth: "100%", borderRadius: "12px", border: "1px solid #e2e8f0" }} />
-            </div>
-          ) : event.official_info_url ? (
-            <div style={{ marginTop: "16px" }}>
-              <div style={{ fontSize: "12px", fontWeight: "bold", color: "#64748b", textTransform: "uppercase", marginBottom: "8px" }}>Event Graphic</div>
-              <div style={{ width: "100%", height: "550px", borderRadius: "12px", overflow: "hidden", border: "1px solid #e2e8f0", position: "relative" }}>
-                <iframe 
-                  src={event.official_info_url.startsWith("http") ? event.official_info_url : `https://${event.official_info_url}`}
-                  style={{ width: "100%", height: "100%", border: "none" }}
-                  sandbox="allow-same-origin allow-scripts"
-                  title="Event Graphic"
-                />
-              </div>
             </div>
           ) : null}
         </div>

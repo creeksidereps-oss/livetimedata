@@ -2,7 +2,7 @@ import { sql } from "@/lib/db";
 import { notFound } from "next/navigation";
 import ShareButton from "@/components/ShareButton";
 import Link from "next/link";
-import { Calendar, MapPin, Clock, Info, ExternalLink, Mail, Phone, User, Ticket } from "lucide-react";
+import { Calendar, MapPin, Clock, ExternalLink, Mail, Phone, User, Ticket } from "lucide-react";
 import AddToCalendarButton from '@/components/AddToCalendarButton';
 
 export const dynamic = "force-dynamic";
@@ -125,16 +125,6 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
                 </a>
               )}
 
-              {event.official_info_url && (
-                <a 
-                  href={event.official_info_url} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="flex items-center gap-2 px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl transition-colors border border-slate-200"
-                >
-                  <Info size={18} /> Official Info
-                </a>
-              )}
 
               <div className="ml-auto">
                 <ShareButton title={event.title} text={`Check out ${event.title} in ${event.city_name}!`} url={shareUrl} />
