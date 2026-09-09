@@ -55,7 +55,13 @@ export async function GET(request: Request) {
         result = await sql`
           SELECT * FROM events 
           WHERE LOWER(city_name) LIKE LOWER(${city} || '%')
-          AND (LOWER(state_name) = LOWER(${state}) OR state_name IS NULL OR state_name = '')
+          AND (
+            LOWER(state_name) = LOWER(${state}) 
+            OR LOWER(state_name) LIKE LOWER('%' || ${state} || '%')
+            OR LOWER(${state}) LIKE LOWER('%' || state_name || '%')
+            OR state_name IS NULL 
+            OR state_name = ''
+          )
           AND status NOT IN ('pending', 'pending_review', 'legal_hold')
           ORDER BY event_date ASC
         `;
