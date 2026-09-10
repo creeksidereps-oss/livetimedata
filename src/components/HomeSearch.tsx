@@ -62,8 +62,8 @@ export default function HomeSearch() {
 
   return (
     <div className="relative w-full max-w-3xl mx-auto" ref={dropdownRef}>
-      <div className="relative flex items-center w-full h-16 bg-[#1A1A1A] rounded-full border-2 border-white/30 px-6 group focus-within:border-white/50 focus-within:shadow-[0_0_15px_rgba(255,255,255,0.15)] focus-within:bg-[#222] transition-all shadow-lg">
-        <Search size={20} className="text-gray-400 mr-3" />
+      <div className="relative flex items-center w-full h-16 bg-[#222222] rounded-full border-2 border-white/80 px-6 group focus-within:border-white focus-within:shadow-[0_0_25px_rgba(255,255,255,0.35)] focus-within:bg-[#2a2a2a] transition-all shadow-[0_0_15px_rgba(255,255,255,0.15)]">
+        <Search size={22} className="text-white mr-3 shrink-0" />
         <input 
           value={q}
           onChange={(e) => {
@@ -77,14 +77,14 @@ export default function HomeSearch() {
             }
           }}
           placeholder="Search for any city..." 
-          className="bg-transparent text-[16px] w-full outline-none text-white font-medium placeholder:text-gray-500"
+          className="bg-transparent text-[16px] w-full outline-none text-white font-semibold placeholder:text-gray-300"
         />
         {loading ? (
-          <Loader2 size={20} className="animate-spin text-gray-400 ml-3" />
+          <Loader2 size={20} className="animate-spin text-white ml-3 shrink-0" />
         ) : (
           <button 
             onClick={() => results.length > 0 && onSelect(results[0])}
-            className="ml-3 text-[14px] font-semibold text-gray-400 hover:text-white transition-colors"
+            className="ml-3 text-[13px] font-black uppercase tracking-wider bg-white text-black px-5 py-2 rounded-full hover:bg-gray-200 transition-all shrink-0 cursor-pointer shadow-sm"
           >
             Search
           </button>

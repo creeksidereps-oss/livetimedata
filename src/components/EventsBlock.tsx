@@ -384,7 +384,9 @@ export function OverlayModal({
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(15,23,42,0.42)",
+          background: "rgba(15,23,42,0.6)",
+          backdropFilter: "blur(4px)",
+          WebkitBackdropFilter: "blur(4px)",
           zIndex: 99999,
         }}
       />
@@ -392,32 +394,41 @@ export function OverlayModal({
       <div
         style={{
           position: "fixed",
-          top: "4vh",
-          left: "50%",
-          transform: "translateX(-50%)",
-          width: "95vw",
-          maxWidth: "1000px",
-          height: "92vh",
-          background: "#fff",
-          borderRadius: "16px",
-          boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+          inset: 0,
           zIndex: 999999,
           display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "12px",
+          pointerEvents: "none",
         }}
       >
         <div
           style={{
-            padding: "16px 20px",
-            borderBottom: "1px solid #e5e7eb",
+            pointerEvents: "auto",
+            width: "100%",
+            maxWidth: "1000px",
+            height: "92vh",
+            maxHeight: "92vh",
             background: "#fff",
+            borderRadius: "16px",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1)",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexShrink: 0,
+            flexDirection: "column",
+            overflow: "hidden",
           }}
         >
+          <div
+            style={{
+              padding: "16px 20px",
+              borderBottom: "1px solid #e5e7eb",
+              background: "#fff",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexShrink: 0,
+            }}
+          >
           <div>
             <h2 style={{ fontSize: "16px", fontWeight: 800, color: "#111827", margin: 0, display: "flex", alignItems: "center", gap: "12px" }}>
               {title}
@@ -493,6 +504,7 @@ export function OverlayModal({
           
           <DiscreteModalAdSlot />
         </div>
+      </div>
       </div>
     </>
   );
@@ -1179,65 +1191,65 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 borderRadius: "13px",
                 background: "#fff",
                 padding: "8px",
-                minHeight: "130px",
+                minHeight: "auto",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                gap: "8px",
               }}
             >
-              <div style={{ marginBottom: "6px" }}>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#111827", lineHeight: 1.1 }}>
-                  {day.dayLabel}
+              <div>
+                <div style={{ marginBottom: "6px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#111827", lineHeight: 1.1 }}>
+                    {day.dayLabel}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#4b5563", marginTop: "2px", fontWeight: 500 }}>
+                    {day.dateLabel}
+                  </div>
                 </div>
-                <div style={{ fontSize: "10px", color: "#4b5563", marginTop: "2px", fontWeight: 500 }}>
-                  {day.dateLabel}
-                </div>
-              </div>
 
-              {hasCategories ? (
-                <div style={{ display: "grid", gap: "4px", marginBottom: "7px" }}>
-                  {day.categories.slice(0, 5).map((group) => (
-                    <button
-                      key={`${day.iso}-${group.key}`}
-                      type="button"
-                      onClick={() => openDayModal(day.iso, group.key)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "7px",
-                        border: "1px solid #eef2f7",
-                        borderRadius: "8px",
-                        padding: "4px 6px",
-                        background: "#fafafa",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "5px", minWidth: 0 }}>
-                        <span
-                          style={{
-                            width: "6px",
-                            height: "6px",
-                            borderRadius: "50%",
-                            background: categoryAccent(group.key),
-                            flexShrink: 0,
-                          }}
-                        />
-                        <span style={{ fontSize: "10px", fontWeight: 700, color: "#111827", lineHeight: 1.1 }}>
-                          {group.key}
+                {hasCategories && (
+                  <div style={{ display: "grid", gap: "4px", marginBottom: "4px" }}>
+                    {day.categories.slice(0, 5).map((group) => (
+                      <button
+                        key={`${day.iso}-${group.key}`}
+                        type="button"
+                        onClick={() => openDayModal(day.iso, group.key)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "7px",
+                          border: "1px solid #eef2f7",
+                          borderRadius: "8px",
+                          padding: "4px 6px",
+                          background: "#fafafa",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "5px", minWidth: 0 }}>
+                          <span
+                            style={{
+                              width: "6px",
+                              height: "6px",
+                              borderRadius: "50%",
+                              background: categoryAccent(group.key),
+                              flexShrink: 0,
+                            }}
+                          />
+                          <span style={{ fontSize: "10px", fontWeight: 700, color: "#111827", lineHeight: 1.1 }}>
+                            {group.key}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "10px", color: "#4b5563", fontWeight: 600, flexShrink: 0 }}>
+                          {group.items.length}
                         </span>
-                      </div>
-                      <span style={{ fontSize: "10px", color: "#4b5563", fontWeight: 600, flexShrink: 0 }}>
-                        {group.items.length}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: "16px", padding: "16px", textAlign: "center", color: "#64748b", fontSize: "12px", minHeight: "80px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <span>
-                    Quiet day in {cityName}. Try <button onClick={() => setShowNearby(true)} style={{fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', padding: 0, textDecoration: 'underline'}}>nearby</button> or <button onClick={() => setCalendarOpen(true)} style={{fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none', color: 'inherit', padding: 0, textDecoration: 'underline'}}>explore</button> the calendar for {cityName}.
-                  </span>
-                </div>
-              )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <button
                 type="button"

@@ -90,6 +90,8 @@ function filterForecastFromToday(daily: WeatherPanelsProps["daily"]) {
 
 export default function WeatherPanels({ current, daily, unitPreference, onUnitChange }: WeatherPanelsProps) {
   const [internalUnit, setInternalUnit] = useState<"c" | "f">("c");
+  const [forecastOpen, setForecastOpen] = useState(false);
+
   useEffect(() => {
     const saved = window.localStorage.getItem("ltd-temp-unit");
     if (saved === "f" || saved === "c") {
@@ -155,28 +157,51 @@ export default function WeatherPanels({ current, daily, unitPreference, onUnitCh
         </section>
       </div>
 
-      <section className="bg-white border-2 border-slate-300 rounded-xl p-2 px-4 shadow-md relative">
-        <h2 className="text-[10px] font-black text-slate-900 uppercase tracking-wider mb-2">10-Day Forecast</h2>
-        {canRenderForecast ? (
-          <div 
-            className="grid grid-flow-col auto-cols-[calc(50%-8px)] sm:auto-cols-[calc(33.333%-8px)] md:auto-cols-[calc(20%-8px)] gap-2 overflow-x-auto pb-2 scroll-smooth custom-scrollbar"
-          >
-            {filteredDaily!.time!.map((dateString, idx) => (
-              <div key={dateString} className="bg-slate-50 border-2 border-slate-200 rounded-lg p-2 text-center flex flex-col items-center min-w-0">
-                <div className="text-[11px] font-black text-black uppercase border-b-2 border-slate-300 w-full pb-1 mb-1">{formatDayLabel(dateString)}</div>
-                <div className="text-[9px] font-black text-slate-700 uppercase mb-1">{formatDateLabel(dateString)}</div>
-                <span style={{ fontSize: '28px', margin: '2px 0', color: getIconColor(filteredDaily!.weather_code![idx]) }}>
-                   {weatherSymbol(filteredDaily!.weather_code![idx])}
-                </span>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="text-[12px] font-black text-gray-800 text-center tracking-tighter tabular-nums mt-0.5 whitespace-nowrap">
-                    {unit === "f" ? Math.round(cToF(filteredDaily!.temperature_2m_max![idx])) : Math.round(filteredDaily!.temperature_2m_max![idx])}°{unit.toUpperCase()} <span className="text-[10px] font-bold text-gray-400">/ {unit === "f" ? Math.round(cToF(filteredDaily!.temperature_2m_min![idx])) : Math.round(filteredDaily!.temperature_2m_min![idx])}°</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+      <section className="bg-white border-2 border-slate-300 rounded-xl px-4 py-2 shadow-md relative transition-all">
+        <button
+          type="button"
+          onClick={() => setForecastOpen((prev) => !prev)}
+          className="w-full flex justify-between items-center cursor-pointer py-1 group select-none text-left"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-black text-slate-900 uppercase tracking-wider">
+              {forecastOpen ? "10-Day Forecast" : "Click for 10-Day Forecast"}
+            </span>
+            {!forecastOpen && (
+              <span className="text-[10px] font-bold text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                Tap to Expand
+              </span>
+            )}
           </div>
-        ) : <p className="text-[11px] font-black text-slate-900 py-3 text-center">Syncing data...</p>}
+          <span className="text-xs font-black text-slate-500 group-hover:text-black transition-transform">
+            {forecastOpen ? "▲ Close" : "▼ Open"}
+          </span>
+        </button>
+
+        {forecastOpen && (
+          <div className="mt-2 pt-2 border-t border-slate-100 animate-in fade-in duration-200">
+            {canRenderForecast ? (
+              <div 
+                className="grid grid-flow-col auto-cols-[calc(50%-8px)] sm:auto-cols-[calc(33.333%-8px)] md:auto-cols-[calc(20%-8px)] gap-2 overflow-x-auto pb-2 scroll-smooth custom-scrollbar"
+              >
+                {filteredDaily!.time!.map((dateString, idx) => (
+                  <div key={dateString} className="bg-slate-50 border-2 border-slate-200 rounded-lg p-2 text-center flex flex-col items-center min-w-0">
+                    <div className="text-[11px] font-black text-black uppercase border-b-2 border-slate-300 w-full pb-1 mb-1">{formatDayLabel(dateString)}</div>
+                    <div className="text-[9px] font-black text-slate-700 uppercase mb-1">{formatDateLabel(dateString)}</div>
+                    <span style={{ fontSize: '28px', margin: '2px 0', color: getIconColor(filteredDaily!.weather_code![idx]) }}>
+                       {weatherSymbol(filteredDaily!.weather_code![idx])}
+                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="text-[12px] font-black text-gray-800 text-center tracking-tighter tabular-nums mt-0.5 whitespace-nowrap">
+                        {unit === "f" ? Math.round(cToF(filteredDaily!.temperature_2m_max![idx])) : Math.round(filteredDaily!.temperature_2m_max![idx])}°{unit.toUpperCase()} <span className="text-[10px] font-bold text-gray-400">/ {unit === "f" ? Math.round(cToF(filteredDaily!.temperature_2m_min![idx])) : Math.round(filteredDaily!.temperature_2m_min![idx])}°</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="text-[11px] font-black text-slate-900 py-3 text-center">Syncing data...</p>}
+          </div>
+        )}
         
         <style jsx>{`
           .custom-scrollbar::-webkit-scrollbar { height: 6px; } /* Shorter Scrollbar */

@@ -89,31 +89,31 @@ export default function Page(props: {
   const lon = parseFloat(searchParams.lon as string) || -80.8873;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f8fafc] w-full max-w-[100vw] relative">
-      <header className="sticky top-0 z-[100] w-full bg-white border-b border-gray-200 px-4 h-20 flex items-center">
-        <div className="max-w-[1400px] mx-auto w-full flex items-center justify-between">
-          <div className="flex-[60] flex flex-col gap-1 pr-8 border-r border-gray-100">
-            {/* <SectionNavRibbon onOpenHoliday={() => setActiveModal("holidays")} /> */}
-            <div className="relative w-full z-[110]">
-              <CitySearch />
-            </div>
+    <div className="flex flex-col min-h-screen bg-[#f8fafc] w-full max-w-[100vw] overflow-x-hidden relative">
+      <header className="sticky top-0 z-[100] w-full bg-white border-b border-gray-200 px-3 md:px-6 py-2.5 min-h-[64px] flex items-center">
+        <div className="max-w-[1400px] mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex-1 w-full md:max-w-md relative z-[110]">
+            <CitySearch />
           </div>
-          <div className="flex-[40] pl-6 flex flex-col justify-center">
-            <div className="flex justify-between items-center mb-1">
-              <h1 className="text-2xl font-black uppercase tracking-tighter text-slate-900 truncate">{cityName}</h1>
-              <div className="flex gap-2 shrink-0">
-                <button 
-                  onClick={() => setImproveOpen(true)} 
-                  className="bg-blue-600 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all cursor-pointer shadow-sm"
-                >
-                  Share insights
-                </button>
-                <button onClick={() => setActiveModal("facts")} className="bg-slate-950 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm">Fun Facts</button>
-                <button onClick={() => setActiveModal("about")} className="bg-slate-950 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm">About City</button>
+          <div className="flex items-center justify-between md:justify-end gap-3 min-w-0">
+            <div className="flex flex-col min-w-0">
+              <h1 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-900 truncate">
+                {cityName}
+              </h1>
+              <div className="text-[10px] font-black uppercase text-slate-400 truncate">
+                <span className="text-blue-600 font-black">{searchParams.admin1} • {searchParams.country_code}</span> • {lat.toFixed(2)}°, {lon.toFixed(2)}°
               </div>
             </div>
-            <div className="text-[10px] font-black uppercase text-slate-400">
-              <span className="text-blue-600 font-black">{searchParams.admin1} • {searchParams.country_code}</span> • {lat.toFixed(4)}°, {lon.toFixed(4)}°
+            {/* Desktop-only action pill buttons in header */}
+            <div className="hidden lg:flex gap-2 shrink-0">
+              <button 
+                onClick={() => setImproveOpen(true)} 
+                className="bg-blue-600 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all cursor-pointer shadow-sm"
+              >
+                Share insights
+              </button>
+              <button onClick={() => setActiveModal("facts")} className="bg-slate-950 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm">Fun Facts</button>
+              <button onClick={() => setActiveModal("about")} className="bg-slate-950 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm">About City</button>
             </div>
           </div>
         </div>
@@ -149,6 +149,32 @@ export default function Page(props: {
             <PhotoReel cityName={cityName} />
             <div className="w-full h-[45px] bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 font-bold text-[10px] tracking-widest uppercase">
               AdSense: Under Photo Reel
+            </div>
+
+            {/* MOBILE ONLY: Right Rail placed directly under Photo Reel with Action Pill Buttons just above it */}
+            <div className="block lg:hidden mt-2">
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+                <button 
+                  onClick={() => setImproveOpen(true)} 
+                  className="bg-blue-600 text-white px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all cursor-pointer shadow-sm"
+                >
+                  Share insights
+                </button>
+                <button 
+                  onClick={() => setActiveModal("facts")} 
+                  className="bg-slate-950 text-white px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm"
+                >
+                  Fun Facts
+                </button>
+                <button 
+                  onClick={() => setActiveModal("about")} 
+                  className="bg-slate-950 text-white px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm"
+                >
+                  About City
+                </button>
+              </div>
+
+              <RightRail cityName={cityName} flagAtBottom={true} />
             </div>
           </div>
           <aside className="hidden lg:block min-w-0">

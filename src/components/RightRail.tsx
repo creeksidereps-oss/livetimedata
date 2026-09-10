@@ -10,6 +10,7 @@ import ExchangeRateCard from "./ExchangeRateCard";
 
 type RightRailProps = {
   cityName: string;
+  flagAtBottom?: boolean;
 };
 
 type RailCard = {
@@ -199,7 +200,7 @@ function RailCardView({ card, detectedCountry, cityName, liveCam, onMapClick, on
   );
 }
 
-export default function RightRail({ cityName }: RightRailProps) {
+export default function RightRail({ cityName, flagAtBottom = false }: RightRailProps) {
   const { columnA, columnB } = buildRail(cityName);
   const [currentCountry, setCurrentCountry] = useState<string>("United States");
   const [currentCountryCode, setCurrentCountryCode] = useState<string>("US");
@@ -330,7 +331,7 @@ export default function RightRail({ cityName }: RightRailProps) {
   const modalMapEmbedUrl = `https://maps.google.com/maps?q=${encodeURIComponent(cityName)}&output=embed&t=k`;
 
   // Count active cards in each column
-  const activeCardsA = displayA.filter(card => card.id === "flag-cam" || Boolean(assignedCams[card.id]));
+  const activeCardsA = displayA.filter(card => (flagAtBottom ? card.id !== "flag-cam" : card.id === "flag-cam") || Boolean(assignedCams[card.id]));
   const activeCardsB = displayB.filter(card => card.id === "map-slot" || card.id === "exchange-rate" || Boolean(assignedCams[card.id]));
 
   return (
@@ -338,6 +339,7 @@ export default function RightRail({ cityName }: RightRailProps) {
       <section className="grid grid-cols-1 md:grid-cols-2 gap-[20px]">
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {displayA.map((card, index) => {
+            if (flagAtBottom && card.id === "flag-cam") return null;
             const isCore = card.id === "flag-cam";
             if (!isCore && !assignedCams[card.id]) return null;
             return (
@@ -367,6 +369,20 @@ export default function RightRail({ cityName }: RightRailProps) {
           })}
           {activeCardsB.length > 0 && <RailAdSlot id="RAIL AD RIGHT BOTTOM" />}
         </div>
+
+        {flagAtBottom && (
+          <div className="col-span-1 md:col-span-2">
+            <RailCardView 
+              card={{ id: "flag-cam", title: "National Identity", subtitle: "" }} 
+              detectedCountry={currentCountry} 
+              cityName={cityName} 
+              liveCam={undefined} 
+              onMapClick={() => setIsMapModalOpen(true)} 
+              onSelectCam={handleSelectCam} 
+              railCams={[]} 
+            />
+          </div>
+        )}
       </section>
       {/* LIVE CAMERA PLAYER MODAL */}
       {selectedCam && (

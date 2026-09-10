@@ -121,17 +121,17 @@ export default function ClockCard({ locationLine, tz, is24h, onToggle24h }: Prop
               cy="60"
               r="54"
               fill="none"
-              stroke="rgba(255,255,255,0.25)"
-              strokeWidth="2"
+              stroke="#ffffff"
+              strokeWidth="2.5"
             />
 
-            <circle cx="60" cy="60" r="2.8" fill="white" opacity="0.9" />
+            <circle cx="60" cy="60" r="3.2" fill="#ffffff" />
 
             {/* Clock Numbers */}
-            <text x="60" y="20" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">12</text>
-            <text x="106" y="64" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">3</text>
-            <text x="60" y="108" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">6</text>
-            <text x="14" y="64" textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize="11" fontWeight="bold">9</text>
+            <text x="60" y="20" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="900">12</text>
+            <text x="106" y="64" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="900">3</text>
+            <text x="60" y="108" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="900">6</text>
+            <text x="14" y="64" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="900">9</text>
 
             {Array.from({ length: 12 }).map((_, i) => {
               if (i % 3 === 0) return null; // Skip drawing tick marks where the numbers 12, 3, 6, 9 are
@@ -148,9 +148,10 @@ export default function ClockCard({ locationLine, tz, is24h, onToggle24h }: Prop
                   y1={y1}
                   x2={x2}
                   y2={y2}
-                  stroke="rgba(255,255,255,0.45)"
-                  strokeWidth="2"
+                  stroke="#ffffff"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
+                  opacity="0.9"
                 />
               );
             })}
