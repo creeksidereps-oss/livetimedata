@@ -12,23 +12,47 @@ export async function POST(req: Request) {
     // Priority 1: Exact City Matches FIRST, then State/Region Matches for Row 1
     let regional: any[] = [];
     if (cityName) {
-      // First, get exact city matches. Ensure we don't grab identical city names from other states!
-      if (stateName) {
+      // First, get exact city matches. Ensure we don't grab identical city names from other states/countries!
+      if (countryName && stateName) {
+        const { rows: strictRows } = await sql`
+          SELECT * FROM webcams 
+          WHERE city_name ILIKE ${cityName} 
+          AND (
+            state_name ILIKE ${stateName} 
+            OR country ILIKE ${countryName}
+            OR state_name ILIKE ${countryName}
+            OR state_name IS NULL OR state_name = ''
+          )
+          AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC LIMIT 12
+        `;
+        regional = strictRows;
+      } else if (stateName) {
         const { rows: strictRows } = await sql`
           SELECT * FROM webcams 
           WHERE city_name ILIKE ${cityName} 
           AND (state_name ILIKE ${stateName} OR state_name IS NULL OR state_name = '')
-          AND status = 'live'
+          AND status IN ('live', 'approved')
           ORDER BY display_order DESC, view_count DESC LIMIT 12
         `;
         regional = strictRows;
       } else {
         const { rows: cityRows } = await sql`
           SELECT * FROM webcams 
-          WHERE city_name ILIKE ${cityName} AND status = 'live'
+          WHERE city_name ILIKE ${cityName} AND status IN ('live', 'approved')
           ORDER BY display_order DESC, view_count DESC LIMIT 12
         `;
         regional = cityRows;
+      }
+
+      // Safe fallback if strict combination produced 0 results
+      if (regional.length === 0) {
+        const { rows: fallbackCity } = await sql`
+          SELECT * FROM webcams 
+          WHERE city_name ILIKE ${cityName} AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC LIMIT 12
+        `;
+        regional = fallbackCity;
       }
     }
     
@@ -37,9 +61,10 @@ export async function POST(req: Request) {
       const needed = 24 - regional.length;
       const { rows: stateRows } = await sql`
         SELECT * FROM webcams 
-        WHERE (state_name ILIKE ${stateName} AND state_name IS NOT NULL AND state_name != '')
+        WHERE (state_name ILIKE ${stateName} OR state_name ILIKE ${countryName || ''})
+        AND state_name IS NOT NULL AND state_name != ''
         AND city_name NOT ILIKE ${cityName}
-        AND status = 'live'
+        AND status IN ('live', 'approved')
         ORDER BY display_order DESC, view_count DESC LIMIT ${needed}
       `;
       regional = [...regional, ...stateRows];
@@ -51,7 +76,7 @@ export async function POST(req: Request) {
       const { rows } = await sql`
         SELECT * FROM webcams 
         WHERE (country ILIKE ${countryName} AND country IS NOT NULL AND country != '')
-        AND status = 'live'
+        AND status IN ('live', 'approved')
         ORDER BY display_order DESC, view_count DESC LIMIT 24
       `;
       countryData = rows;
@@ -65,7 +90,7 @@ export async function POST(req: Request) {
       const needed = 12 - countryData.length;
       const { rows: themedCams } = await sql`
         SELECT * FROM webcams 
-        WHERE status = 'live' AND kind IN ('beach', 'wildlife', 'airport-cam', 'traffic')
+        WHERE status IN ('live', 'approved') AND kind IN ('beach', 'wildlife', 'airport-cam', 'traffic')
         ORDER BY view_count DESC LIMIT 50
       `;
       const additional = themedCams.filter((r: any) => !countryData.some(g => g.id === r.id)).slice(0, needed);
@@ -134,22 +159,48 @@ export async function POST(req: Request) {
     // We fetch all live webcams for the city, so RightRail.tsx can perform exact matches first,
     // and then use the remaining ones as fallbacks for empty slots.
     let rightRailCams: any[] = [];
-    if (stateName) {
-      const { rows } = await sql`
-        SELECT * FROM webcams 
-        WHERE city_name ILIKE ${cityName} 
-        AND (state_name ILIKE ${stateName} OR state_name IS NULL OR state_name = '')
-        AND status = 'live'
-        ORDER BY display_order DESC, view_count DESC
-      `;
-      rightRailCams = rows;
-    } else {
-      const { rows } = await sql`
-        SELECT * FROM webcams 
-        WHERE city_name ILIKE ${cityName} AND status = 'live'
-        ORDER BY display_order DESC, view_count DESC
-      `;
-      rightRailCams = rows;
+    if (cityName) {
+      if (countryName && stateName) {
+        const { rows } = await sql`
+          SELECT * FROM webcams 
+          WHERE city_name ILIKE ${cityName} 
+          AND (
+            state_name ILIKE ${stateName} 
+            OR country ILIKE ${countryName}
+            OR state_name ILIKE ${countryName}
+            OR state_name IS NULL OR state_name = ''
+          )
+          AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC
+        `;
+        rightRailCams = rows;
+      } else if (stateName) {
+        const { rows } = await sql`
+          SELECT * FROM webcams 
+          WHERE city_name ILIKE ${cityName} 
+          AND (state_name ILIKE ${stateName} OR state_name IS NULL OR state_name = '')
+          AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC
+        `;
+        rightRailCams = rows;
+      } else {
+        const { rows } = await sql`
+          SELECT * FROM webcams 
+          WHERE city_name ILIKE ${cityName} AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC
+        `;
+        rightRailCams = rows;
+      }
+
+      // Safe fallback: if city has webcams in database, never let state mismatch hide them!
+      if (rightRailCams.length === 0) {
+        const { rows: exactCity } = await sql`
+          SELECT * FROM webcams 
+          WHERE city_name ILIKE ${cityName} AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC
+        `;
+        rightRailCams = exactCity;
+      }
     }
 
     // Smart Lazy Loading Scraper:
@@ -184,7 +235,7 @@ export async function POST(req: Request) {
           if (scrapeRes.ok) {
             const { rows: newlyScraped } = await sql`
               SELECT * FROM webcams 
-              WHERE city_name ILIKE ${cityName} AND status = 'live'
+              WHERE city_name ILIKE ${cityName} AND status IN ('live', 'approved')
               ORDER BY display_order DESC, view_count DESC
             `;
             if (newlyScraped.length > 0) {
@@ -198,14 +249,24 @@ export async function POST(req: Request) {
       }
     }
 
-    // If city STILL has no webcams, fallback to state/region to prevent empty boxes (SEO requirement)
-    if (rightRailCams.length === 0 && stateName) {
-      const { rows: stateFallbacks } = await sql`
-        SELECT * FROM webcams 
-        WHERE state_name ILIKE ${stateName} AND status = 'live'
-        ORDER BY display_order DESC, view_count DESC
-      `;
-      rightRailCams = stateFallbacks;
+    // If city STILL has no webcams, fallback to state/region or country to prevent empty boxes (SEO requirement)
+    if (rightRailCams.length === 0 && (stateName || countryName)) {
+      if (stateName) {
+        const { rows: stateFallbacks } = await sql`
+          SELECT * FROM webcams 
+          WHERE (state_name ILIKE ${stateName} OR state_name ILIKE ${countryName || ''}) AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC
+        `;
+        rightRailCams = stateFallbacks;
+      }
+      if (rightRailCams.length === 0 && countryName) {
+        const { rows: countryFallbacks } = await sql`
+          SELECT * FROM webcams 
+          WHERE country ILIKE ${countryName} AND status IN ('live', 'approved')
+          ORDER BY display_order DESC, view_count DESC
+        `;
+        rightRailCams = countryFallbacks;
+      }
     }
 
     // Filter out useless "current time" livestreams and deduplicate webcams
