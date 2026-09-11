@@ -131,11 +131,66 @@ export async function editItemAction(id: string, type: string, updates: any) {
           updated_at = NOW()
         WHERE id = ${id}
       `;
+    } else if (type === 'webcam') {
+      await sql`
+        UPDATE webcams
+        SET
+          title = ${updates.title},
+          city_name = ${updates.city_name},
+          state_name = ${updates.state_name},
+          display_order = ${updates.display_order},
+          updated_at = NOW()
+        WHERE id = ${id}
+      `;
     }
     revalidatePath('/admin/curation');
     return { success: true };
   } catch (error: any) {
     console.error('Edit Action Failed:', error);
+    return { success: false, error: error.message || 'Database error' };
+  }
+}
+
+export async function cloneWebcamAction(updates: any) {
+  try {
+    await sql`
+      INSERT INTO webcams (
+        title, city_name, state_name, embed_url, image_url, kind, source, display_order, status
+      ) VALUES (
+        ${updates.title}, ${updates.city_name}, ${updates.state_name}, 
+        ${updates.embed_url || null}, ${updates.image_url || null},
+        ${updates.kind || 'youtube'}, ${updates.source || 'Admin Clone'}, 
+        ${updates.display_order || 1}, 'approved'
+      )
+    `;
+    revalidatePath('/admin/curation');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Clone Webcam Action Failed:', error);
+    return { success: false, error: error.message || 'Database error' };
+  }
+}
+
+export async function syndicateWebcamToCitiesAction(webcamData: any, citiesList: string[]) {
+  try {
+    for (const city of citiesList) {
+      const trimmed = city.trim();
+      if (!trimmed) continue;
+      await sql`
+        INSERT INTO webcams (
+          title, city_name, state_name, embed_url, image_url, kind, source, display_order, status
+        ) VALUES (
+          ${webcamData.title}, ${trimmed}, ${webcamData.state_name}, 
+          ${webcamData.embed_url || null}, ${webcamData.image_url || null},
+          ${webcamData.kind || 'youtube'}, ${webcamData.source || 'Syndicated Feed'}, 
+          ${webcamData.display_order || 1}, 'approved'
+        )
+      `;
+    }
+    revalidatePath('/admin/curation');
+    return { success: true };
+  } catch (error: any) {
+    console.error('Syndicate Webcam Failed:', error);
     return { success: false, error: error.message || 'Database error' };
   }
 }

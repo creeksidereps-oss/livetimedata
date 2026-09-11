@@ -564,8 +564,53 @@ export function RowCard({ item, type }: { item: any; type: string }) {
                       <input type="text" value={editData.state_name || ''} onChange={e => setEditData({...editData, state_name: e.target.value})} className="w-full p-2.5 border-2 border-slate-500 rounded-lg text-sm font-bold bg-white text-slate-900" placeholder="State" />
                     </div>
                   </div>
-                  <div className="flex space-x-2 mt-2">
+                  <div className="flex flex-wrap gap-2 mt-2">
                     <button onClick={handleEditSave} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-xs font-black uppercase tracking-wider">Save Changes</button>
+                    <button onClick={async () => {
+                      setIsProcessing(true);
+                      const { cloneWebcamAction } = await import('./actions');
+                      const res = await cloneWebcamAction({
+                        title: editData.title,
+                        city_name: editData.city_name,
+                        state_name: editData.state_name,
+                        embed_url: item.embed_url,
+                        image_url: item.image_url,
+                        kind: item.kind,
+                        source: item.source,
+                        display_order: editData.display_order
+                      });
+                      setIsProcessing(false);
+                      if (res.success) {
+                        alert(`Webcam Successfully Copied to ${editData.city_name || 'new city'}! It is now active.`);
+                        setIsEditing(false);
+                      } else {
+                        alert("Copy Failed: " + res.error);
+                      }
+                    }} disabled={isProcessing} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-black uppercase tracking-wider">Save As New Copy (Other City / Block)</button>
+                    <button onClick={async () => {
+                      const inputCities = prompt("Enter comma-separated cities to copy this webcam to (e.g., Wrangell, Ketchikan, Juneau, Anchorage):", "Wrangell, Ketchikan");
+                      if (!inputCities) return;
+                      const cities = inputCities.split(',').map(c => c.trim()).filter(Boolean);
+                      if (cities.length === 0) return;
+                      setIsProcessing(true);
+                      const { syndicateWebcamToCitiesAction } = await import('./actions');
+                      const res = await syndicateWebcamToCitiesAction({
+                        title: editData.title,
+                        state_name: editData.state_name,
+                        embed_url: item.embed_url,
+                        image_url: item.image_url,
+                        kind: item.kind,
+                        source: item.source,
+                        display_order: editData.display_order
+                      }, cities);
+                      setIsProcessing(false);
+                      if (res.success) {
+                        alert(`Successfully syndicated this webcam to: ${cities.join(', ')}!`);
+                        setIsEditing(false);
+                      } else {
+                        alert("Syndication Failed: " + res.error);
+                      }
+                    }} disabled={isProcessing} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-xs font-black uppercase tracking-wider">Distribute Across Multiple Cities</button>
                     <button onClick={() => setIsEditing(false)} className="bg-slate-400 hover:bg-slate-500 text-white px-4 py-2 rounded text-xs font-black uppercase tracking-wider">Cancel</button>
                   </div>
                 </div>
@@ -633,6 +678,22 @@ export function RowCard({ item, type }: { item: any; type: string }) {
                   <div className="col-span-full border p-2 rounded bg-gray-50 flex flex-col gap-2">
                     <span className="font-bold text-xs uppercase text-gray-500">Submitted Photo</span>
                     <img src={item.image_url} alt="Submission" className="w-full max-w-sm rounded object-contain max-h-64 border border-gray-300" />
+                  </div>
+                )}
+                {type === 'webcam' && (item.embed_url || item.image_url) && (
+                  <div className="col-span-full border p-2 rounded bg-gray-50 flex flex-col gap-2">
+                    <span className="font-bold text-xs uppercase text-gray-500">Live Camera Feed</span>
+                    {item.embed_url ? (
+                      <iframe
+                        src={item.embed_url}
+                        title={item.title}
+                        className="w-full max-w-lg aspect-video rounded border border-gray-300 shadow-sm"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    ) : (
+                      <img src={item.image_url} alt={item.title} className="w-full max-w-sm rounded object-cover max-h-64 border border-gray-300" />
+                    )}
                   </div>
                 )}
                 {item.official_info_url && (
