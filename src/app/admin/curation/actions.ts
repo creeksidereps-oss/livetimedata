@@ -14,7 +14,7 @@ export async function acceptAction(id: string, type: string, email: string, titl
     if (type === 'event') {
       await sql`UPDATE events SET status = 'approved', updated_at = NOW() WHERE id = ${id}`;
     } else if (type === 'webcam') {
-      await sql`UPDATE webcams SET status = 'approved', updated_at = NOW() WHERE id = ${id}`;
+      await sql`UPDATE webcams SET status = 'live', updated_at = NOW() WHERE id = ${id}`;
     } else if (type === 'photo') {
       await sql`UPDATE photos SET status = 'approved', updated_at = NOW() WHERE id = ${id}`;
     }
@@ -160,7 +160,7 @@ export async function cloneWebcamAction(updates: any) {
         ${updates.title}, ${updates.city_name}, ${updates.state_name}, 
         ${updates.embed_url || null}, ${updates.image_url || null},
         ${updates.kind || 'youtube'}, ${updates.source || 'Admin Clone'}, 
-        ${updates.display_order || 1}, 'approved'
+        ${updates.display_order || 1}, 'live'
       )
     `;
     revalidatePath('/admin/curation');
@@ -183,7 +183,7 @@ export async function syndicateWebcamToCitiesAction(webcamData: any, citiesList:
           ${webcamData.title}, ${trimmed}, ${webcamData.state_name}, 
           ${webcamData.embed_url || null}, ${webcamData.image_url || null},
           ${webcamData.kind || 'youtube'}, ${webcamData.source || 'Syndicated Feed'}, 
-          ${webcamData.display_order || 1}, 'approved'
+          ${webcamData.display_order || 1}, 'live'
         )
       `;
     }

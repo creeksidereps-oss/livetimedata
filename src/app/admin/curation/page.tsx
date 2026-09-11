@@ -35,7 +35,7 @@ export default async function AdminCurationDashboard({
         const { rows } = await sql`SELECT * FROM webcams WHERE status IN ('pending', 'needs_attention') ORDER BY created_at DESC LIMIT 50`;
         items = rows;
       } else if (filter === 'approved') {
-        const { rows } = await sql`SELECT * FROM webcams WHERE status = 'approved' ORDER BY created_at DESC LIMIT 50`;
+        const { rows } = await sql`SELECT * FROM webcams WHERE status IN ('approved', 'live') AND source NOT IN ('DriveNC', 'NPS API') ORDER BY created_at DESC LIMIT 50`;
         items = rows;
       } else if (filter === 'government') {
         const { rows } = await sql`SELECT * FROM webcams WHERE status = 'live' OR source IN ('DriveNC', 'NPS API') ORDER BY created_at DESC LIMIT 100`;
