@@ -207,3 +207,30 @@ export const photos = pgTable("photos", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+export const sources = pgTable("sources", {
+  id: serial("id").primaryKey(),
+  url: text("url").notNull().unique(),
+  sourceType: text("source_type").default("venue").notNull(), // venue, organizer, artist_tour, ticket_platform, public_calendar
+  name: text("name"),
+  cityName: text("city_name"),
+  stateName: text("state_name"),
+  scrapeIntervalDays: integer("scrape_interval_days").default(7),
+  lastScrapedAt: timestamp("last_scraped_at"),
+  nextScrapeDue: timestamp("next_scrape_due").defaultNow(),
+  status: text("status").default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const performers = pgTable("performers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  type: text("type").default("band"), // band, solo_artist, sports_team, theater_troupe, other
+  tourPageUrl: text("tour_page_url"),
+  officialSite: text("official_site"),
+  contactEmail: text("contact_email"),
+  tourScrapedAt: timestamp("tour_scraped_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
