@@ -215,7 +215,8 @@ export const sources = pgTable("sources", {
   name: text("name"),
   cityName: text("city_name"),
   stateName: text("state_name"),
-  scrapeIntervalDays: integer("scrape_interval_days").default(7),
+  scrapeIntervalDays: integer("scrape_interval_days").default(30), // Monthly rescrape interval during build phase (30-day review window)
+  scrapeHorizonMonths: integer("scrape_horizon_months").default(12), // Up to 12 months forward-looking scrape depth
   lastScrapedAt: timestamp("last_scraped_at"),
   nextScrapeDue: timestamp("next_scrape_due").defaultNow(),
   status: text("status").default("active"),
