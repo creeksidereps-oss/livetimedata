@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import AddToCalendarButton from "./AddToCalendarButton";
 import PremiumEventModal from "./PremiumEventModal";
 import ShareButton from "./ShareButton";
+import { getLocalizedCategoryLabel } from "@/lib/locale-categories";
 
 type EventsBlockProps = {
   cityName: string;
@@ -18,6 +19,8 @@ type CategoryKey =
   | "Concerts"
   | "Sports"
   | "Venues"
+  | "Food Trucks"
+  | "Yard / Garage Sales"
   | "Tours"
   | "Lectures"
   | "Local"
@@ -90,6 +93,8 @@ const CATEGORY_ORDER: CategoryKey[] = [
   "Concerts",
   "Sports",
   "Venues",
+  "Food Trucks",
+  "Yard / Garage Sales",
   "Tours",
   "Lectures",
   "Local",
@@ -128,8 +133,30 @@ function normalizeCategories(dbCategory: string): CategoryKey[] {
   const parts = dbCategory.split(/[,;]+/).map(s => s.trim());
   const matched: CategoryKey[] = [];
   for (const p of parts) {
-    const found = CATEGORY_ORDER.find((c) => c.toLowerCase() === p.toLowerCase());
-    if (found) matched.push(found);
+    const pLow = p.toLowerCase();
+    if (
+      pLow.includes("food truck") ||
+      pLow.includes("mobile food") ||
+      pLow.includes("street food") ||
+      pLow.includes("food van") ||
+      pLow.includes("food trailer") ||
+      pLow.includes("mobile_street_food")
+    ) {
+      if (!matched.includes("Food Trucks")) matched.push("Food Trucks");
+    } else if (
+      pLow.includes("yard") ||
+      pLow.includes("garage sale") ||
+      pLow.includes("estate sale") ||
+      pLow.includes("car boot") ||
+      pLow.includes("rummage") ||
+      pLow.includes("moving sale") ||
+      pLow.includes("yard_estate_sales")
+    ) {
+      if (!matched.includes("Yard / Garage Sales")) matched.push("Yard / Garage Sales");
+    } else {
+      const found = CATEGORY_ORDER.find((c) => c.toLowerCase() === pLow);
+      if (found && !matched.includes(found)) matched.push(found);
+    }
   }
   return matched.length > 0 ? matched : ["Other"];
 }
@@ -144,6 +171,10 @@ function categoryAccent(category: CategoryKey) {
       return "#10b981";
     case "Venues":
       return "#0ea5e9";
+    case "Food Trucks":
+      return "#ea580c"; // bold food truck orange
+    case "Yard / Garage Sales":
+      return "#059669"; // vibrant emerald green
     case "Tours":
       return "#f97316";
     case "Lectures":
@@ -1239,7 +1270,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                             }}
                           />
                           <span style={{ fontSize: "10px", fontWeight: 700, color: "#111827", lineHeight: 1.1 }}>
-                            {group.key}
+                            {getLocalizedCategoryLabel(group.key, countryCode)}
                           </span>
                         </div>
                         <span style={{ fontSize: "10px", color: "#4b5563", fontWeight: 600, flexShrink: 0 }}>
@@ -1312,7 +1343,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 whiteSpace: "nowrap",
               }}
             >
-              {category}
+              {getLocalizedCategoryLabel(category, countryCode)}
             </button>
           ))}
         </div>
@@ -1348,7 +1379,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                         cursor: "pointer",
                       }}
                     >
-                      {group.key} ({group.items.length})
+                      {getLocalizedCategoryLabel(group.key, countryCode)} ({group.items.length})
                     </button>
                   );
                 })}
@@ -1464,7 +1495,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       {/* Pop-up Overlay Container 3: Vertical Category Filter List */}
       {categoryModalKey ? (
         <OverlayModal
-          title={`${cityName} - Verified ${categoryModalKey} Events`}
+          title={`${cityName} - Verified ${getLocalizedCategoryLabel(categoryModalKey, countryCode)} Events`}
           onClose={closeAllModals}
         >
           {categoryEvents.length ? (
@@ -1581,7 +1612,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                                   else setFormCategories(prev => prev.filter(c => c !== cat).length ? prev.filter(c => c !== cat) : ["Other"]);
                                 }}
                               />
-                              <span style={{ fontSize: "13px", fontWeight: formCategories.includes(cat) ? 700 : 500, color: formCategories.includes(cat) ? "#0f172a" : "#4b5563" }}>{cat}</span>
+                              <span style={{ fontSize: "13px", fontWeight: formCategories.includes(cat) ? 700 : 500, color: formCategories.includes(cat) ? "#0f172a" : "#4b5563" }}>{getLocalizedCategoryLabel(cat, countryCode)}</span>
                             </label>
                           ))}
                         </div>

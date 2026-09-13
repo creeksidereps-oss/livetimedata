@@ -133,6 +133,11 @@ export const events = pgTable("events", {
   officialInfoUrl: text("official_info_url"),
   eventFlyerUrl: text("event_flyer_url"),
 
+  // AI Moderation & Fast Approval Fields
+  rejectionReason: text("rejection_reason"),
+  resubmitToken: text("resubmit_token"),
+  autoApprovedAt: timestamp("auto_approved_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -232,6 +237,54 @@ export const performers = pgTable("performers", {
   officialSite: text("official_site"),
   contactEmail: text("contact_email"),
   tourScrapedAt: timestamp("tour_scraped_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Universal Entity Graph Tables (Discovery Lifecycle)
+export const entities = pgTable("entities", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull(),
+  entityType: text("entity_type").notNull(), // mobile_food_vendor, venue, brewery, winery, festival, farmers_market, performer, organization, attraction
+  subtype: text("subtype"), // food_truck, food_trailer, food_van, food_cart, market_stall, pop_up, hawker, kiosk, other
+  cuisines: jsonb("cuisines"), // Array of cuisines, e.g. ["BBQ", "Tacos", "Craft Coffee"]
+  cityName: text("city_name"),
+  stateName: text("state_name"),
+  countryCode: text("country_code").default("US"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  websiteUrl: text("website_url"),
+  phone: text("phone"),
+  email: text("email"),
+  socialLinks: jsonb("social_links"), // { facebook?: string, instagram?: string, tiktok?: string, etc. }
+  verificationStatus: text("verification_status").default("discovered"), // discovered, needs_review, verified, published, inactive
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const entityRelationships = pgTable("entity_relationships", {
+  id: serial("id").primaryKey(),
+  sourceEntityId: integer("source_entity_id").notNull(),
+  relationshipType: text("relationship_type").notNull(), // serves_at, hosts, features_vendor, features_performer, organized_by, sponsored_by, located_at
+  targetEntityId: integer("target_entity_id").notNull(),
+  sourceUrl: text("source_url"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const appearances = pgTable("appearances", {
+  id: serial("id").primaryKey(),
+  entityId: integer("entity_id").notNull(),
+  venueEntityId: integer("venue_entity_id"),
+  eventId: integer("event_id"),
+  eventDate: timestamp("event_date").notNull(),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  isRecurring: boolean("is_recurring").default(false),
+  recurrenceRule: text("recurrence_rule"),
+  sourceUrl: text("source_url"),
+  status: text("status").default("published"), // published, cancelled, pending_review
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
