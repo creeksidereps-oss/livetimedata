@@ -36,12 +36,23 @@ export default function Page(props: {
   useEffect(() => {
     async function init() {
       const sp = await props.searchParams;
-      setSearchParams(sp);
-      
-      const cityName = (sp.name as string) || "Statesville";
-      const stateName = (sp.admin1 as string) || "";
-      const lat = parseFloat(sp.lat as string) || 35.7826;
-      const lon = parseFloat(sp.lon as string) || -80.8873;
+      const p = await props.params;
+
+      let cName = (sp?.name as string);
+      let sName = (sp?.admin1 as string) || "";
+      if (!cName && p?.slug) {
+        const parts = p.slug.split("-");
+        if (parts.length > 1 && parts[parts.length - 1].length === 2) {
+          sName = sName || parts.pop()!.toUpperCase();
+        }
+        cName = parts.map((s: string) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
+      }
+
+      const cityName = cName || "Statesville";
+      const stateName = sName;
+      const lat = parseFloat(sp?.lat as string) || 35.7826;
+      const lon = parseFloat(sp?.lon as string) || -80.8873;
+      setSearchParams({ ...sp, name: cityName, admin1: stateName, lat, lon });
 
       // 1. Fetch Current Weather Forecast
       const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`);
@@ -141,7 +152,7 @@ export default function Page(props: {
             </div>
             */}
 
-            <EventsBlock cityName={cityName} stateName={searchParams?.admin1} />
+            <EventsBlock cityName={cityName} stateName={searchParams?.admin1} countryCode={searchParams?.country_code as string} />
             <div className="w-full h-[45px] bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 font-bold text-[10px] tracking-widest uppercase">
               AdSense: Under Events Calendar
             </div>
