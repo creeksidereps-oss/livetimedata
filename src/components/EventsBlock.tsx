@@ -27,6 +27,7 @@ type CategoryKey =
   | "Lectures"
   | "Local"
   | "Clubs / Groups"
+  | "Fundraisers"
   | "Conventions"
   | "Holiday"
   | "Arts"
@@ -101,6 +102,7 @@ const CATEGORY_ORDER: CategoryKey[] = [
   "Lectures",
   "Local",
   "Clubs / Groups",
+  "Fundraisers",
   "Conventions",
   "Holiday",
   "Arts",
@@ -134,8 +136,11 @@ function normalizeCategories(dbCategory: string): CategoryKey[] {
   if (!dbCategory) return ["Other"];
   const parts = dbCategory.split(/[,;]+/).map(s => s.trim());
   const matched: CategoryKey[] = [];
+
   for (const p of parts) {
     const pLow = p.toLowerCase();
+
+    // Food Trucks
     if (
       pLow.includes("food truck") ||
       pLow.includes("mobile food") ||
@@ -145,21 +150,190 @@ function normalizeCategories(dbCategory: string): CategoryKey[] {
       pLow.includes("mobile_street_food")
     ) {
       if (!matched.includes("Food Trucks")) matched.push("Food Trucks");
-    } else if (
+    }
+
+    // Yard & Garage Sales
+    if (
       pLow.includes("yard") ||
       pLow.includes("garage sale") ||
       pLow.includes("estate sale") ||
       pLow.includes("car boot") ||
       pLow.includes("rummage") ||
+      pLow.includes("tag sale") ||
       pLow.includes("moving sale") ||
       pLow.includes("yard_estate_sales")
     ) {
       if (!matched.includes("Yard / Garage Sales")) matched.push("Yard / Garage Sales");
-    } else {
-      const found = CATEGORY_ORDER.find((c) => c.toLowerCase() === pLow);
-      if (found && !matched.includes(found)) matched.push(found);
     }
+
+    // Kids / Family
+    if (
+      pLow.includes("kid") ||
+      pLow.includes("child") ||
+      pLow.includes("toddler") ||
+      pLow.includes("youth") ||
+      pLow.includes("preschool") ||
+      pLow.includes("family") ||
+      pLow.includes("teen")
+    ) {
+      if (!matched.includes("Kids")) matched.push("Kids");
+    }
+
+    // Arts & Crafts
+    if (
+      pLow.includes("art") ||
+      pLow.includes("craft") ||
+      pLow.includes("paint") ||
+      pLow.includes("creative") ||
+      pLow.includes("studio") ||
+      pLow.includes("drawing") ||
+      pLow.includes("pottery") ||
+      pLow.includes("gallery") ||
+      pLow.includes("exhibit")
+    ) {
+      if (!matched.includes("Arts")) matched.push("Arts");
+    }
+
+    // Concerts / Music
+    if (
+      pLow.includes("concert") ||
+      pLow.includes("music") ||
+      pLow.includes("band") ||
+      pLow.includes("live music") ||
+      pLow.includes("symphon") ||
+      pLow.includes("acoustic") ||
+      pLow.includes("orchestra") ||
+      pLow.includes("singer")
+    ) {
+      if (!matched.includes("Concerts")) matched.push("Concerts");
+    }
+
+    // Festivals
+    if (
+      pLow.includes("fest") ||
+      pLow.includes("fair") ||
+      pLow.includes("carnival") ||
+      pLow.includes("fiesta")
+    ) {
+      if (!matched.includes("Festivals")) matched.push("Festivals");
+    }
+
+    // Sports
+    if (
+      pLow.includes("sport") ||
+      pLow.includes("game") ||
+      pLow.includes("soccer") ||
+      pLow.includes("football") ||
+      pLow.includes("baseball") ||
+      pLow.includes("basketball") ||
+      pLow.includes("nascar") ||
+      pLow.includes("racing") ||
+      pLow.includes("run") ||
+      pLow.includes("5k") ||
+      pLow.includes("marathon")
+    ) {
+      if (!matched.includes("Sports")) matched.push("Sports");
+    }
+
+    // Clubs / Groups
+    if (
+      pLow.includes("club") ||
+      pLow.includes("group") ||
+      pLow.includes("meetup") ||
+      pLow.includes("society") ||
+      pLow.includes("guild") ||
+      pLow.includes("league") ||
+      pLow.includes("rotary")
+    ) {
+      if (!matched.includes("Clubs / Groups")) matched.push("Clubs / Groups");
+    }
+
+    // Fundraisers & Nonprofits
+    if (
+      pLow.includes("fundrais") ||
+      pLow.includes("charity") ||
+      pLow.includes("benefit") ||
+      pLow.includes("501c") ||
+      pLow.includes("gala") ||
+      pLow.includes("auction") ||
+      pLow.includes("raffle") ||
+      pLow.includes("nonprofit") ||
+      pLow.includes("donation") ||
+      pLow.includes("spirit night")
+    ) {
+      if (!matched.includes("Fundraisers")) matched.push("Fundraisers");
+    }
+
+    // Lectures / Education / Books
+    if (
+      pLow.includes("lecture") ||
+      pLow.includes("talk") ||
+      pLow.includes("seminar") ||
+      pLow.includes("workshop") ||
+      pLow.includes("author") ||
+      pLow.includes("book") ||
+      pLow.includes("literature") ||
+      pLow.includes("conference") ||
+      pLow.includes("class")
+    ) {
+      if (!matched.includes("Lectures")) matched.push("Lectures");
+    }
+
+    // Comedy
+    if (
+      pLow.includes("comedy") ||
+      pLow.includes("standup") ||
+      pLow.includes("improv")
+    ) {
+      if (!matched.includes("Comedy")) matched.push("Comedy");
+    }
+
+    // Nightlife
+    if (
+      pLow.includes("nightlife") ||
+      pLow.includes("trivia") ||
+      pLow.includes("karaoke") ||
+      pLow.includes("dj")
+    ) {
+      if (!matched.includes("Nightlife")) matched.push("Nightlife");
+    }
+
+    // Holiday
+    if (
+      pLow.includes("holiday") ||
+      pLow.includes("christmas") ||
+      pLow.includes("halloween") ||
+      pLow.includes("easter") ||
+      pLow.includes("independence day") ||
+      pLow.includes("4th of july")
+    ) {
+      if (!matched.includes("Holiday")) matched.push("Holiday");
+    }
+
+    // Parades
+    if (pLow.includes("parade")) {
+      if (!matched.includes("Parades")) matched.push("Parades");
+    }
+
+    // Seniors
+    if (
+      pLow.includes("senior") ||
+      pLow.includes("retiree") ||
+      pLow.includes("elder")
+    ) {
+      if (!matched.includes("Seniors")) matched.push("Seniors");
+    }
+
+    // Tours
+    if (pLow.includes("tour") || pLow.includes("crawl")) {
+      if (!matched.includes("Tours")) matched.push("Tours");
+    }
+
+    // Fallback exact match with CATEGORY_ORDER
+    const found = CATEGORY_ORDER.find((c) => c.toLowerCase() === pLow);
+    if (found && !matched.includes(found)) matched.push(found);
   }
+
   return matched.length > 0 ? matched : ["Other"];
 }
 
@@ -185,6 +359,8 @@ function categoryAccent(category: CategoryKey) {
       return "#64748b";
     case "Clubs / Groups":
       return "#ec4899";
+    case "Fundraisers":
+      return "#e11d48"; // vibrant rose / heart crimson
     case "Conventions":
       return "#3b82f6";
     case "Holiday":
@@ -827,8 +1003,24 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
   const [formMessage, setFormMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [currentDateInput, setCurrentDateInput] = useState("");
+  const [selectedNearbyCity, setSelectedNearbyCity] = useState<string | null>(null);
 
-  const days = useMemo(() => buildTenDayBucketData(dbEvents), [dbEvents]);
+  const nearbyCities = useMemo(() => {
+    if (!showNearby) return [];
+    const cityCounts = new Map<string, number>();
+    for (const e of dbEvents) {
+      const c = e.cityName || (e as any).city_name;
+      if (c) cityCounts.set(c, (cityCounts.get(c) || 0) + 1);
+    }
+    return Array.from(cityCounts.entries()).map(([name, count]) => ({ name, count }));
+  }, [dbEvents, showNearby]);
+
+  const effectiveDbEvents = useMemo(() => {
+    if (!showNearby || !selectedNearbyCity) return dbEvents;
+    return dbEvents.filter((e) => (e.cityName || (e as any).city_name) === selectedNearbyCity);
+  }, [dbEvents, showNearby, selectedNearbyCity]);
+
+  const days = useMemo(() => buildTenDayBucketData(effectiveDbEvents), [effectiveDbEvents]);
   const monthDays = useMemo(() => buildMonthDays(), []);
   const allEvents = useMemo(() => flattenEvents(days), [days]);
 
@@ -930,7 +1122,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     const now = new Date();
     now.setHours(0, 0, 0, 0); // start of today
     
-    const parsedItems: EventItem[] = dbEvents
+    const parsedItems: EventItem[] = effectiveDbEvents
       .filter((e) => {
         if (!e.eventDate && !(e as any).event_date) return false;
         const eDate = new Date((e.eventDate || (e as any).event_date).slice(0, 10) + "T12:00:00");
@@ -960,7 +1152,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     return parsedItems
       .filter((event) => event.categories.includes(categoryModalKey))
       .sort((a, b) => new Date(a.eventDate!).getTime() - new Date(b.eventDate!).getTime());
-  }, [dbEvents, categoryModalKey]);
+  }, [effectiveDbEvents, categoryModalKey]);
 
   function openDayModal(iso: string, category?: CategoryKey | null) {
     const day = days.find((d) => d.iso === iso) ?? null;
@@ -1306,6 +1498,68 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         })}
       </div>
 
+      {/* Direction-of-Travel Nearby City Filter Bar */}
+      {showNearby && nearbyCities.length > 1 && (
+        <div
+          style={{
+            marginTop: "10px",
+            marginBottom: "4px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+            paddingBottom: "4px",
+          }}
+        >
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", marginRight: "2px" }}>
+            Filter by City:
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedNearbyCity(null)}
+            style={{
+              padding: "4px 11px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: selectedNearbyCity === null ? 800 : 600,
+              background: selectedNearbyCity === null ? "#1e293b" : "#f8fafc",
+              color: selectedNearbyCity === null ? "#ffffff" : "#475569",
+              border: selectedNearbyCity === null ? "1px solid #1e293b" : "1px solid #cbd5e1",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s ease",
+            }}
+          >
+            All Nearby ({dbEvents.length})
+          </button>
+          {nearbyCities.map(({ name, count }) => {
+            const isSelected = selectedNearbyCity === name;
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => setSelectedNearbyCity(isSelected ? null : name)}
+                style={{
+                  padding: "4px 11px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: isSelected ? 800 : 600,
+                  background: isSelected ? "#2563eb" : "#f8fafc",
+                  color: isSelected ? "#ffffff" : "#475569",
+                  border: isSelected ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {name} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div
         style={{
           marginTop: "8px",
@@ -1501,6 +1755,64 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           title={`${cityName} - Verified ${getLocalizedCategoryLabel(categoryModalKey, countryCode)} Events`}
           onClose={closeAllModals}
         >
+          {showNearby && nearbyCities.length > 1 && (
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch",
+                paddingBottom: "8px",
+                marginBottom: "12px",
+                borderBottom: "1px solid #f1f5f9",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedNearbyCity(null)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: selectedNearbyCity === null ? 800 : 600,
+                  background: selectedNearbyCity === null ? "#1e293b" : "#f1f5f9",
+                  color: selectedNearbyCity === null ? "#fff" : "#475569",
+                  border: "none",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                All Nearby ({dbEvents.filter(e => normalizeCategories(e.category).includes(categoryModalKey)).length})
+              </button>
+              {nearbyCities.map(({ name }) => {
+                const count = dbEvents.filter(
+                  e => (e.cityName || (e as any).city_name) === name && normalizeCategories(e.category).includes(categoryModalKey)
+                ).length;
+                if (count === 0) return null;
+                const isSelected = selectedNearbyCity === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setSelectedNearbyCity(isSelected ? null : name)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: isSelected ? 800 : 600,
+                      background: isSelected ? "#2563eb" : "#f1f5f9",
+                      color: isSelected ? "#fff" : "#475569",
+                      border: "none",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {name} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {categoryEvents.length ? (
             <div style={{ display: "grid", gap: "8px" }}>
               {categoryEvents.map((event) => (

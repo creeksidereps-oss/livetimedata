@@ -36,7 +36,13 @@ export async function POST(req: Request) {
       `${cityName} live cam`,
       `${cityName} live webcam`,
       `${cityName} ${stateName || ''} live stream`,
-      `${cityName} traffic live`,
+      `${cityName} live camera`,
+      `${cityName} downtown live`,
+      `${cityName} main street live`,
+      `${cityName} ${stateName || ''} webcam`,
+      `${cityName} traffic camera live`,
+      `${cityName} weather cam live`,
+      `${cityName} live stream 24/7`,
       `${cityName} skyline live`
     ];
 
