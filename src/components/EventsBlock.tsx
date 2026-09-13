@@ -25,6 +25,7 @@ type CategoryKey =
   | "Yard / Garage Sales"
   | "Tours"
   | "Lectures"
+  | "Classes"
   | "Local"
   | "Clubs / Groups"
   | "Fundraisers"
@@ -100,6 +101,7 @@ const CATEGORY_ORDER: CategoryKey[] = [
   "Yard / Garage Sales",
   "Tours",
   "Lectures",
+  "Classes",
   "Local",
   "Clubs / Groups",
   "Fundraisers",
@@ -264,17 +266,31 @@ function normalizeCategories(dbCategory: string): CategoryKey[] {
       if (!matched.includes("Fundraisers")) matched.push("Fundraisers");
     }
 
-    // Lectures / Education / Books
+    // Classes / Workshops / Education
+    if (
+      pLow.includes("class") ||
+      pLow.includes("workshop") ||
+      pLow.includes("training") ||
+      pLow.includes("canva") ||
+      pLow.includes("course") ||
+      pLow.includes("seminar") ||
+      pLow.includes("tutorial") ||
+      pLow.includes("learn") ||
+      pLow.includes("certification") ||
+      pLow.includes("instruction") ||
+      pLow.includes("lesson")
+    ) {
+      if (!matched.includes("Classes")) matched.push("Classes");
+    }
+
+    // Lectures / Books / Literature
     if (
       pLow.includes("lecture") ||
       pLow.includes("talk") ||
-      pLow.includes("seminar") ||
-      pLow.includes("workshop") ||
       pLow.includes("author") ||
       pLow.includes("book") ||
       pLow.includes("literature") ||
-      pLow.includes("conference") ||
-      pLow.includes("class")
+      pLow.includes("conference")
     ) {
       if (!matched.includes("Lectures")) matched.push("Lectures");
     }
@@ -355,6 +371,8 @@ function categoryAccent(category: CategoryKey) {
       return "#f97316";
     case "Lectures":
       return "#6366f1";
+    case "Classes":
+      return "#0d9488"; // rich vibrant teal
     case "Local":
       return "#64748b";
     case "Clubs / Groups":
@@ -527,7 +545,12 @@ function EventCard({
             {event.dayLabel && event.dateLabel
               ? `${event.dayLabel} · ${event.dateLabel} · `
               : ""}
-            {event.time} · {event.venue}{event.cityName ? `, ${event.cityName}` : ''}
+            {event.time} · {event.venue}
+            {event.cityName && (
+              <span style={{ background: "#e0e7ff", color: "#3730a3", padding: "1px 7px", borderRadius: "999px", fontSize: "10px", fontWeight: 800, marginLeft: "6px", display: "inline-block" }}>
+                {event.cityName}
+              </span>
+            )}
             {event.venue_address && (
               <div style={{ color: "#64748b", fontSize: "10.5px", marginTop: "2px" }}>
                 📍 {event.venue_address}
@@ -720,6 +743,16 @@ export function OverlayModal({
 }
 
 
+function getCityLogo(cityName?: string): string | null {
+  if (!cityName) return null;
+  const c = cityName.toLowerCase().trim();
+  if (c.includes("troutman")) return "/images/cities/troutman.png";
+  if (c.includes("statesville")) return "/images/cities/statesville.png";
+  if (c.includes("mooresville")) return "/images/cities/mooresville.png";
+  if (c.includes("charlotte")) return "/images/cities/charlotte.png";
+  return null;
+}
+
 function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventItem; cityName: string; onClose: () => void; setIframeUrl: (url: string) => void }) {
   const [flyerError, setFlyerError] = useState(false);
 
@@ -727,7 +760,14 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
 
   const isTicketingBot = ev.source?.includes("API Ingestion") || ev.source?.toLowerCase().includes("ticketmaster") || ev.source?.toLowerCase().includes("seatgeek") || ev.source?.toLowerCase().includes("eventbrite");
 
-  const finalFlyerUrl = (ev.event_flyer_url && !flyerError) ? ev.event_flyer_url : undefined;
+  const isGenericPlaceholder =
+    ev.event_flyer_url?.includes("civicplus.com/ImageRepository/Document?documentID=450") ||
+    ev.event_flyer_url?.includes("/AlertCenter/") ||
+    ev.event_flyer_url?.includes("default-placeholder");
+
+  const cityLogo = getCityLogo(ev.cityName || cityName);
+  const finalFlyerUrl = (!isGenericPlaceholder && ev.event_flyer_url && !flyerError) ? ev.event_flyer_url : (cityLogo || undefined);
+  const isCityLogoFallback = !ev.event_flyer_url || isGenericPlaceholder || flyerError;
 
   return (
     <OverlayModal
@@ -842,22 +882,27 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
           </div>
         </div>
 
-        {/* FLYER GRAPHIC - Cinematic View */}
+        {/* FLYER GRAPHIC - Cinematic View or City Logo Fallback */}
         {finalFlyerUrl && (
-          <div style={{ width: "100%", background: "#f8fafc", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: "20px 16px" }}>
+          <div style={{ width: "100%", background: isCityLogoFallback && cityLogo ? "#f8fafc" : "#f8fafc", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: isCityLogoFallback && cityLogo ? "24px 16px" : "20px 16px" }}>
             <img 
               src={finalFlyerUrl} 
               onError={() => setFlyerError(true)} 
-              alt="Event Graphic" 
+              alt={isCityLogoFallback && cityLogo ? `${ev.cityName || cityName} Official Seal` : "Event Graphic"} 
               style={{
                 width: "auto",
-                maxWidth: "100%",
-                maxHeight: "75vh",
+                maxWidth: isCityLogoFallback && cityLogo ? "300px" : "100%",
+                maxHeight: isCityLogoFallback && cityLogo ? "160px" : "75vh",
                 objectFit: "contain",
-                borderRadius: "12px",
-                boxShadow: "0 8px 30px rgba(0,0,0,0.12)"
+                borderRadius: isCityLogoFallback && cityLogo ? "8px" : "12px",
+                boxShadow: isCityLogoFallback && cityLogo ? "none" : "0 8px 30px rgba(0,0,0,0.12)"
               }} 
             />
+            {isCityLogoFallback && cityLogo && (
+              <div style={{ marginTop: "10px", fontSize: "11px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Official {ev.cityName || cityName} Municipal & Community Notice
+              </div>
+            )}
           </div>
         )}
 
@@ -1065,7 +1110,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     let day = days.find((day) => day.iso === dayModalIso);
     if (!day && dayModalIso) {
       const date = new Date(dayModalIso + "T12:00:00");
-      const filteredDbItems = dbEvents.filter((e) => {
+      const filteredDbItems = effectiveDbEvents.filter((e) => {
         if (!e.eventDate && !(e as any).event_date) return false;
         return (e.eventDate || (e as any).event_date).slice(0, 10) === dayModalIso;
       });
@@ -1393,6 +1438,71 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         </div>
       </div>
 
+      {/* TOP PLACEMENT: Direction-of-Travel Nearby City Filter Bar */}
+      {showNearby && nearbyCities.length > 1 && (
+        <div
+          style={{
+            marginTop: "10px",
+            marginBottom: "10px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+            padding: "8px 12px",
+            background: "#f1f5f9",
+            borderRadius: "12px",
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          <span style={{ fontSize: "11px", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", marginRight: "2px" }}>
+            📍 Nearby Cities:
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedNearbyCity(null)}
+            style={{
+              padding: "4px 11px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: selectedNearbyCity === null ? 800 : 600,
+              background: selectedNearbyCity === null ? "#1e293b" : "#ffffff",
+              color: selectedNearbyCity === null ? "#ffffff" : "#475569",
+              border: selectedNearbyCity === null ? "1px solid #1e293b" : "1px solid #cbd5e1",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+            }}
+          >
+            All Nearby ({dbEvents.length})
+          </button>
+          {nearbyCities.map(({ name, count }) => {
+            const isSelected = selectedNearbyCity === name;
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => setSelectedNearbyCity(isSelected ? null : name)}
+                style={{
+                  padding: "4px 11px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: isSelected ? 800 : 600,
+                  background: isSelected ? "#2563eb" : "#ffffff",
+                  color: isSelected ? "#ffffff" : "#475569",
+                  border: isSelected ? "1px solid #2563eb" : "1px solid #cbd5e1",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                }}
+              >
+                {name} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div
         style={{
           display: "grid",
@@ -1498,68 +1608,6 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         })}
       </div>
 
-      {/* Direction-of-Travel Nearby City Filter Bar */}
-      {showNearby && nearbyCities.length > 1 && (
-        <div
-          style={{
-            marginTop: "10px",
-            marginBottom: "4px",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            overflowX: "auto",
-            WebkitOverflowScrolling: "touch",
-            paddingBottom: "4px",
-          }}
-        >
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap", marginRight: "2px" }}>
-            Filter by City:
-          </span>
-          <button
-            type="button"
-            onClick={() => setSelectedNearbyCity(null)}
-            style={{
-              padding: "4px 11px",
-              borderRadius: "999px",
-              fontSize: "11px",
-              fontWeight: selectedNearbyCity === null ? 800 : 600,
-              background: selectedNearbyCity === null ? "#1e293b" : "#f8fafc",
-              color: selectedNearbyCity === null ? "#ffffff" : "#475569",
-              border: selectedNearbyCity === null ? "1px solid #1e293b" : "1px solid #cbd5e1",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              transition: "all 0.15s ease",
-            }}
-          >
-            All Nearby ({dbEvents.length})
-          </button>
-          {nearbyCities.map(({ name, count }) => {
-            const isSelected = selectedNearbyCity === name;
-            return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setSelectedNearbyCity(isSelected ? null : name)}
-                style={{
-                  padding: "4px 11px",
-                  borderRadius: "999px",
-                  fontSize: "11px",
-                  fontWeight: isSelected ? 800 : 600,
-                  background: isSelected ? "#2563eb" : "#f8fafc",
-                  color: isSelected ? "#ffffff" : "#475569",
-                  border: isSelected ? "1px solid #2563eb" : "1px solid #cbd5e1",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                {name} ({count})
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       <div
         style={{
           marginTop: "8px",
@@ -1609,9 +1657,74 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       {/* Pop-up Overlay Container 1: Daily Events Display Layout */}
       {selectedDay ? (
         <OverlayModal
-          title={`${cityName} - ${selectedDay.dayLabel} · ${selectedDay.dateLabel}`}
+          title={`${cityName}${showNearby ? " (Nearby)" : ""} - ${selectedDay.dayLabel} · ${selectedDay.dateLabel}`}
           onClose={closeAllModals}
         >
+          {showNearby && nearbyCities.length > 1 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch",
+                padding: "6px 10px",
+                marginBottom: "12px",
+                background: "#f1f5f9",
+                borderRadius: "10px",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <span style={{ fontSize: "10px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                Filter City:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedNearbyCity(null)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: selectedNearbyCity === null ? 800 : 500,
+                  background: selectedNearbyCity === null ? "#1e293b" : "#ffffff",
+                  color: selectedNearbyCity === null ? "#ffffff" : "#475569",
+                  border: "none",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                All Nearby ({dbEvents.filter(e => (e.eventDate || (e as any).event_date || "").slice(0, 10) === selectedDay.iso).length})
+              </button>
+              {nearbyCities.map(({ name }) => {
+                const count = dbEvents.filter(
+                  e => (e.cityName || (e as any).city_name) === name && (e.eventDate || (e as any).event_date || "").slice(0, 10) === selectedDay.iso
+                ).length;
+                if (count === 0) return null;
+                const isSelected = selectedNearbyCity === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setSelectedNearbyCity(isSelected ? null : name)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: isSelected ? 800 : 500,
+                      background: isSelected ? "#2563eb" : "#ffffff",
+                      color: isSelected ? "#ffffff" : "#475569",
+                      border: "none",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {name} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {selectedDay.categories.length ? (
             <>
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
