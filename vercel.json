@@ -1,0 +1,24 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/discover-entities",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-yardsales",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/archive-yardsales",
+      "schedule": "59 3 * * *"
+    },
+    {
+      "path": "/api/cron/rescrape-events",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/notify-vendors",
+      "schedule": "0 12 * * 1"
+    }
+  ]
+}
