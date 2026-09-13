@@ -753,21 +753,161 @@ function getCityLogo(cityName?: string): string | null {
   return null;
 }
 
+function getCuratedSaleInfo(ev: EventItem): { url: string; label: string } | null {
+  const text = `${ev.title || ''} ${ev.details || ''} ${ev.categories.join(' ')}`.toLowerCase();
+  
+  // Brocante / Vide-Grenier (France & French-speaking Europe)
+  if (
+    text.includes("vide-grenier") ||
+    text.includes("vide grenier") ||
+    text.includes("brocante") ||
+    text.includes("vide-maison") ||
+    text.includes("vide maison") ||
+    text.includes("bric-a-brac") ||
+    text.includes("marché aux puces")
+  ) {
+    return { url: "/images/curated/vide_grenier.jpg", label: "Authentic French Vide-Grenier & Brocante Listing" };
+  }
+  
+  // Car Boot Sale (UK, Ireland, Australia, Commonwealth)
+  if (
+    text.includes("car boot") ||
+    text.includes("boot sale") ||
+    text.includes("carboot")
+  ) {
+    return { url: "/images/curated/car_boot_sale.jpg", label: "Authentic UK & Commonwealth Car Boot Sale" };
+  }
+  
+  // Estate & Moving Sale
+  if (
+    text.includes("estate sale") ||
+    text.includes("moving sale") ||
+    text.includes("downsizing sale") ||
+    text.includes("tag sale") ||
+    text.includes("estatesales.net")
+  ) {
+    return { url: "/images/curated/estate_sale.jpg", label: "Estate & Moving Sale Directory Notice" };
+  }
+  
+  // General Yard & Garage Sale
+  if (
+    ev.categories.includes("Yard / Garage Sales") ||
+    text.includes("yard sale") ||
+    text.includes("garage sale") ||
+    text.includes("rummage sale") ||
+    text.includes("barn sale") ||
+    text.includes("porch sale")
+  ) {
+    return { url: "/images/curated/yard_sale.jpg", label: "Neighborhood Yard & Garage Sale Notice" };
+  }
+  
+  return null;
+}
+
 function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventItem; cityName: string; onClose: () => void; setIframeUrl: (url: string) => void }) {
   const [flyerError, setFlyerError] = useState(false);
+  const [liveScrapedUrl, setLiveScrapedUrl] = useState<string | null>(null);
+  const [liveScrapedError, setLiveScrapedError] = useState(false);
+  const [bankedEntityGraphic, setBankedEntityGraphic] = useState<string | null>(null);
+  const [bankedError, setBankedError] = useState(false);
 
   const displayDate = new Date(ev.eventDate || Date.now()).toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-  const isTicketingBot = ev.source?.includes("API Ingestion") || ev.source?.toLowerCase().includes("ticketmaster") || ev.source?.toLowerCase().includes("seatgeek") || ev.source?.toLowerCase().includes("eventbrite");
 
   const isGenericPlaceholder =
     ev.event_flyer_url?.includes("civicplus.com/ImageRepository/Document?documentID=450") ||
     ev.event_flyer_url?.includes("/AlertCenter/") ||
     ev.event_flyer_url?.includes("default-placeholder");
 
+  const saleInfo = getCuratedSaleInfo(ev);
+  const isUserSubmittedFlyer = (ev.source === "User Submission" || ev.source === "User Form") && !!ev.event_flyer_url && !flyerError && !isGenericPlaceholder;
+
+  // Waterfall Graphic Resolver:
+  // 1. If Yard/Estate/Boot/Brocante sale:
+  //    - If owner uploaded flyer, use it.
+  //    - Otherwise ALWAYS use curated fallback (never attempt web scrape for yard sales).
+  // 2. For other events without flyer:
+  //    - Attempt live site/social scrape via /api/og-preview
+  //    - If none, attempt banked entity graphic lookup via /api/entities/lookup
+  //    - If none, check town/city municipal seal.
+  useEffect(() => {
+    // If it's a sale and not user flyer, saleInfo handles it directly
+    if (saleInfo && !isUserSubmittedFlyer) return;
+    if (ev.event_flyer_url && !flyerError && !isGenericPlaceholder) return;
+
+    let isMounted = true;
+
+    async function resolveFallbackGraphic() {
+      // Step A: Look for photo/graphic on event site or correlating Facebook/social
+      const targetWebUrl = ev.official_info_url || ev.social_urls || ev.registration_url;
+      if (targetWebUrl && targetWebUrl.startsWith("http")) {
+        try {
+          const res = await fetch(`/api/og-preview?url=${encodeURIComponent(targetWebUrl)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (isMounted && data.ok && data.imageUrl) {
+              setLiveScrapedUrl(data.imageUrl);
+              return;
+            }
+          }
+        } catch {
+          // silent fallback to next tier
+        }
+      }
+
+      // Step B: Look for banked/saved graphic in entity graph (venue or hosting entity)
+      const lookupTarget = ev.hosting_entity || ev.venue;
+      if (lookupTarget && lookupTarget.trim().length > 1) {
+        try {
+          const res = await fetch(`/api/entities/lookup?name=${encodeURIComponent(lookupTarget.trim())}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (isMounted && data.ok && data.entity?.imageUrl) {
+              setBankedEntityGraphic(data.entity.imageUrl);
+              return;
+            }
+          }
+        } catch {
+          // silent fallback to next tier
+        }
+      }
+    }
+
+    resolveFallbackGraphic();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [ev.id, ev.official_info_url, ev.social_urls, ev.registration_url, ev.hosting_entity, ev.venue, ev.event_flyer_url, flyerError, isGenericPlaceholder, saleInfo, isUserSubmittedFlyer]);
+
   const cityLogo = getCityLogo(ev.cityName || cityName);
-  const finalFlyerUrl = (!isGenericPlaceholder && ev.event_flyer_url && !flyerError) ? ev.event_flyer_url : (cityLogo || undefined);
-  const isCityLogoFallback = !ev.event_flyer_url || isGenericPlaceholder || flyerError;
+
+  // Determine active graphic and badge
+  let activeGraphicUrl: string | undefined = undefined;
+  let graphicBadge: string | null = null;
+  let isSealFallback = false;
+  let isCuratedArt = false;
+
+  if (saleInfo) {
+    if (isUserSubmittedFlyer) {
+      activeGraphicUrl = ev.event_flyer_url;
+    } else {
+      activeGraphicUrl = saleInfo.url;
+      graphicBadge = saleInfo.label;
+      isCuratedArt = true;
+    }
+  } else if (ev.event_flyer_url && !flyerError && !isGenericPlaceholder) {
+    activeGraphicUrl = ev.event_flyer_url;
+  } else if (liveScrapedUrl && !liveScrapedError) {
+    activeGraphicUrl = liveScrapedUrl;
+    graphicBadge = "Live Event Preview · Official Site";
+  } else if (bankedEntityGraphic && !bankedError) {
+    activeGraphicUrl = bankedEntityGraphic;
+    graphicBadge = `Banked Profile Photo · ${ev.hosting_entity || ev.venue}`;
+  } else if (cityLogo) {
+    activeGraphicUrl = cityLogo;
+    graphicBadge = `Official ${ev.cityName || cityName} Municipal & Community Notice`;
+    isSealFallback = true;
+  }
 
   return (
     <OverlayModal
@@ -798,8 +938,6 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
               {ev.affiliateUrl && !ev.registration_url ? "🎟️ Get Tickets" : "Register"}
             </button>
           )}
-
-
 
           <ShareButton 
             className=""
@@ -882,25 +1020,49 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
           </div>
         </div>
 
-        {/* FLYER GRAPHIC - Cinematic View or City Logo Fallback */}
-        {finalFlyerUrl && (
-          <div style={{ width: "100%", background: isCityLogoFallback && cityLogo ? "#f8fafc" : "#f8fafc", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", borderTop: "1px solid #e2e8f0", borderBottom: "1px solid #e2e8f0", padding: isCityLogoFallback && cityLogo ? "24px 16px" : "20px 16px" }}>
+        {/* FLYER / GRAPHIC WATERFALL DISPLAY */}
+        {activeGraphicUrl && (
+          <div style={{
+            width: "100%",
+            background: isSealFallback ? "#f8fafc" : "#0f172a",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+            borderTop: "1px solid #e2e8f0",
+            borderBottom: "1px solid #e2e8f0",
+            padding: isSealFallback ? "24px 16px" : "16px 16px 20px 16px"
+          }}>
             <img 
-              src={finalFlyerUrl} 
-              onError={() => setFlyerError(true)} 
-              alt={isCityLogoFallback && cityLogo ? `${ev.cityName || cityName} Official Seal` : "Event Graphic"} 
+              src={activeGraphicUrl} 
+              onError={() => {
+                if (activeGraphicUrl === ev.event_flyer_url) setFlyerError(true);
+                else if (activeGraphicUrl === liveScrapedUrl) setLiveScrapedError(true);
+                else if (activeGraphicUrl === bankedEntityGraphic) setBankedError(true);
+              }} 
+              alt={graphicBadge || "Event Graphic"} 
               style={{
-                width: "auto",
-                maxWidth: isCityLogoFallback && cityLogo ? "300px" : "100%",
-                maxHeight: isCityLogoFallback && cityLogo ? "160px" : "75vh",
-                objectFit: "contain",
-                borderRadius: isCityLogoFallback && cityLogo ? "8px" : "12px",
-                boxShadow: isCityLogoFallback && cityLogo ? "none" : "0 8px 30px rgba(0,0,0,0.12)"
+                width: isCuratedArt ? "100%" : "auto",
+                maxWidth: isSealFallback ? "300px" : isCuratedArt ? "680px" : "100%",
+                maxHeight: isSealFallback ? "160px" : "75vh",
+                objectFit: isCuratedArt ? "cover" : "contain",
+                borderRadius: isSealFallback ? "8px" : "12px",
+                boxShadow: isSealFallback ? "none" : "0 8px 30px rgba(0,0,0,0.35)"
               }} 
             />
-            {isCityLogoFallback && cityLogo && (
-              <div style={{ marginTop: "10px", fontSize: "11px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                Official {ev.cityName || cityName} Municipal & Community Notice
+            {graphicBadge && (
+              <div style={{
+                marginTop: "12px",
+                fontSize: "11px",
+                fontWeight: 800,
+                color: isSealFallback ? "#64748b" : "#94a3b8",
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                background: isSealFallback ? "transparent" : "rgba(255,255,255,0.08)",
+                padding: isSealFallback ? "0" : "4px 12px",
+                borderRadius: "999px"
+              }}>
+                {graphicBadge}
               </div>
             )}
           </div>
@@ -909,10 +1071,61 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
         {/* MAIN BODY */}
         <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "24px", background: "#fff" }}>
           <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "16px", border: "1px solid #e2e8f0" }}>
-             <div style={{ fontSize: "16px", fontWeight: 900, marginBottom: "8px", color: "#0f172a", textTransform: "uppercase" }}>About this Event</div>
-             <div style={{ fontSize: "15px", color: "#334155", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-               {ev.details}
-             </div>
+            <div style={{ fontSize: "16px", fontWeight: 900, marginBottom: "8px", color: "#0f172a", textTransform: "uppercase" }}>About this Event</div>
+            <div style={{ fontSize: "15px", color: "#334155", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+              {ev.details}
+            </div>
+
+            {/* Owner Claim / Photo Submission Callout */}
+            <div style={{
+              marginTop: "20px",
+              padding: "16px 18px",
+              borderRadius: "14px",
+              background: "#f0fdf4",
+              border: "1.5px dashed #22c55e",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "12px"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: "240px", flex: "1" }}>
+                <span style={{ fontSize: "24px" }}>📸</span>
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#166534" }}>
+                    {saleInfo ? "Is this your sale or listing?" : "Are you organizing this event?"}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#15803d", marginTop: "2px" }}>
+                    {saleInfo 
+                      ? "Add your featured items, high-res photos, or updates to help buyers find you!" 
+                      : "Add your official flyer, photos, or schedule updates anytime."}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.dispatchEvent(new CustomEvent('openModal', { detail: 'submit_event' }));
+                }}
+                style={{
+                  background: "#166534",
+                  color: "#ffffff",
+                  padding: "10px 18px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(22,101,52,0.25)",
+                  whiteSpace: "nowrap"
+                }}
+              >
+                + Add Photos & Info
+              </button>
+            </div>
           </div>
         </div>
       </div>
