@@ -16,36 +16,73 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: false, error: "City parameter is required." }, { status: 400 });
     }
 
+    const latParam = searchParams.get("lat") ? parseFloat(searchParams.get("lat")!) : null;
+    const lonParam = searchParams.get("lon") ? parseFloat(searchParams.get("lon")!) : null;
+    const hasCoords = latParam !== null && !isNaN(latParam) && lonParam !== null && !isNaN(lonParam);
+
     let rows: any[] = [];
 
     if (nearby) {
       // Haversine Radius Search (30 miles)
       try {
-        const result = await sql`
-          WITH target_city AS (
-            SELECT latitude, longitude FROM cities 
-            WHERE LOWER(name) = LOWER(${city})
-            ORDER BY CASE WHEN LOWER(admin1) = LOWER(${state}::text) THEN 0 ELSE 1 END ASC
-            LIMIT 1
-          )
-          SELECT e.* 
-          FROM events e
-          JOIN cities c ON LOWER(e.city_name) = LOWER(c.name)
-          CROSS JOIN target_city tc
-          WHERE e.status NOT IN ('pending', 'pending_review', 'legal_hold')
-            AND 3959 * acos(
-                  LEAST(1.0, GREATEST(-1.0,
-                    cos(radians(tc.latitude)) * cos(radians(c.latitude)) * 
-                    cos(radians(c.longitude) - radians(tc.longitude)) + 
-                    sin(radians(tc.latitude)) * sin(radians(c.latitude))
-                  ))
-                ) <= 30
-          ORDER BY e.event_date ASC
-        `;
-        rows = result.rows;
+        if (hasCoords) {
+          const result = await sql`
+            SELECT e.* 
+            FROM events e
+            JOIN cities c ON LOWER(e.city_name) = LOWER(c.name)
+            WHERE e.status NOT IN ('pending', 'pending_review', 'legal_hold')
+              AND (e.event_date >= CURRENT_DATE - INTERVAL '1 day' OR e.event_date IS NULL)
+              AND (
+                e.state_name IS NULL 
+                OR c.admin1 IS NULL 
+                OR LOWER(e.state_name) = LOWER(c.admin1)
+                OR LOWER(c.admin1) LIKE LOWER('%' || e.state_name || '%')
+                OR LOWER(e.state_name) LIKE LOWER('%' || c.admin1 || '%')
+              )
+              AND 3959 * acos(
+                    LEAST(1.0, GREATEST(-1.0,
+                      cos(radians(${latParam})) * cos(radians(c.latitude)) * 
+                      cos(radians(c.longitude) - radians(${lonParam})) + 
+                      sin(radians(${latParam})) * sin(radians(c.latitude))
+                    ))
+                  ) <= 30
+            ORDER BY e.event_date ASC
+          `;
+          rows = result.rows;
+        } else {
+          const result = await sql`
+            WITH target_city AS (
+              SELECT latitude, longitude FROM cities 
+              WHERE LOWER(name) = LOWER(${city})
+              ORDER BY CASE WHEN LOWER(admin1) = LOWER(${state}::text) THEN 0 ELSE 1 END ASC
+              LIMIT 1
+            )
+            SELECT e.* 
+            FROM events e
+            JOIN cities c ON LOWER(e.city_name) = LOWER(c.name)
+            CROSS JOIN target_city tc
+            WHERE e.status NOT IN ('pending', 'pending_review', 'legal_hold')
+              AND (e.event_date >= CURRENT_DATE - INTERVAL '1 day' OR e.event_date IS NULL)
+              AND (
+                e.state_name IS NULL 
+                OR c.admin1 IS NULL 
+                OR LOWER(e.state_name) = LOWER(c.admin1)
+                OR LOWER(c.admin1) LIKE LOWER('%' || e.state_name || '%')
+                OR LOWER(e.state_name) LIKE LOWER('%' || c.admin1 || '%')
+              )
+              AND 3959 * acos(
+                    LEAST(1.0, GREATEST(-1.0,
+                      cos(radians(tc.latitude)) * cos(radians(c.latitude)) * 
+                      cos(radians(c.longitude) - radians(tc.longitude)) + 
+                      sin(radians(tc.latitude)) * sin(radians(c.latitude))
+                    ))
+                  ) <= 30
+            ORDER BY e.event_date ASC
+          `;
+          rows = result.rows;
+        }
       } catch (dbErr) {
         console.error("Nearby search failed (likely missing lat/lon columns):", dbErr);
-        // Fallback: Just return empty array if DB schema lacks coordinates
         rows = [];
       }
     } else {
@@ -63,6 +100,7 @@ export async function GET(request: Request) {
             OR state_name = ''
           )
           AND status NOT IN ('pending', 'pending_review', 'legal_hold')
+          AND (event_date >= CURRENT_DATE - INTERVAL '1 day' OR event_date IS NULL)
           ORDER BY event_date ASC
         `;
       } else {
@@ -70,6 +108,7 @@ export async function GET(request: Request) {
           SELECT * FROM events 
           WHERE LOWER(city_name) LIKE LOWER(${city} || '%')
           AND status NOT IN ('pending', 'pending_review', 'legal_hold')
+          AND (event_date >= CURRENT_DATE - INTERVAL '1 day' OR event_date IS NULL)
           ORDER BY event_date ASC
         `;
       }

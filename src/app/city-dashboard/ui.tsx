@@ -67,6 +67,11 @@ export default function Page(props: {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cityName, stateName, lat, lng: lon }),
         });
+        fetch('/api/admin/scraper/webcams', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cityName, stateName }),
+        });
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -152,7 +157,7 @@ export default function Page(props: {
             </div>
             */}
 
-            <EventsBlock cityName={cityName} stateName={searchParams?.admin1} countryCode={searchParams?.country_code as string} />
+            <EventsBlock cityName={cityName} stateName={searchParams?.admin1} countryCode={searchParams?.country_code as string} lat={lat} lon={lon} />
             <div className="w-full h-[45px] bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 font-bold text-[10px] tracking-widest uppercase">
               AdSense: Under Events Calendar
             </div>

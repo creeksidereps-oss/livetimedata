@@ -12,6 +12,8 @@ type EventsBlockProps = {
   stateName?: string;
   showNearby?: boolean;
   countryCode?: string;
+  lat?: number;
+  lon?: number;
 };
 
 type CategoryKey =
@@ -697,7 +699,7 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
   );
 }
 
-export default function EventsBlock({ cityName, stateName: incomingStateName, showNearby: incomingNearby = false, countryCode = "US" }: EventsBlockProps) {
+export default function EventsBlock({ cityName, stateName: incomingStateName, showNearby: incomingNearby = false, countryCode = "US", lat, lon }: EventsBlockProps) {
   const [dbEvents, setDbEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNearby, setShowNearby] = useState(incomingNearby);
@@ -844,8 +846,9 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
   async function fetchEvents() {
     setLoading(true);
     try {
+      const queryLat = (typeof lat === 'number' && typeof lon === 'number') ? `&lat=${lat}&lon=${lon}` : '';
       const response = await fetch(
-        `/api/events?city=${encodeURIComponent(citySegment)}&state=${encodeURIComponent(stateSegment)}${showNearby ? '&nearby=true' : ''}`
+        `/api/events?city=${encodeURIComponent(citySegment)}&state=${encodeURIComponent(stateSegment)}${showNearby ? '&nearby=true' : ''}${queryLat}`
       );
       if (!response.ok) {
         console.error("Server API routing issue. Data not fetched.");
@@ -864,7 +867,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
 
   useEffect(() => {
     fetchEvents();
-  }, [cityName, showNearby]);
+  }, [cityName, showNearby, lat, lon]);
 
   const selectedDay = useMemo(() => {
     let day = days.find((day) => day.iso === dayModalIso);
