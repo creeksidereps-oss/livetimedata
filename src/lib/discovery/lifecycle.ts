@@ -12,6 +12,8 @@ export interface UpsertEntityParams {
   stateName?: string;
   countryCode?: string;
   websiteUrl?: string;
+  imageUrl?: string;
+  logoUrl?: string;
   phone?: string;
   email?: string;
   socialLinks?: Record<string, string>;
@@ -62,6 +64,8 @@ export async function upsertEntity(params: UpsertEntityParams) {
         cityName: params.cityName || current.cityName,
         stateName: params.stateName || current.stateName,
         websiteUrl: params.websiteUrl || current.websiteUrl,
+        imageUrl: params.imageUrl || current.imageUrl,
+        logoUrl: params.logoUrl || current.logoUrl,
         phone: params.phone || current.phone,
         email: params.email || current.email,
         updatedAt: new Date()
@@ -84,6 +88,8 @@ export async function upsertEntity(params: UpsertEntityParams) {
       stateName: params.stateName,
       countryCode: country,
       websiteUrl: params.websiteUrl,
+      imageUrl: params.imageUrl,
+      logoUrl: params.logoUrl,
       phone: params.phone,
       email: params.email,
       socialLinks: params.socialLinks || {},
@@ -115,7 +121,8 @@ export async function recordRelationship(
 
 /**
  * Records an appearance: Entity at Venue on Date/Time.
- * Also synchronizes into the main events table so it appears in the city calendar!
+ * Automatically copies the entity's stored graphic/logo into event_flyer_url so
+ * it is catalogued once and reused everywhere without redundant searching!
  */
 export async function recordAppearance(params: {
   entityId: number;
@@ -149,7 +156,16 @@ export async function recordAppearance(params: {
     })
     .returning({ id: appearances.id });
 
-  // 2. Project into the unified Events feed for the city
+  // 2. Automatically retrieve the catalogued logo/photo from the entity record
+  const [vendor] = await db
+    .select({ imageUrl: entities.imageUrl, logoUrl: entities.logoUrl })
+    .from(entities)
+    .where(eq(entities.id, params.entityId))
+    .limit(1);
+
+  const finalGraphic = vendor?.imageUrl || vendor?.logoUrl || null;
+
+  // 3. Project into the unified Events feed with the catalogued graphic
   await db.insert(events).values({
     title: `${params.entityName} at ${params.venueName}`,
     cityName: params.cityName,
@@ -159,6 +175,7 @@ export async function recordAppearance(params: {
     startTime: params.startTime || '11:00 AM',
     eventDate: params.eventDate,
     details: params.details || `${params.entityName} mobile food appearance at ${params.venueName}.`,
+    eventFlyerUrl: finalGraphic,
     status: 'live',
     source: params.sourceUrl || 'Discovery Lifecycle'
   });

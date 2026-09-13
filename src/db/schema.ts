@@ -255,6 +255,8 @@ export const entities = pgTable("entities", {
   latitude: doublePrecision("latitude"),
   longitude: doublePrecision("longitude"),
   websiteUrl: text("website_url"),
+  imageUrl: text("image_url"),
+  logoUrl: text("logo_url"),
   phone: text("phone"),
   email: text("email"),
   socialLinks: jsonb("social_links"), // { facebook?: string, instagram?: string, tiktok?: string, etc. }
@@ -285,6 +287,7 @@ export const appearances = pgTable("appearances", {
   recurrenceRule: text("recurrence_rule"),
   sourceUrl: text("source_url"),
   status: text("status").default("published"), // published, cancelled, pending_review
+  notifiedAt: timestamp("notified_at"), // Timestamp when batch digest notification was sent to vendor
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
