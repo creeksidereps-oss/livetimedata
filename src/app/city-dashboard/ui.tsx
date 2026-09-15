@@ -105,8 +105,8 @@ export default function Page(props: {
   const lon = parseFloat(searchParams.lon as string) || -80.8873;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#f8fafc] w-full max-w-[100vw] overflow-x-hidden relative">
-      <header className="sticky top-0 z-[100] w-full bg-white border-b border-gray-200 px-3 md:px-6 py-2.5 min-h-[64px] flex items-center">
+    <div className="flex flex-col min-h-screen bg-[#f8fafc] w-full max-w-[100vw] overflow-x-clip relative">
+      <header className="sticky top-0 z-[100] w-full bg-white border-b border-gray-200 px-3 md:px-6 py-2.5 min-h-[64px] flex items-center shadow-xs">
         <div className="max-w-[1400px] mx-auto w-full flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex-1 w-full md:max-w-md relative z-[110]">
             <CitySearch />

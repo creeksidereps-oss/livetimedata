@@ -96,7 +96,7 @@ export default function PremiumEventModal({ event, citySegment, stateSegment, on
         <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "24px" }}>
 
           <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "12px", border: "1px solid #f1f5f9" }}>
-             <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "8px" }}>About this Event</div>
+             <div style={{ fontSize: "16px", fontWeight: "bold", marginBottom: "8px" }}>About</div>
              <div style={{ fontSize: "14px", color: "#334155", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
                {event.details}
              </div>

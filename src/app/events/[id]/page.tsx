@@ -201,10 +201,18 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
             {/* Event Description */}
             <div>
               <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                About this Event
+                About
               </h3>
               <div className="prose prose-slate max-w-none">
                 <p className="text-slate-700 leading-relaxed text-[17px] whitespace-pre-wrap">{event.details}</p>
+              </div>
+
+              {/* Check Before You Go Disclaimer Notice */}
+              <div className="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-3">
+                <span className="text-base shrink-0 mt-0.5">ℹ️</span>
+                <p className="text-xs text-slate-500 leading-relaxed m-0">
+                  <strong className="text-slate-700">Please Confirm Before You Go:</strong> Event dates, times, lineups, performers, and locations are subject to last-minute change or cancellation by venues and organizers. LiveTimeData aggregates community listings for informational purposes and cannot guarantee schedule accuracy. We always recommend confirming details directly with the official host or venue.
+                </p>
               </div>
             </div>
           </div>

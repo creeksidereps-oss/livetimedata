@@ -134,9 +134,9 @@ function makeIso(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function normalizeCategories(dbCategory: string): CategoryKey[] {
-  if (!dbCategory) return ["Other"];
-  const parts = dbCategory.split(/[,;]+/).map(s => s.trim());
+function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] {
+  if (!dbCategory && !title) return ["Other"];
+  const parts = dbCategory ? dbCategory.split(/[,;]+/).map(s => s.trim()) : [];
   const matched: CategoryKey[] = [];
 
   for (const p of parts) {
@@ -183,7 +183,7 @@ function normalizeCategories(dbCategory: string): CategoryKey[] {
 
     // Arts & Crafts
     if (
-      pLow.includes("art") ||
+      /\barts?\b/i.test(pLow) ||
       pLow.includes("craft") ||
       pLow.includes("paint") ||
       pLow.includes("creative") ||
@@ -277,6 +277,7 @@ function normalizeCategories(dbCategory: string): CategoryKey[] {
       pLow.includes("tutorial") ||
       pLow.includes("learn") ||
       pLow.includes("certification") ||
+      pLow.includes("certificate") ||
       pLow.includes("instruction") ||
       pLow.includes("lesson")
     ) {
@@ -348,6 +349,29 @@ function normalizeCategories(dbCategory: string): CategoryKey[] {
     // Fallback exact match with CATEGORY_ORDER
     const found = CATEGORY_ORDER.find((c) => c.toLowerCase() === pLow);
     if (found && !matched.includes(found)) matched.push(found);
+  }
+
+  // Cross-check event title keywords for contextual categorization
+  if (title) {
+    const tLow = title.toLowerCase();
+    // Classes & Educational Series
+    if (
+      /\b(class|classes|workshop|workshops|seminar|seminars|clinic|clinics|101|training|course|courses|tutorial|tutorials|lesson|lessons|certification|certificate|masterclass)\b/i.test(tLow)
+    ) {
+      if (!matched.includes("Classes")) matched.push("Classes");
+    }
+    // Yard / Garage / Estate Sales
+    if (
+      /\b(yard sale|garage sale|estate sale|moving sale|tag sale|rummage sale|boot sale|porch sale|barn sale)\b/i.test(tLow)
+    ) {
+      if (!matched.includes("Yard / Garage Sales")) matched.push("Yard / Garage Sales");
+    }
+    // Food Trucks
+    if (
+      /\b(food truck|food trucks|food trailer|street food)\b/i.test(tLow)
+    ) {
+      if (!matched.includes("Food Trucks")) matched.push("Food Trucks");
+    }
   }
 
   return matched.length > 0 ? matched : ["Other"];
@@ -430,7 +454,7 @@ function buildTenDayBucketData(rawEvents: DBEventItem[]): DayBucket[] {
       source: e.source,
       time: e.startTime,
       venue: e.venue,
-      categories: normalizeCategories(e.category),
+      categories: normalizeCategories(e.category, e.title),
       details: e.details,
       affiliateUrl: e.affiliateUrl,
       venue_address: e.venue_address,
@@ -505,6 +529,23 @@ function EventCard({
   const primaryCategory = event.categories[0] || "Other";
   const accent = categoryAccent(primaryCategory);
 
+  let formattedDate = "";
+  const rawDate = event.eventDate || (event as any).event_date;
+  if (event.dayLabel && event.dateLabel) {
+    formattedDate = `${event.dayLabel} · ${event.dateLabel}`;
+  } else if (rawDate) {
+    try {
+      const d = new Date(String(rawDate).slice(0, 10) + "T12:00:00");
+      if (!isNaN(d.getTime())) {
+        const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+        const monthDay = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        formattedDate = `${weekday}, ${monthDay}`;
+      }
+    } catch {
+      // fallback
+    }
+  }
+
   return (
     <div
       style={{
@@ -542,9 +583,11 @@ function EventCard({
               lineHeight: 1.3,
             }}
           >
-            {event.dayLabel && event.dateLabel
-              ? `${event.dayLabel} · ${event.dateLabel} · `
-              : ""}
+            {formattedDate ? (
+              <span style={{ fontWeight: 700, color: "#0f172a", marginRight: "4px" }}>
+                📅 {formattedDate} ·
+              </span>
+            ) : null}
             {event.time} · {event.venue}
             {event.cityName && (
               <span style={{ background: "#e0e7ff", color: "#3730a3", padding: "1px 7px", borderRadius: "999px", fontSize: "10px", fontWeight: 800, marginLeft: "6px", display: "inline-block" }}>
@@ -1071,7 +1114,7 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
         {/* MAIN BODY */}
         <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "24px", background: "#fff" }}>
           <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "16px", border: "1px solid #e2e8f0" }}>
-            <div style={{ fontSize: "16px", fontWeight: 900, marginBottom: "8px", color: "#0f172a", textTransform: "uppercase" }}>About this Event</div>
+            <div style={{ fontSize: "16px", fontWeight: 900, marginBottom: "8px", color: "#0f172a", textTransform: "uppercase" }}>About</div>
             <div style={{ fontSize: "15px", color: "#334155", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
               {ev.details}
             </div>
@@ -1125,6 +1168,23 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
               >
                 + Add Photos & Info
               </button>
+            </div>
+
+            {/* Check Before You Go Disclaimer Notice - in tiny subtle text directly under the organizer block */}
+            <div style={{
+              marginTop: "16px",
+              padding: "10px 14px",
+              borderRadius: "10px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "8px"
+            }}>
+              <span style={{ fontSize: "13px", flexShrink: 0, marginTop: "1px" }}>ℹ️</span>
+              <div style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.5 }}>
+                <strong style={{ color: "#334155" }}>Please Confirm Before You Go:</strong> Event dates, times, lineups, performers, and locations are subject to last-minute change or cancellation by venues and organizers. LiveTimeData aggregates community listings for informational purposes and cannot guarantee schedule accuracy. We always recommend confirming details directly with the official host or venue.
+              </div>
             </div>
           </div>
         </div>
@@ -1334,7 +1394,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         source: e.source,
         time: e.startTime,
         venue: e.venue,
-        categories: normalizeCategories(e.category),
+        categories: normalizeCategories(e.category, e.title),
         details: e.details,
         affiliateUrl: e.affiliateUrl,
         venue_address: e.venue_address,
@@ -1345,7 +1405,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         social_urls: e.social_urls,
         registration_url: e.registration_url,
         event_flyer_url: e.event_flyer_url,
-        eventDate: e.eventDate,
+        eventDate: e.eventDate || (e as any).event_date,
         cityName: e.cityName
       }));
 
@@ -1392,7 +1452,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         source: e.source,
         time: e.startTime,
         venue: e.venue,
-        categories: normalizeCategories(e.category),
+        categories: normalizeCategories(e.category, e.title),
         details: e.details,
         affiliateUrl: e.affiliateUrl,
         venue_address: e.venue_address,
@@ -1403,7 +1463,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         social_urls: e.social_urls,
         registration_url: e.registration_url,
         event_flyer_url: e.event_flyer_url,
-        eventDate: e.eventDate,
+        eventDate: e.eventDate || (e as any).event_date,
         cityName: e.cityName
       }));
 
@@ -1823,19 +1883,21 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
 
       <div
         style={{
-          marginTop: "8px",
+          marginTop: "10px",
           overflowX: "auto",
           overflowY: "hidden",
-          paddingBottom: "3px",
+          paddingBottom: "4px",
           WebkitOverflowScrolling: "touch",
         }}
       >
         <div
           style={{
             display: "grid",
+            gridTemplateRows: "repeat(2, auto)",
             gridAutoFlow: "column",
-            gridAutoColumns: "minmax(max-content, 1fr)",
-            gap: "7px",
+            gridAutoColumns: "max-content",
+            gap: "6px 8px",
+            width: "max-content",
             minWidth: "100%",
             alignItems: "center",
           }}
@@ -1853,12 +1915,14 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 background: "#fff",
                 color: "#111827",
                 borderRadius: "999px",
-                padding: "6px 9px",
+                padding: "6px 12px",
                 fontSize: "11px",
                 fontWeight: 700,
                 cursor: "pointer",
-                width: "100%",
                 whiteSpace: "nowrap",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               {getLocalizedCategoryLabel(category, countryCode)}
@@ -1980,7 +2044,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 </div>
               ) : (
                 <div style={{ border: "1px dashed #d1d5db", borderRadius: "12px", padding: "12px", fontSize: "12px", color: "#4b5563", background: "#fafafa", fontWeight: 500 }}>
-                  No verified events located for this category on this day.
+                  No upcoming listings located for this category on this day.
                 </div>
               )}
             </>
@@ -2078,7 +2142,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       {/* Pop-up Overlay Container 3: Vertical Category Filter List */}
       {categoryModalKey ? (
         <OverlayModal
-          title={`${cityName} - Verified ${getLocalizedCategoryLabel(categoryModalKey, countryCode)} Events`}
+          title={`${cityName} - ${getLocalizedCategoryLabel(categoryModalKey, countryCode)}`}
           onClose={closeAllModals}
         >
           {showNearby && nearbyCities.length > 1 && (
@@ -2108,11 +2172,11 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                   whiteSpace: "nowrap",
                 }}
               >
-                All Nearby ({dbEvents.filter(e => normalizeCategories(e.category).includes(categoryModalKey)).length})
+                All Nearby ({dbEvents.filter(e => normalizeCategories(e.category, e.title).includes(categoryModalKey)).length})
               </button>
               {nearbyCities.map(({ name }) => {
                 const count = dbEvents.filter(
-                  e => (e.cityName || (e as any).city_name) === name && normalizeCategories(e.category).includes(categoryModalKey)
+                  e => (e.cityName || (e as any).city_name) === name && normalizeCategories(e.category, e.title).includes(categoryModalKey)
                 ).length;
                 if (count === 0) return null;
                 const isSelected = selectedNearbyCity === name;
@@ -2151,7 +2215,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
             </div>
           ) : (
             <div style={{ border: "1px dashed #d1d5db", borderRadius: "12px", padding: "12px", fontSize: "12px", color: "#4b5563", background: "#fafafa", fontWeight: 500 }}>
-              No verified upcoming events located in this category right now.
+              No upcoming listings located in this category right now.
             </div>
           )}
         </OverlayModal>
@@ -2163,7 +2227,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         if (!ev) {
           const rawEv = dbEvents.find(e => String(e.id) === String(openEventId));
           if (rawEv) {
-            ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName } as EventItem;
+            ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category, rawEv.title), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName } as EventItem;
           }
         }
         if (!ev) return null;
@@ -2697,7 +2761,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           if (!ev) {
             const rawEv = dbEvents.find(e => String(e.id) === String(openEventId));
             if (rawEv) {
-              ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName } as EventItem;
+              ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category, rawEv.title), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName } as EventItem;
             }
           }
           const eventFooterActions = ev ? (
