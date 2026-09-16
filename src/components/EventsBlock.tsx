@@ -154,7 +154,7 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       if (!matched.includes("Food Trucks")) matched.push("Food Trucks");
     }
 
-    // Yard & Garage Sales
+    // Yard & Garage Sales & Auctions
     if (
       pLow.includes("yard") ||
       pLow.includes("garage sale") ||
@@ -163,6 +163,7 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       pLow.includes("rummage") ||
       pLow.includes("tag sale") ||
       pLow.includes("moving sale") ||
+      pLow.includes("auction") ||
       pLow.includes("yard_estate_sales")
     ) {
       if (!matched.includes("Yard / Garage Sales")) matched.push("Yard / Garage Sales");
@@ -360,9 +361,9 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
     ) {
       if (!matched.includes("Classes")) matched.push("Classes");
     }
-    // Yard / Garage / Estate Sales
+    // Yard / Garage / Estate Sales & Auctions
     if (
-      /\b(yard sale|garage sale|estate sale|moving sale|tag sale|rummage sale|boot sale|porch sale|barn sale)\b/i.test(tLow)
+      /\b(yard sale|garage sale|estate sale|moving sale|tag sale|rummage sale|boot sale|porch sale|barn sale|auction|estate auction|consignment auction)\b/i.test(tLow)
     ) {
       if (!matched.includes("Yard / Garage Sales")) matched.push("Yard / Garage Sales");
     }

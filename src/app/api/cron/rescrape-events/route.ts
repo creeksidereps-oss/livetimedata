@@ -1,21 +1,23 @@
 // src/app/api/cron/rescrape-events/route.ts
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { sources, events, performers, venueProfiles } from '@/db/schema';
+import { sources, performers } from '@/db/schema';
 import { eq, lte, and, sql } from 'drizzle-orm';
+import { extractEventsFromUrl, ingestDiscoveredEvents } from '@/lib/discovery/calendar-crawler';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Monthly Rescrape Lifecycle Worker:
- * Runs automated re-indexing across registered sources and venues.
- * - Scrape Horizon: Looks up to 12 months ahead for upcoming events
- * - Scrape Cadence: 30-day interval between rescrapes
+ * Rescrape Lifecycle Worker:
+ * Actively crawls registered venue, hub, and ticketing sources due for scraping.
+ * - Extracts live Schema.org JSON-LD and calendar event feeds
+ * - Deduplicates and ingests events directly into database
+ * - Discovers co-entities, auto-provisions cities, and advances rescrape schedule
  */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '25', 10);
+    const limit = parseInt(searchParams.get('limit') || '15', 10);
 
     // 1. Fetch sources due for rescraping (next_scrape_due <= NOW())
     const dueSources = await db
@@ -30,12 +32,55 @@ export async function GET(request: Request) {
       .limit(limit);
 
     const results: any[] = [];
+    let totalIngested = 0;
+    let totalSkipped = 0;
+    let totalCitiesBirthed = 0;
+    let totalEntitiesDiscovered = 0;
 
     for (const src of dueSources) {
-      const horizonMonths = src.scrapeHorizonMonths || 12;
-      const intervalDays = src.scrapeIntervalDays || 30;
+      const intervalDays = src.scrapeIntervalDays || 14;
+      let eventsIngested = 0;
 
-      // Advance schedule for next monthly lifecycle interval
+      if (src.url && src.url.startsWith('http')) {
+        try {
+          const crawl = await extractEventsFromUrl(
+            src.url,
+            src.cityName || 'Statesville',
+            src.stateName || 'NC'
+          );
+
+          if (crawl.events.length > 0) {
+            const stats = await ingestDiscoveredEvents(crawl.events);
+            eventsIngested = stats.ingested;
+            totalIngested += stats.ingested;
+            totalSkipped += stats.skipped;
+            totalCitiesBirthed += stats.birthedCities;
+            totalEntitiesDiscovered += stats.newEntities;
+          }
+
+          // Register newly discovered sub-event URLs into sources
+          for (const subUrl of crawl.subUrls) {
+            await db
+              .insert(sources)
+              .values({
+                url: subUrl,
+                name: `${src.name || 'Discovered'} Sub-Event`,
+                sourceType: 'venue',
+                cityName: src.cityName,
+                stateName: src.stateName || 'NC',
+                scrapeIntervalDays: 14,
+                scrapeHorizonMonths: 6,
+                status: 'active',
+                nextScrapeDue: sql`NOW() + interval '3 days'`,
+              })
+              .onConflictDoNothing();
+          }
+        } catch (crawlErr: any) {
+          console.error(`[RESCRAPE] Error scraping source ${src.id} (${src.url}):`, crawlErr.message);
+        }
+      }
+
+      // Advance schedule for next lifecycle interval
       await db
         .update(sources)
         .set({
@@ -50,9 +95,8 @@ export async function GET(request: Request) {
         name: src.name,
         url: src.url,
         city: src.cityName,
-        horizonMonths,
-        intervalDays,
-        status: 'rescheduled',
+        eventsIngested,
+        status: 'scraped',
       });
     }
 
@@ -75,7 +119,14 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Processed ${results.length} sources and ${stalePerformers.length} performers in monthly lifecycle.`,
+      message: `Rescraped ${results.length} sources: ${totalIngested} new events ingested, ${totalCitiesBirthed} cities birthed, ${totalEntitiesDiscovered} entities discovered.`,
+      stats: {
+        sourcesProcessed: results.length,
+        eventsIngested: totalIngested,
+        eventsSkipped: totalSkipped,
+        citiesBirthed: totalCitiesBirthed,
+        entitiesDiscovered: totalEntitiesDiscovered,
+      },
       sourcesProcessed: results,
       performersUpdated: stalePerformers.map((p) => p.name),
       timestamp: new Date().toISOString(),

@@ -2,26 +2,15 @@
 import { pgTable, serial, text, integer, boolean, timestamp, doublePrecision, bigint, jsonb } from "drizzle-orm/pg-core";
 
 export const cities = pgTable("cities", {
-  id: serial("id").primaryKey(),
-  geonameId: bigint("geoname_id", { mode: "number" }).unique(),
+  slug: text("slug").primaryKey(),
   name: text("name").notNull(),
-  asciiName: text("ascii_name"),
-  alternateNames: text("alternate_names"),
   admin1: text("admin1"),
-  admin2: text("admin2"),
   countryCode: text("country_code"),
   countryName: text("country_name"),
-  latitude: doublePrecision("latitude").notNull(),
-  longitude: doublePrecision("longitude").notNull(),
-  population: bigint("population", { mode: "number" }),
-  elevation: integer("elevation"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  population: integer("population"),
   timezone: text("timezone"),
-  slug: text("slug").notNull().unique(),
-  isCrawlable: boolean("is_crawlable").default(false),
-  isIndexed: boolean("is_indexed").default(false),
-  searchCount: integer("search_count").default(0),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const cityReports = pgTable("city_reports", {

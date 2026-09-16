@@ -5,12 +5,152 @@ export interface DiscoverySeedHub {
   name: string;
   url: string;
   scope: 'local' | 'regional' | 'national' | 'global';
-  category: 'directory' | 'appearances' | 'festivals' | 'association' | 'market_vendor';
-  yieldType: 'vendors' | 'schedules' | 'festivals' | 'multi_vendor_hubs';
+  category: 'directory' | 'appearances' | 'festivals' | 'association' | 'market_vendor' | 'public_calendar';
+  yieldType: 'vendors' | 'schedules' | 'festivals' | 'multi_vendor_hubs' | 'events';
   notes: string;
 }
 
 export const MASTER_DISCOVERY_HUBS: DiscoverySeedHub[] = [
+  // --- Regional & State Cultural / Event Calendars ---
+  {
+    id: 'nc_dncr_events',
+    name: 'North Carolina DNCR Master Event Calendar',
+    url: 'https://events.dncr.nc.gov/',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Statewide museums, historic sites, parks, festivals, and cultural events across North Carolina.'
+  },
+  {
+    id: 'visit_nc_events',
+    name: 'Visit North Carolina Events Portal',
+    url: 'https://www.visitnc.com/events',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Official state tourism event index.'
+  },
+  {
+    id: 'downtown_statesville',
+    name: 'Downtown Statesville Development Corporation',
+    url: 'https://www.downtownstatesville.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Historic downtown Statesville concerts, art crawls, festivals, and community gatherings.'
+  },
+  {
+    id: 'downtown_mooresville',
+    name: 'Downtown Mooresville Events',
+    url: 'https://www.downtownmooresville.com/events',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Live music, festivals, vendor markets, and town events in Mooresville.'
+  },
+  {
+    id: 'visit_lake_norman',
+    name: 'Visit Lake Norman Calendar',
+    url: 'https://www.visitlakenorman.org/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Lake Norman region events across Cornelius, Davidson, Huntersville, and Mooresville.'
+  },
+  {
+    id: 'johnston_county_events',
+    name: 'Johnston County Visitors Bureau Events',
+    url: 'https://www.johnstoncountync.org/events/',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Festivals, concerts, and family events across Johnston County.'
+  },
+  {
+    id: 'visit_alexander_nc',
+    name: 'Visit Alexander County Calendar',
+    url: 'https://visitalexandernc.com/calendar/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Hiddenite Arts, Taylorsville farmers markets, and community events.'
+  },
+
+  // --- High-Density Eventbrite Discovery Hubs ---
+  {
+    id: 'eventbrite_statesville',
+    name: 'Eventbrite Statesville Community Feed',
+    url: 'https://www.eventbrite.com/d/nc--statesville/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Real-time live listings for Statesville, Troutman, and Iredell County.'
+  },
+  {
+    id: 'eventbrite_mooresville',
+    name: 'Eventbrite Mooresville Feed',
+    url: 'https://www.eventbrite.com/d/nc--mooresville/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Live listings for Mooresville and Lake Norman.'
+  },
+  {
+    id: 'eventbrite_hickory',
+    name: 'Eventbrite Hickory Feed',
+    url: 'https://www.eventbrite.com/d/nc--hickory/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Hickory, Catawba, and Newton live events.'
+  },
+  {
+    id: 'eventbrite_charlotte',
+    name: 'Eventbrite Charlotte Metro Hub',
+    url: 'https://www.eventbrite.com/d/nc--charlotte/events/',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Charlotte metropolitan region concert, culinary, and festival index.'
+  },
+  {
+    id: 'eventbrite_raleigh',
+    name: 'Eventbrite Raleigh Metro Hub',
+    url: 'https://www.eventbrite.com/d/nc--raleigh/events/',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Raleigh and Triangle area events.'
+  },
+  {
+    id: 'eventbrite_winston_salem',
+    name: 'Eventbrite Winston-Salem Hub',
+    url: 'https://www.eventbrite.com/d/nc--winston-salem/events/',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Piedmont Triad arts, music, and social events.'
+  },
+  {
+    id: 'eventbrite_greensboro',
+    name: 'Eventbrite Greensboro Hub',
+    url: 'https://www.eventbrite.com/d/nc--greensboro/events/',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Greensboro and Guilford County community events.'
+  },
+  {
+    id: 'eventbrite_asheville',
+    name: 'Eventbrite Asheville Hub',
+    url: 'https://www.eventbrite.com/d/nc--asheville/events/',
+    scope: 'regional',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Western NC live music, breweries, and outdoor events.'
+  },
+
+  // --- Mobile Food & Vendor Seed Hubs ---
   {
     id: 'iredell_county_directory',
     name: 'Iredell County Food Truck Directory',
