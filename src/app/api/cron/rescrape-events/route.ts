@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { sources, performers } from '@/db/schema';
-import { eq, lte, and, sql } from 'drizzle-orm';
+import { eq, lte, and, sql, asc } from 'drizzle-orm';
 import { extractEventsFromUrl, ingestDiscoveredEvents } from '@/lib/discovery/calendar-crawler';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '15', 10);
+    const limit = parseInt(searchParams.get('limit') || '25', 10);
 
     // 1. Fetch sources due for rescraping (next_scrape_due <= NOW())
     const dueSources = await db
@@ -29,6 +29,7 @@ export async function GET(request: Request) {
           lte(sources.nextScrapeDue, new Date())
         )
       )
+      .orderBy(asc(sources.nextScrapeDue))
       .limit(limit);
 
     const results: any[] = [];
