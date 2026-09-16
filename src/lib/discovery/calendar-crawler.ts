@@ -2,8 +2,8 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 import { db } from "@/db";
-import { events, entities, entityRelationships, appearances, cities, sources, performers } from "@/db/schema";
-import { sql, eq, and } from "drizzle-orm";
+import { events, entities, entityRelationships, appearances, cities, sources, performers, emailContacts } from "@/db/schema";
+import { sql, eq, and, isNull } from "drizzle-orm";
 import { upsertEntity, recordRelationship } from "./lifecycle";
 
 export interface ExtractedEvent {
@@ -30,6 +30,7 @@ export interface ExtractedEvent {
 export interface CrawlResult {
   events: ExtractedEvent[];
   subUrls: string[];
+  extractedEmails: string[];
 }
 
 /**
@@ -153,6 +154,56 @@ export function formatTimeFromDate(isoStr?: string): string {
 }
 
 /**
+ * Validates whether an extracted string is a clean, genuine email address.
+ */
+export function isValidEmail(email: string): boolean {
+  if (!email || typeof email !== "string") return false;
+  const clean = email.trim().toLowerCase();
+  if (clean.length < 6 || clean.length > 100) return false;
+
+  // Standard email format ending with valid domain TLD
+  if (
+    !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(?:com|org|net|edu|gov|io|co|us|uk|de|ca|biz|info|me|events|live)$/i.test(
+      clean
+    )
+  ) {
+    return false;
+  }
+
+  const junkKeywords = [
+    "noreply",
+    "no-reply",
+    "donotreply",
+    "example.com",
+    "domain.com",
+    "yourdomain",
+    "sentry.io",
+    "cloudflare",
+    "wixpress",
+    "bootstrap",
+    "wordpress",
+    "schema.org",
+    "w3.org",
+    "github.com",
+    "google.com",
+    "facebook.com",
+    "instagram.com",
+    "twitter.com",
+    "@2x",
+    "@3x",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".svg",
+    ".css",
+    ".js",
+  ];
+  return !junkKeywords.some((j) => clean.includes(j));
+}
+
+/**
  * Extracts Schema.org events and calendar links from any URL.
  */
 export async function extractEventsFromUrl(
@@ -162,6 +213,7 @@ export async function extractEventsFromUrl(
 ): Promise<CrawlResult> {
   const eventsFound: ExtractedEvent[] = [];
   const subUrls: string[] = [];
+  const extractedEmails = new Set<string>();
 
   try {
     const res = await axios.get(url, {
@@ -176,9 +228,29 @@ export async function extractEventsFromUrl(
     });
 
     const html = res.data;
-    if (typeof html !== "string") return { events: eventsFound, subUrls };
+    if (typeof html !== "string")
+      return { events: eventsFound, subUrls, extractedEmails: [] };
 
     const $ = cheerio.load(html);
+
+    // Scan mailto: links directly from page
+    $('a[href^="mailto:"]').each((_, el) => {
+      const raw = $(el).attr("href");
+      if (raw) {
+        const clean = raw.replace(/^mailto:/i, "").split("?")[0].trim().toLowerCase();
+        if (isValidEmail(clean)) extractedEmails.add(clean);
+      }
+    });
+
+    // Scan page body for emails
+    const bodyText = $("body").text();
+    const textMatches =
+      bodyText.match(
+        /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.(?:com|org|net|edu|gov|io|co|us|uk|de|ca|biz|info|me|events|live)\b/gi
+      ) || [];
+    for (const m of textMatches) {
+      if (isValidEmail(m)) extractedEmails.add(m.toLowerCase().trim());
+    }
 
     // 1. Process Schema.org JSON-LD scripts
     const scripts = $('script[type="application/ld+json"]');
@@ -203,6 +275,19 @@ export async function extractEventsFromUrl(
               processObj(item.item || item);
             });
             return;
+          }
+
+          if (obj.email && typeof obj.email === "string") {
+            const clean = obj.email.replace(/^mailto:/i, "").trim().toLowerCase();
+            if (isValidEmail(clean)) extractedEmails.add(clean);
+          }
+          if (obj.organizer && typeof obj.organizer === "object" && obj.organizer.email) {
+            const clean = String(obj.organizer.email).replace(/^mailto:/i, "").trim().toLowerCase();
+            if (isValidEmail(clean)) extractedEmails.add(clean);
+          }
+          if (obj.location && typeof obj.location === "object" && obj.location.email) {
+            const clean = String(obj.location.email).replace(/^mailto:/i, "").trim().toLowerCase();
+            if (isValidEmail(clean)) extractedEmails.add(clean);
           }
 
           const type = obj["@type"];
@@ -361,28 +446,44 @@ export async function extractEventsFromUrl(
     console.error(`[CALENDAR_CRAWLER] Error fetching ${url}: ${err.message}`);
   }
 
-  return { events: eventsFound, subUrls: subUrls.slice(0, 10) };
+  return {
+    events: eventsFound,
+    subUrls: subUrls.slice(0, 10),
+    extractedEmails: Array.from(extractedEmails).slice(0, 10),
+  };
 }
 
 /**
  * Ingests extracted events into PostgreSQL, deduplicates against existing records,
  * auto-provisions new cities, creates graph entities and relationships, and registers
- * discovered venues into sources.
+ * discovered venues into sources. Also captures any discovered contact emails into email_contacts.
  */
 export async function ingestDiscoveredEvents(
-  extractedEvents: ExtractedEvent[]
+  extractedEvents: ExtractedEvent[],
+  extractedEmails: string[] = [],
+  context?: {
+    cityName?: string | null;
+    stateName?: string | null;
+    sourceUrl?: string | null;
+    venueName?: string | null;
+    entityId?: number | null;
+  }
 ): Promise<{
   ingested: number;
   skipped: number;
   birthedCities: number;
   newEntities: number;
+  emailsIngested: number;
 }> {
   const stats = {
     ingested: 0,
     skipped: 0,
     birthedCities: 0,
     newEntities: 0,
+    emailsIngested: 0,
   };
+
+  let lastDiscoveredVenueEntityId: number | undefined = context?.entityId || undefined;
 
   for (const ev of extractedEvents) {
     try {
@@ -472,6 +573,7 @@ export async function ingestDiscoveredEvents(
           websiteUrl: ev.venueUrl,
         });
         stats.newEntities++;
+        lastDiscoveredVenueEntityId = venueEntityId;
 
         // Register venue URL into sources table for future spider sweeps
         if (ev.venueUrl && ev.venueUrl.startsWith("http")) {
@@ -605,6 +707,48 @@ export async function ingestDiscoveredEvents(
       }
     } catch (err: any) {
       console.error(`[INGEST_ERROR] Failed ingesting event ${ev.title}:`, err.message);
+    }
+  }
+
+  // 6. Ingest any discovered contact emails into email_contacts table & link to entities
+  if (extractedEmails && extractedEmails.length > 0) {
+    const city = context?.cityName || extractedEvents[0]?.cityName || null;
+    const state = context?.stateName || extractedEvents[0]?.stateName || "NC";
+    const sourceUrl = context?.sourceUrl || extractedEvents[0]?.source || "Calendar Crawler";
+    const venueName = context?.venueName || extractedEvents[0]?.venue || null;
+    const targetEntityId = context?.entityId || lastDiscoveredVenueEntityId;
+
+    for (const email of extractedEmails) {
+      try {
+        await db
+          .insert(emailContacts)
+          .values({
+            email,
+            category: "Venues & Organizers",
+            cityName: city,
+            stateName: state,
+            countryCode: "US",
+            status: "active",
+            source: sourceUrl,
+            metadata: {
+              sourceUrl,
+              venueName,
+              discoveredAt: new Date().toISOString(),
+            },
+          })
+          .onConflictDoNothing();
+        stats.emailsIngested++;
+      } catch {}
+
+      // If we have an entity ID (from context or discovered venue), link email to entity
+      if (targetEntityId) {
+        try {
+          await db
+            .update(entities)
+            .set({ email, updatedAt: new Date() })
+            .where(and(eq(entities.id, targetEntityId), isNull(entities.email)));
+        } catch {}
+      }
     }
   }
 

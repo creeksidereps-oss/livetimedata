@@ -14,6 +14,7 @@ export interface SpiderResult {
   newEntitiesDiscovered: number;
   newEventsIngested: number;
   newCitiesBirthed: number;
+  emailsIngested: number;
 }
 
 /**
@@ -89,6 +90,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
     newEntitiesDiscovered: 0,
     newEventsIngested: 0,
     newCitiesBirthed: 0,
+    emailsIngested: 0,
   };
 
   // 1. Fetch next batch of entities needing spidering (least recently updated first)
@@ -171,11 +173,22 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
           entity.stateName || "NC"
         );
 
-        if (crawl.events.length > 0) {
-          const ingestStats = await ingestDiscoveredEvents(crawl.events);
+        if (crawl.events.length > 0 || crawl.extractedEmails.length > 0) {
+          const ingestStats = await ingestDiscoveredEvents(
+            crawl.events,
+            crawl.extractedEmails,
+            {
+              cityName: entity.cityName,
+              stateName: entity.stateName,
+              sourceUrl: targetUrl,
+              venueName: entity.name,
+              entityId: entity.id,
+            }
+          );
           result.newEventsIngested += ingestStats.ingested;
           result.newCitiesBirthed += ingestStats.birthedCities;
           result.newEntitiesDiscovered += ingestStats.newEntities;
+          result.emailsIngested += ingestStats.emailsIngested;
         }
 
         // Register any discovered sub-calendar URLs into sources for future sweeps
@@ -332,11 +345,21 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
           src.stateName || "NC"
         );
 
-        if (crawl.events.length > 0) {
-          const stats = await ingestDiscoveredEvents(crawl.events);
+        if (crawl.events.length > 0 || crawl.extractedEmails.length > 0) {
+          const stats = await ingestDiscoveredEvents(
+            crawl.events,
+            crawl.extractedEmails,
+            {
+              cityName: src.cityName,
+              stateName: src.stateName,
+              sourceUrl: src.url,
+              venueName: src.name,
+            }
+          );
           result.newEventsIngested += stats.ingested;
           result.newCitiesBirthed += stats.birthedCities;
           result.newEntitiesDiscovered += stats.newEntities;
+          result.emailsIngested += stats.emailsIngested;
         }
 
         // Register newly discovered sub-event URLs into sources

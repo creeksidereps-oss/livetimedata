@@ -37,10 +37,12 @@ export async function GET(request: Request) {
     let totalSkipped = 0;
     let totalCitiesBirthed = 0;
     let totalEntitiesDiscovered = 0;
+    let totalEmailsIngested = 0;
 
     for (const src of dueSources) {
       const intervalDays = src.scrapeIntervalDays || 14;
       let eventsIngested = 0;
+      let emailsFound = 0;
 
       if (src.url && src.url.startsWith('http')) {
         try {
@@ -50,13 +52,24 @@ export async function GET(request: Request) {
             src.stateName || 'NC'
           );
 
-          if (crawl.events.length > 0) {
-            const stats = await ingestDiscoveredEvents(crawl.events);
+          if (crawl.events.length > 0 || crawl.extractedEmails.length > 0) {
+            const stats = await ingestDiscoveredEvents(
+              crawl.events,
+              crawl.extractedEmails,
+              {
+                cityName: src.cityName,
+                stateName: src.stateName,
+                sourceUrl: src.url,
+                venueName: src.name,
+              }
+            );
             eventsIngested = stats.ingested;
+            emailsFound = stats.emailsIngested;
             totalIngested += stats.ingested;
             totalSkipped += stats.skipped;
             totalCitiesBirthed += stats.birthedCities;
             totalEntitiesDiscovered += stats.newEntities;
+            totalEmailsIngested += stats.emailsIngested;
           }
 
           // Register newly discovered sub-event URLs into sources
@@ -97,6 +110,7 @@ export async function GET(request: Request) {
         url: src.url,
         city: src.cityName,
         eventsIngested,
+        emailsFound,
         status: 'scraped',
       });
     }
@@ -120,11 +134,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Rescraped ${results.length} sources: ${totalIngested} new events ingested, ${totalCitiesBirthed} cities birthed, ${totalEntitiesDiscovered} entities discovered.`,
+      message: `Rescraped ${results.length} sources: ${totalIngested} new events ingested, ${totalEmailsIngested} emails extracted, ${totalCitiesBirthed} cities birthed, ${totalEntitiesDiscovered} entities discovered.`,
       stats: {
         sourcesProcessed: results.length,
         eventsIngested: totalIngested,
         eventsSkipped: totalSkipped,
+        emailsIngested: totalEmailsIngested,
         citiesBirthed: totalCitiesBirthed,
         entitiesDiscovered: totalEntitiesDiscovered,
       },
