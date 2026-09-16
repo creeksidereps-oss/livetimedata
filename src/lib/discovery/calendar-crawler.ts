@@ -435,7 +435,13 @@ export async function extractEventsFromUrl(
       ) {
         try {
           const parsed = new URL(href, url);
+          const isSingleEventInstance =
+            (parsed.hostname.includes("facebook.com") && /\/events\/\d+/.test(parsed.pathname)) ||
+            (parsed.hostname.includes("eventbrite.com") && parsed.pathname.startsWith("/e/")) ||
+            (parsed.hostname.includes("ticketmaster.com") && parsed.pathname.includes("/event/"));
+
           if (
+            !isSingleEventInstance &&
             parsed.protocol.startsWith("http") &&
             parsed.href !== url &&
             !subUrls.includes(parsed.href)
