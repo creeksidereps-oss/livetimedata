@@ -1,4 +1,4 @@
-﻿// src/app/api/cron/discover-entities/route.ts
+// src/app/api/cron/discover-entities/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { sources, entities, entityRelationships, appearances } from "@/db/schema";
@@ -48,7 +48,43 @@ export async function GET(request: Request) {
       });
     }
 
-    // 2. Execute the Recursive Spider Cycle
+    // 2. Feed unlinked venues and hosts from events into entities graph
+    await db.execute(sql`
+      INSERT INTO entities (
+        name,
+        normalized_name,
+        entity_type,
+        subtype,
+        city_name,
+        state_name,
+        country_code,
+        verification_status,
+        created_at
+      )
+      SELECT DISTINCT ON (LOWER(TRIM(e.venue)))
+        TRIM(e.venue) AS name,
+        LOWER(REGEXP_REPLACE(TRIM(e.venue), '[^a-zA-Z0-9 ]', '', 'g')) AS normalized_name,
+        'venue' AS entity_type,
+        'venue' AS subtype,
+        e.city_name,
+        e.state_name,
+        'US' AS country_code,
+        'discovered' AS verification_status,
+        NOW() AS created_at
+      FROM events e
+      WHERE e.venue IS NOT NULL
+        AND TRIM(e.venue) != ''
+        AND TRIM(e.venue) != 'Local Venue'
+        AND TRIM(e.venue) != 'Unknown Venue'
+        AND NOT EXISTS (
+          SELECT 1 FROM entities ent 
+          WHERE LOWER(TRIM(ent.name)) = LOWER(TRIM(e.venue))
+        )
+      ORDER BY LOWER(TRIM(e.venue)), e.event_date DESC
+      LIMIT 100;
+    `);
+
+    // 3. Execute the Recursive Spider Cycle
     const spiderStats = await runRecursiveSpider(25);
 
     const totalEntities = await db.select({ count: sql`count(*)` }).from(entities);
