@@ -4,10 +4,12 @@ import { entities, entityRelationships, appearances, cities, sources } from "@/d
 import { eq, and, sql, asc, or, isNull, lte } from "drizzle-orm";
 import { recordRelationship } from "./lifecycle";
 import { extractEventsFromUrl, ingestDiscoveredEvents } from "./calendar-crawler";
+import { GoogleGenAI } from "@google/genai";
 
 export interface SpiderResult {
   entitiesProcessed: number;
   sourcesProcessed: number;
+  entitiesWebSearched: number;
   newVenuesDiscovered: number;
   newEntitiesDiscovered: number;
   newEventsIngested: number;
@@ -15,16 +17,74 @@ export interface SpiderResult {
 }
 
 /**
+ * Autonomous Web Search: When an entity (venue, artist, brewery, food truck)
+ * enters the graph WITHOUT a website or calendar URL, the spider searches the open
+ * web using Google Search grounding to discover its official website and calendar!
+ */
+export async function resolveEntityWebsiteAndCalendar(
+  name: string,
+  entityType: string,
+  cityName?: string | null,
+  stateName?: string | null
+): Promise<{ officialWebsite?: string; calendarUrl?: string } | null> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const locationStr = [cityName, stateName].filter(Boolean).join(", ");
+    const prompt = `
+      Search Google to find the official website and the events/calendar/tour page for this entity:
+      Name: ${name}
+      Type: ${entityType}
+      ${locationStr ? `Location: ${locationStr}` : ""}
+
+      Return ONLY a JSON object with:
+      {
+        "officialWebsite": "https://...",
+        "calendarUrl": "https://..."
+      }
+      Do not use markdown formatting or backticks.
+    `;
+
+    const res = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+
+    if (!res.text) return null;
+    const clean = res.text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const data = JSON.parse(clean);
+    return {
+      officialWebsite: data.officialWebsite?.startsWith("http")
+        ? data.officialWebsite
+        : undefined,
+      calendarUrl: data.calendarUrl?.startsWith("http")
+        ? data.calendarUrl
+        : undefined,
+    };
+  } catch (err: any) {
+    console.error(
+      `[SPIDER_SEARCH] Error searching web for entity ${name}:`,
+      err.message
+    );
+    return null;
+  }
+}
+
+/**
  * Universal Recursive Spider Engine:
  * Follows the infinite recursive graph:
- * Entity -> Live Calendar URL -> Extract Events -> Ingest & Deduplicate ->
- * Venues -> Venue Calendars -> Co-Entities (Performers, Vendors, Festivals) ->
- * New Cities -> REPEAT INFINITELY.
+ * Entity (without website) -> Search Google Web for Official Calendar ->
+ * Update Entity -> Add to Sources -> Crawl Calendar -> Ingest Events ->
+ * Extract Co-Entities (Performers, Venues, Hosts) -> Repeat Forever!
  */
 export async function runRecursiveSpider(batchSize: number = 10): Promise<SpiderResult> {
   const result: SpiderResult = {
     entitiesProcessed: 0,
     sourcesProcessed: 0,
+    entitiesWebSearched: 0,
     newVenuesDiscovered: 0,
     newEntitiesDiscovered: 0,
     newEventsIngested: 0,
@@ -45,18 +105,68 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
     .orderBy(asc(entities.updatedAt))
     .limit(batchSize);
 
+  let searchBudget = 3; // Limit live AI web searches per batch to keep execution fast
+
   for (const entity of candidateEntities) {
     result.entitiesProcessed++;
 
-    // 2. Active Web Crawl: If entity has a website/calendar, extract live events
+    let targetUrl: string | null = entity.websiteUrl;
+    const isMissingOrImage =
+      !targetUrl ||
+      !targetUrl.startsWith("http") ||
+      Boolean(targetUrl.match(/\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i));
+
+    // 2. Proactive Web Search: If entity lacks a website/calendar, search Google for it!
+    if (isMissingOrImage && searchBudget > 0) {
+      searchBudget--;
+      result.entitiesWebSearched++;
+      console.log(
+        `[SPIDER_SEARCH] Searching web for official calendar of: ${entity.name} (${entity.entityType}) in ${entity.cityName || "NC"}`
+      );
+
+      const found = await resolveEntityWebsiteAndCalendar(
+        entity.name,
+        entity.entityType,
+        entity.cityName,
+        entity.stateName
+      );
+
+      if (found?.calendarUrl || found?.officialWebsite) {
+        targetUrl = found.calendarUrl || found.officialWebsite || null;
+
+        // Persist discovered website into the entity record
+        await db
+          .update(entities)
+          .set({ websiteUrl: targetUrl || null })
+          .where(eq(entities.id, entity.id));
+
+        // Queue newly found calendar into sources for perpetual tracking
+        await db
+          .insert(sources)
+          .values({
+            url: targetUrl!,
+            name: `${entity.name} Official Calendar`,
+            sourceType: entity.entityType === "performer" ? "artist_tour" : "venue",
+            cityName: entity.cityName,
+            stateName: entity.stateName || "NC",
+            scrapeIntervalDays: entity.entityType === "performer" ? 30 : 14,
+            scrapeHorizonMonths: entity.entityType === "performer" ? 12 : 6,
+            status: "active",
+            nextScrapeDue: sql`NOW()`,
+          })
+          .onConflictDoNothing();
+      }
+    }
+
+    // 3. Active Web Crawl: Extract live events from the entity's calendar
     if (
-      entity.websiteUrl &&
-      entity.websiteUrl.startsWith("http") &&
-      !entity.websiteUrl.match(/\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i)
+      targetUrl &&
+      targetUrl.startsWith("http") &&
+      !targetUrl.match(/\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i)
     ) {
       try {
         const crawl = await extractEventsFromUrl(
-          entity.websiteUrl,
+          targetUrl,
           entity.cityName || "Statesville",
           entity.stateName || "NC"
         );
@@ -90,7 +200,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
       }
     }
 
-    // 3. Connect co-entities via existing venue appearances
+    // 4. Connect co-entities via existing venue appearances
     const relatedVenues = await db
       .select({
         venueId: entityRelationships.targetEntityId,
@@ -158,7 +268,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
       }
     }
 
-    // 4. Ensure city is registered in cities table
+    // 5. Ensure city is registered in cities table
     if (entity.cityName) {
       const cityCheck = await db
         .select({ slug: cities.slug })
@@ -174,7 +284,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
             name: entity.cityName,
             slug: citySlug,
             admin1: entity.stateName || "NC",
-            countryCode: entity.countryCode || "US",
+            countryCode: "US",
             countryName: "United States",
             latitude: entity.latitude || 35.78,
             longitude: entity.longitude || -80.88,
@@ -186,7 +296,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
       }
     }
 
-    // 5. Update entity lifecycle timestamp & status
+    // 6. Update entity lifecycle timestamp & status
     await db
       .update(entities)
       .set({
@@ -196,7 +306,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
       .where(eq(entities.id, entity.id));
   }
 
-  // 6. Spider pending high-priority sources due for crawl (prioritizing open calendar sources)
+  // 7. Spider pending high-priority sources due for crawl
   const dueSources = await db
     .select()
     .from(sources)
@@ -235,7 +345,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
             .insert(sources)
             .values({
               url: subUrl,
-              name: `${src.name || 'Discovered'} Sub-Event`,
+              name: `${src.name || "Discovered"} Sub-Event`,
               sourceType: "venue",
               cityName: src.cityName,
               stateName: src.stateName || "NC",
@@ -249,7 +359,6 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
       } catch (err: any) {
         console.error(`[SPIDER] Error spidering source ${src.name}:`, err.message);
       } finally {
-        // Always advance next scrape due date so failing sources don't bottleneck the spider
         await db
           .update(sources)
           .set({
