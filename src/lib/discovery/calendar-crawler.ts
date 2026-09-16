@@ -2,7 +2,7 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 import { db } from "@/db";
-import { events, entities, entityRelationships, appearances, cities, sources } from "@/db/schema";
+import { events, entities, entityRelationships, appearances, cities, sources, performers } from "@/db/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { upsertEntity, recordRelationship } from "./lifecycle";
 
@@ -21,7 +21,9 @@ export interface ExtractedEvent {
   latitude?: number;
   longitude?: number;
   performerName?: string;
+  performerUrl?: string;
   organizerName?: string;
+  organizerUrl?: string;
   venueUrl?: string;
 }
 
@@ -271,6 +273,7 @@ export async function extractEventsFromUrl(
             }
 
             let performerName: string | undefined;
+            let performerUrl: string | undefined;
             if (obj.performer) {
               if (typeof obj.performer === "string") {
                 performerName = obj.performer.trim();
@@ -279,17 +282,23 @@ export async function extractEventsFromUrl(
                   typeof obj.performer[0] === "string"
                     ? obj.performer[0]
                     : obj.performer[0]?.name;
-              } else if (typeof obj.performer === "object" && obj.performer.name) {
-                performerName = String(obj.performer.name).trim();
+                if (typeof obj.performer[0] === "object") {
+                  performerUrl = obj.performer[0]?.url || obj.performer[0]?.sameAs;
+                }
+              } else if (typeof obj.performer === "object") {
+                if (obj.performer.name) performerName = String(obj.performer.name).trim();
+                performerUrl = obj.performer.url || obj.performer.sameAs;
               }
             }
 
             let organizerName: string | undefined;
+            let organizerUrl: string | undefined;
             if (obj.organizer) {
               if (typeof obj.organizer === "string") {
                 organizerName = obj.organizer.trim();
-              } else if (typeof obj.organizer === "object" && obj.organizer.name) {
-                organizerName = String(obj.organizer.name).trim();
+              } else if (typeof obj.organizer === "object") {
+                if (obj.organizer.name) organizerName = String(obj.organizer.name).trim();
+                organizerUrl = obj.organizer.url || obj.organizer.sameAs;
               }
             }
 
@@ -313,7 +322,9 @@ export async function extractEventsFromUrl(
               latitude,
               longitude,
               performerName,
+              performerUrl,
               organizerName,
+              organizerUrl,
               venueUrl,
             });
           }
@@ -488,8 +499,45 @@ export async function ingestDiscoveredEvents(
           entityType: "performer",
           cityName: ev.cityName,
           stateName: ev.stateName || "NC",
+          websiteUrl: ev.performerUrl,
         });
         stats.newEntities++;
+
+        // Upsert into performers table
+        await db
+          .insert(performers)
+          .values({
+            name: ev.performerName,
+            type: "band",
+            tourPageUrl: ev.performerUrl || null,
+            officialSite: ev.performerUrl || null,
+          })
+          .onConflictDoUpdate({
+            target: performers.name,
+            set: {
+              tourPageUrl: ev.performerUrl || undefined,
+              officialSite: ev.performerUrl || undefined,
+              updatedAt: new Date(),
+            },
+          });
+
+        // Register artist tour page / website as a perpetually tracked source
+        if (ev.performerUrl && ev.performerUrl.startsWith("http")) {
+          await db
+            .insert(sources)
+            .values({
+              url: ev.performerUrl,
+              name: `${ev.performerName} Tour`,
+              sourceType: "artist_tour",
+              cityName: ev.cityName,
+              stateName: ev.stateName || "NC",
+              scrapeIntervalDays: 30,
+              scrapeHorizonMonths: 12,
+              status: "active",
+              nextScrapeDue: sql`NOW() + interval '7 days'`,
+            })
+            .onConflictDoNothing();
+        }
 
         if (venueEntityId) {
           await recordRelationship(
@@ -512,6 +560,24 @@ export async function ingestDiscoveredEvents(
             startTime: ev.startTime,
             sourceUrl: ev.officialInfoUrl || ev.source,
             status: "published",
+          })
+          .onConflictDoNothing();
+      }
+
+      // 5. If organizer has a calendar/page, register as tracked source
+      if (ev.organizerUrl && ev.organizerUrl.startsWith("http")) {
+        await db
+          .insert(sources)
+          .values({
+            url: ev.organizerUrl,
+            name: ev.organizerName || `${ev.venue} Organizer`,
+            sourceType: "organizer",
+            cityName: ev.cityName,
+            stateName: ev.stateName || "NC",
+            scrapeIntervalDays: 14,
+            scrapeHorizonMonths: 6,
+            status: "active",
+            nextScrapeDue: sql`NOW() + interval '7 days'`,
           })
           .onConflictDoNothing();
       }
