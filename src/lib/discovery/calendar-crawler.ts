@@ -293,6 +293,14 @@ export async function extractEventsFromUrl(
             if (isValidEmail(clean)) extractedEmails.add(clean);
           }
 
+          if (obj.subEvent) {
+            if (Array.isArray(obj.subEvent)) obj.subEvent.forEach(processObj);
+            else processObj(obj.subEvent);
+          }
+          if (obj.subEvents && Array.isArray(obj.subEvents)) {
+            obj.subEvents.forEach(processObj);
+          }
+
           const type = obj["@type"];
           const isEvent =
             type === "Event" || (Array.isArray(type) && type.includes("Event"));
@@ -302,7 +310,7 @@ export async function extractEventsFromUrl(
             const desc = String(obj.description || "")
               .replace(/<[^>]+>/g, "")
               .trim()
-              .slice(0, 800);
+              .slice(0, 4000);
             const startDateStr = obj.startDate;
             const eventDate = new Date(startDateStr);
             if (isNaN(eventDate.getTime())) return;
@@ -463,6 +471,89 @@ export async function extractEventsFromUrl(
 }
 
 /**
+ * Decomposes multi-activity festivals and fairs into distinct sub-events
+ * (e.g. Car Cruise-In, Food Truck Row, featured stage performances, 5k runs).
+ */
+export function decomposeFestivalActivities(ev: ExtractedEvent): ExtractedEvent[] {
+  const subEvents: ExtractedEvent[] = [];
+  const text = (ev.details || "").toLowerCase();
+  if (text.length < 30) return subEvents;
+
+  // 1. Car Cruise-In / Car Show sub-event
+  if (
+    (text.includes("car cruise-in") || text.includes("car show") || text.includes("cruise-in")) &&
+    !ev.title.toLowerCase().includes("cruise-in") &&
+    !ev.title.toLowerCase().includes("car show")
+  ) {
+    const timeMatch = ev.details.match(/cruise-in.*?(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))/i) ||
+                      ev.details.match(/(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)).*?cruise-in/i);
+    const startTime = timeMatch ? timeMatch[1].toUpperCase().replace(/\./g, '') : "8:00 AM";
+
+    subEvents.push({
+      title: `Car Cruise-In at ${ev.title}`,
+      cityName: ev.cityName,
+      stateName: ev.stateName,
+      venue: ev.venue,
+      category: "Festivals & Fairs",
+      startTime: startTime,
+      eventDate: ev.eventDate,
+      details: `Car Cruise-In taking place at ${ev.title}. Features classic cars, hot rods, customs, and community automotive showcase.\n\nPart of ${ev.title}.`,
+      officialInfoUrl: ev.officialInfoUrl,
+      eventFlyerUrl: ev.eventFlyerUrl,
+      source: ev.source,
+      organizerName: ev.organizerName,
+      organizerUrl: ev.organizerUrl,
+    });
+  }
+
+  // 2. Food Truck Row / Rally sub-event
+  if (
+    (text.includes("food truck") || text.includes("food trucks")) &&
+    !ev.title.toLowerCase().includes("food truck")
+  ) {
+    subEvents.push({
+      title: `Food Truck Row at ${ev.title}`,
+      cityName: ev.cityName,
+      stateName: ev.stateName,
+      venue: ev.venue,
+      category: "Food Trucks",
+      startTime: ev.startTime,
+      eventDate: ev.eventDate,
+      details: `Dedicated food truck row and mobile dining at ${ev.title}. Enjoy a variety of local food trucks, savory dishes, desserts, and craft beverages.\n\nPart of ${ev.title}.`,
+      officialInfoUrl: ev.officialInfoUrl,
+      eventFlyerUrl: ev.eventFlyerUrl,
+      source: ev.source,
+      organizerName: ev.organizerName,
+      organizerUrl: ev.organizerUrl,
+    });
+  }
+
+  // 3. Featured live music / choir / opening act if mentioned
+  const actMatch = ev.details.match(/([A-Z][A-Za-z0-9\s&'-]+(?:Chorus|Choir|Band|Orchestra|Symphony|Ensemble))\s+(?:opens|takes the stage|kicks off|performs|presents)/);
+  if (actMatch && !ev.title.toLowerCase().includes(actMatch[1].toLowerCase())) {
+    const actName = actMatch[1].trim();
+    subEvents.push({
+      title: `${actName} Live at ${ev.title}`,
+      cityName: ev.cityName,
+      stateName: ev.stateName,
+      venue: ev.venue,
+      category: "Concerts & Live Music",
+      startTime: ev.startTime,
+      eventDate: ev.eventDate,
+      details: `Live performance by ${actName} at ${ev.title}.\n\nPart of ${ev.title}.`,
+      officialInfoUrl: ev.officialInfoUrl,
+      eventFlyerUrl: ev.eventFlyerUrl,
+      source: ev.source,
+      performerName: actName,
+      organizerName: ev.organizerName,
+      organizerUrl: ev.organizerUrl,
+    });
+  }
+
+  return subEvents;
+}
+
+/**
  * Ingests extracted events into PostgreSQL, deduplicates against existing records,
  * auto-provisions new cities, creates graph entities and relationships, and registers
  * discovered venues into sources. Also captures any discovered contact emails into email_contacts.
@@ -494,7 +585,17 @@ export async function ingestDiscoveredEvents(
 
   let lastDiscoveredVenueEntityId: number | undefined = context?.entityId || undefined;
 
+  // Flatten extracted events with any decomposed festival activities
+  const allEventsToIngest: ExtractedEvent[] = [];
   for (const ev of extractedEvents) {
+    allEventsToIngest.push(ev);
+    const subActs = decomposeFestivalActivities(ev);
+    for (const sub of subActs) {
+      allEventsToIngest.push(sub);
+    }
+  }
+
+  for (const ev of allEventsToIngest) {
     try {
       const normTitle = ev.title.toLowerCase().trim();
       const normCity = ev.cityName.toLowerCase().trim();
@@ -675,22 +776,44 @@ export async function ingestDiscoveredEvents(
           .onConflictDoNothing();
       }
 
-      // 5. If organizer has a calendar/page, register as tracked source
-      if (ev.organizerUrl && ev.organizerUrl.startsWith("http")) {
-        await db
-          .insert(sources)
-          .values({
-            url: ev.organizerUrl,
-            name: ev.organizerName || `${ev.venue} Organizer`,
-            sourceType: "organizer",
-            cityName: ev.cityName,
-            stateName: ev.stateName || "NC",
-            scrapeIntervalDays: 14,
-            scrapeHorizonMonths: 6,
-            status: "active",
-            nextScrapeDue: sql`NOW() + interval '7 days'`,
-          })
-          .onConflictDoNothing();
+      // 5. Upsert Organizer Entity into graph (so spider searches Google for its official site/calendar)
+      if (ev.organizerName && ev.organizerName !== ev.venue) {
+        const orgId = await upsertEntity({
+          name: ev.organizerName,
+          entityType: "organization",
+          cityName: ev.cityName,
+          stateName: ev.stateName || "NC",
+          websiteUrl: ev.organizerUrl,
+        });
+        stats.newEntities++;
+
+        if (venueEntityId) {
+          await recordRelationship(
+            orgId,
+            "organized_by",
+            venueEntityId,
+            ev.officialInfoUrl,
+            { eventTitle: ev.title, date: ev.eventDate }
+          );
+        }
+
+        // If organizer has a calendar/page, register as tracked source
+        if (ev.organizerUrl && ev.organizerUrl.startsWith("http")) {
+          await db
+            .insert(sources)
+            .values({
+              url: ev.organizerUrl,
+              name: ev.organizerName,
+              sourceType: "organizer",
+              cityName: ev.cityName,
+              stateName: ev.stateName || "NC",
+              scrapeIntervalDays: 14,
+              scrapeHorizonMonths: 6,
+              status: "active",
+              nextScrapeDue: sql`NOW() + interval '7 days'`,
+            })
+            .onConflictDoNothing();
+        }
       }
 
       // 5. If category is Food Trucks, link mobile vendor
