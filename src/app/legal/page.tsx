@@ -1,18 +1,10 @@
 import React from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import CompliancePageLayout from "@/components/CompliancePageLayout";
 
 export default function LegalPage() {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8 bg-black min-h-screen text-slate-300">
-      <Link href="/" className="inline-flex items-center text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-white transition-colors mb-8">
-        <ArrowLeft size={14} className="mr-2" />
-        Back to Home
-      </Link>
-      
-      <h1 className="text-xl md:text-2xl font-black tracking-tight text-white uppercase">LiveTimeData Legal & Disclaimers</h1>
-      
-      <div className="mt-8 space-y-5 text-[12px] md:text-[13px] leading-relaxed">
+    <CompliancePageLayout title="LiveTimeData Legal & Disclaimers">
+      <div className="space-y-5 text-[12px] md:text-[13px] leading-relaxed">
         <p className="font-bold text-slate-400">Effective Date: August 29, 2026</p>
         <p>LiveTimeData is designed to help users discover, explore, and learn about cities and places around the world.</p>
         <p>Information provided through LiveTimeData is for general informational, educational, planning, entertainment, and discovery purposes.</p>
@@ -364,6 +356,6 @@ export default function LegalPage() {
         <p className="font-bold">LiveTimeData<br />P.O. Box 5272<br />Statesville, NC 28687<br />United States<br /><br />Email: LiveTimeData@gmail.com</p>
         <p>Copyright, media-rights, and formal content-removal concerns should also be reviewed under the LiveTimeData Copyright & Content Removal Policy.</p>
       </div>
-    </div>
+    </CompliancePageLayout>
   );
 }

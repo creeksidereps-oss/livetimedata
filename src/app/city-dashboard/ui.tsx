@@ -11,6 +11,11 @@ import SectionNavRibbon from "@/components/SectionNavRibbon";
 import CitySearch from "@/components/CitySearch";
 import InfoModal from "@/components/modals/InfoModal";
 import ImproveFormModal from "@/components/ImproveFormModal";
+import { resolveCityFromSlug } from "@/lib/cityResolver";
+import AdSlot from "@/components/AdSlot";
+import { AD_SLOTS } from "@/config/adSlots";
+import CityNewsBlock from "@/components/CityNewsBlock";
+import CityReportBlock from "@/components/CityReportBlock";
 
 export default function Page(props: { 
   params: Promise<{ slug: string }>, 
@@ -37,22 +42,25 @@ export default function Page(props: {
     async function init() {
       const sp = await props.searchParams;
       const p = await props.params;
+      const resolved = resolveCityFromSlug(p?.slug);
+      const cityName = (sp?.name as string) || resolved.name;
+      const stateName = sp?.admin1 !== undefined ? (sp.admin1 as string) : resolved.admin1;
+      const country = (sp?.country as string) || resolved.country;
+      const country_code = (sp?.country_code as string) || resolved.country_code;
+      const lat = parseFloat(sp?.lat as string) || resolved.lat;
+      const lon = parseFloat(sp?.lon as string) || resolved.lon;
+      const timezone = (sp?.timezone as string) || resolved.timezone || "auto";
 
-      let cName = (sp?.name as string);
-      let sName = (sp?.admin1 as string) || "";
-      if (!cName && p?.slug) {
-        const parts = p.slug.split("-");
-        if (parts.length > 1 && parts[parts.length - 1].length === 2) {
-          sName = sName || parts.pop()!.toUpperCase();
-        }
-        cName = parts.map((s: string) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
-      }
-
-      const cityName = cName || "Statesville";
-      const stateName = sName;
-      const lat = parseFloat(sp?.lat as string) || 35.7826;
-      const lon = parseFloat(sp?.lon as string) || -80.8873;
-      setSearchParams({ ...sp, name: cityName, admin1: stateName, lat, lon });
+      setSearchParams({ 
+        ...sp, 
+        name: cityName, 
+        admin1: stateName, 
+        country, 
+        country_code, 
+        lat, 
+        lon, 
+        timezone 
+      });
 
       // 1. Fetch Current Weather Forecast
       const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`);
@@ -129,14 +137,23 @@ export default function Page(props: {
                 Share insights
               </button>
               <button onClick={() => setActiveModal("facts")} className="bg-slate-950 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm">Fun Facts</button>
-              <button onClick={() => setActiveModal("about")} className="bg-slate-950 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm">About City</button>
+              <button 
+                onClick={() => {
+                  const el = document.getElementById("community-guide");
+                  if (el) el.scrollIntoView({ behavior: "smooth" });
+                  else setActiveModal("about");
+                }} 
+                className="bg-slate-950 text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm"
+              >
+                About City
+              </button>
             </div>
           </div>
         </div>
       </header>
 
       <main className={`max-w-[1400px] mx-auto w-full px-4 md:px-8 py-6 transition-all duration-500 ${(activeModal || improveOpen) ? 'blur-xl grayscale opacity-60 pointer-events-none' : ''}`}>
-        <div className="grid grid-cols-1 lg:grid-cols-[1.65fr_0.95fr] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.65fr_0.95fr] gap-8 items-start">
           <div className="flex flex-col gap-6 min-w-0">
             <CityClock 
               cityName={cityName} 
@@ -147,27 +164,32 @@ export default function Page(props: {
             />
             
             <WeatherPanels key={tempUnit} current={weather?.current} daily={weather?.daily} unitPreference={tempUnit} onUnitChange={(u) => setTempUnit(u)} />
-            <div className="w-full h-[45px] bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 font-bold text-[10px] tracking-widest uppercase">
-              AdSense: Under Weather
-            </div>
+            <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_WEATHER} />
+            
+            <CityNewsBlock cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} />
+
             {/* TEMPORARILY HIDDEN PER USER REQUEST
             <WebcamRows cityName={cityName} stateName={searchParams?.admin1 as string} countryName={searchParams?.country as string} />
-            <div className="w-full h-[45px] bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 font-bold text-[10px] tracking-widest uppercase">
-              AdSense: Under Webcams
-            </div>
+            <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_WEBCAMS} />
             */}
 
             <EventsBlock cityName={cityName} stateName={searchParams?.admin1} countryCode={searchParams?.country_code as string} lat={lat} lon={lon} />
-            <div className="w-full h-[45px] bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 font-bold text-[10px] tracking-widest uppercase">
-              AdSense: Under Events Calendar
-            </div>
+            <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_EVENTS} />
 
             <PhotoReel cityName={cityName} />
-            <div className="w-full h-[45px] bg-slate-200 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center text-slate-400 font-bold text-[10px] tracking-widest uppercase">
-              AdSense: Under Photo Reel
-            </div>
+            <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_PHOTO_REEL} />
 
-            {/* MOBILE ONLY: Right Rail placed directly under Photo Reel with Action Pill Buttons just above it */}
+            <CityReportBlock 
+              cityName={cityName} 
+              stateName={searchParams?.admin1} 
+              countryName={searchParams?.country} 
+              lat={lat} 
+              lng={lon} 
+              timezone={searchParams?.timezone as string}
+              onOpenInsights={() => setImproveOpen(true)}
+            />
+
+            {/* MOBILE ONLY: Right Rail placed directly under Photo Reel & Community Guide with Action Pill Buttons just above it */}
             <div className="block lg:hidden mt-2">
               <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
                 <button 
@@ -183,18 +205,22 @@ export default function Page(props: {
                   Fun Facts
                 </button>
                 <button 
-                  onClick={() => setActiveModal("about")} 
+                  onClick={() => {
+                    const el = document.getElementById("community-guide");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                    else setActiveModal("about");
+                  }} 
                   className="bg-slate-950 text-white px-5 py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all cursor-pointer shadow-sm"
                 >
                   About City
                 </button>
               </div>
 
-              <RightRail cityName={cityName} flagAtBottom={true} />
+              <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} flagAtBottom={true} />
             </div>
           </div>
           <aside className="hidden lg:block min-w-0">
-            <RightRail cityName={cityName} />
+            <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} />
           </aside>
         </div>
       </main>

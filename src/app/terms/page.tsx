@@ -1,18 +1,10 @@
 import React from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import CompliancePageLayout from "@/components/CompliancePageLayout";
 
 export default function TermsPage() {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8 bg-black min-h-screen text-slate-300">
-      <Link href="/" className="inline-flex items-center text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-white transition-colors mb-8">
-        <ArrowLeft size={14} className="mr-2" />
-        Back to Home
-      </Link>
-      
-      <h1 className="text-xl md:text-2xl font-black tracking-tight text-white uppercase">LiveTimeData Terms of Service</h1>
-      
-      <div className="mt-8 space-y-5 text-[12px] md:text-[13px] leading-relaxed">
+    <CompliancePageLayout title="LiveTimeData Terms of Service">
+      <div className="space-y-5 text-[12px] md:text-[13px] leading-relaxed">
         <p className="font-bold text-slate-400">Effective Date: August 29, 2026</p>
         <p>These Terms of Service ("Terms") govern your access to and use of LiveTimeData, including its websites, mobile experiences, pages, tools, features, content, submission forms, and related services (collectively, the "Service").</p>
         <p>LiveTimeData is currently operated from North Carolina, United States. "LiveTimeData," "we," "us," and "our" refer to the operator of the Service.</p>
@@ -246,6 +238,6 @@ export default function TermsPage() {
         <p>Questions about these Terms, Submissions, copyright, content concerns, corrections, or removal requests may be sent to:</p>
         <p className="font-bold">LiveTimeData<br />P.O. Box 5272<br />Statesville, NC 28687<br />United States<br /><br />Email: LiveTimeData@gmail.com</p>
       </div>
-    </div>
+    </CompliancePageLayout>
   );
 }

@@ -5,6 +5,40 @@ import { sql } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const US_STATE_ABBREVIATIONS: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  DC: "District of Columbia", PR: "Puerto Rico", VI: "Virgin Islands", GU: "Guam"
+};
+
+function getStateVariations(stateInput: string): string[] {
+  if (!stateInput) return [];
+  const cleaned = stateInput.trim();
+  const lower = cleaned.toLowerCase();
+  const variations = new Set<string>([lower]);
+
+  if (cleaned.length === 2) {
+    const full = US_STATE_ABBREVIATIONS[cleaned.toUpperCase()];
+    if (full) variations.add(full.toLowerCase());
+  } else {
+    for (const [abbr, full] of Object.entries(US_STATE_ABBREVIATIONS)) {
+      if (full.toLowerCase() === lower) {
+        variations.add(abbr.toLowerCase());
+        break;
+      }
+    }
+  }
+  return Array.from(variations);
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -16,6 +50,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: false, error: "City parameter is required." }, { status: 400 });
     }
 
+    const stateVars = getStateVariations(state);
     const latParam = searchParams.get("lat") ? parseFloat(searchParams.get("lat")!) : null;
     const lonParam = searchParams.get("lon") ? parseFloat(searchParams.get("lon")!) : null;
     const hasCoords = latParam !== null && !isNaN(latParam) && lonParam !== null && !isNaN(lonParam);
@@ -93,7 +128,7 @@ export async function GET(request: Request) {
           SELECT * FROM events 
           WHERE LOWER(city_name) LIKE LOWER(${city} || '%')
           AND (
-            LOWER(state_name) = LOWER(${state}) 
+            LOWER(state_name) = ANY(${stateVars})
             OR LOWER(state_name) LIKE LOWER('%' || ${state} || '%')
             OR LOWER(${state}) LIKE LOWER('%' || state_name || '%')
             OR state_name IS NULL 

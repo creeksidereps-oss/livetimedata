@@ -1,8 +1,12 @@
+import { ADS_ENABLED } from "@/config/adSlots";
+
 type AdPlaceholderProps = {
   label?: string;
 };
 
 export default function AdPlaceholder({ label = "Sponsored" }: AdPlaceholderProps) {
+  if (!ADS_ENABLED) return null;
+
   return (
     <section
       style={{

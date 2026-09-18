@@ -1,42 +1,34 @@
-"use client";
-
-import React, { useState } from "react";
-import FooterModal from "./modals/FooterModal";
+import React from "react";
+import Link from "next/link";
 
 export default function Footer() {
-  const [activeModal, setActiveModal] = useState<'about' | 'contact' | 'privacy' | 'legal' | 'terms' | null>(null);
-
   return (
-    <footer className="border-t border-white/10 bg-black mt-20">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 py-6">
+    <footer className="border-t border-white/10 bg-black mt-6 py-4">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-gray-500 font-medium">
+          <div className="text-xs text-gray-500 font-medium">
             © {new Date().getFullYear()} LiveTimeData
           </div>
 
-          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold">
-            <button onClick={() => setActiveModal('about')} className="text-gray-400 hover:text-white transition-colors">
+          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-semibold">
+            <Link href="/about" className="text-gray-400 hover:text-white transition-colors">
               About
-            </button>
-            <button onClick={() => setActiveModal('contact')} className="text-gray-400 hover:text-white transition-colors">
+            </Link>
+            <Link href="/contact" className="text-gray-400 hover:text-white transition-colors">
               Contact
-            </button>
-            <button onClick={() => setActiveModal('privacy')} className="text-gray-400 hover:text-white transition-colors">
+            </Link>
+            <Link href="/privacy" className="text-gray-400 hover:text-white transition-colors">
               Privacy
-            </button>
-            <button onClick={() => setActiveModal('legal')} className="text-gray-400 hover:text-white transition-colors">
+            </Link>
+            <Link href="/legal" className="text-gray-400 hover:text-white transition-colors">
               Legal
-            </button>
-            <button onClick={() => setActiveModal('terms')} className="text-gray-400 hover:text-white transition-colors">
+            </Link>
+            <Link href="/terms" className="text-gray-400 hover:text-white transition-colors">
               Terms
-            </button>
+            </Link>
           </nav>
         </div>
       </div>
-      
-      {activeModal && (
-        <FooterModal type={activeModal} onClose={() => setActiveModal(null)} />
-      )}
     </footer>
   );
 }

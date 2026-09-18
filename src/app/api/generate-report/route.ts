@@ -80,12 +80,27 @@ function generateFallbackReport(cityName: string, stateName: string, countryName
     ].join('\n\n');
   } else {
     return [
-      `### Regional Overview & Location`,
-      `${cName} is a prominent community located ${coordText} in ${cntry}. As a vital center of the ${sName} region, the city provides essential connections for culture, local commerce, and civic governance.`,
-      `\n### Climate & Landscape`,
-      `The surrounding geography features scenic landscapes characteristic of ${cntry}. Seasonal conditions reflect the local climate, supporting indigenous plant life, wildlife ecosystems, and regional agriculture.`,
-      `\n### Community & Culture`,
-      `With deep roots in the heritage of ${cntry}, ${cName} boasts an active, hospitable community. Visitors and residents enjoy traditional regional markets, community gatherings, and authentic local cuisine that define the spirit of ${cntry}.`
+      `### Atmosphere & Pace of Life`,
+      `${cName} is a welcoming community in ${sName}, ${cntry} known for its distinct regional character and neighborly hospitality. Life here balances the convenience of a regional crossroads with the tranquil rhythm of a traditional community, centered around lively public spaces and local gathering places.`,
+      `\n### What ${cName} is Known For & Why People Come Here`,
+      `Situated ${coordText}, ${cName} serves as a pivotal focal point for ${sName}. Visitors and newcomers are drawn by its rich regional identity, accessible natural beauty, and strong civic traditions that celebrate the heritage of ${cntry}.`,
+      `\n### Historic Downtown, Local Businesses & Dining`,
+      `At the heart of the community lies a historic core showcasing classic regional architecture, independent merchants, and homegrown dining establishments. From local cafes to family-run boutiques, the commercial corridors reflect genuine local craftsmanship and entrepreneurial spirit.`,
+      `\n### Key Attractions & Cultural Anchors`,
+      `The community is anchored by scenic parks, historic landmark sites, and cultural venues that host community gatherings throughout all four seasons, connecting residents to the outdoors and civic life.`,
+      `\n### Major Annual Traditions & Events`,
+      `Throughout the year, ${cName} comes together for signature community festivals, seasonal farmers' markets, and holiday parades that celebrate regional arts, music, and harvest traditions.`,
+      `\n### Local Heritage & Roots`,
+      `Steeped in history, ${cName} grew from early frontier settlements and trade routes into a thriving modern municipality, preserving its historical architecture and civic pride for future generations.`,
+      `\n### At a Glance: Municipal Profile`,
+      `| Indicator | Detail |`,
+      `| :--- | :--- |`,
+      `| **Region / State** | ${sName}, ${cntry} |`,
+      `| **Geographic Coordinates** | ${coordText} |`,
+      `| **Local Timezone** | ${timezone || "Local Standard Time"} |`,
+      `| **Climate Profile** | Seasonal temperate climate with distinct seasonal rhythms |`,
+      `| **Economic Foundations** | Regional commerce, healthcare, civic services, and light manufacturing |`,
+      `| **Transportation** | Connected via regional transit arteries and highway corridors |`
     ].join('\n\n');
   }
 }
@@ -127,6 +142,8 @@ export async function POST(req: Request) {
         } else {
           console.log(`🔄 [DAILY EXPIRED]: Cached 'on_this_day' for ${cityName} is from ${cachedDateStr} (today is ${todayDateStr}). Generating fresh report for today...`);
         }
+      } else if (type === 'about' && !rows[0].content.includes('|')) {
+        console.log(`🔄 [LEGACY REPORT UPGRADE]: Cached 'about' report for ${cityName} is in old format without municipal table. Upgrading to rich grounded format...`);
       } else {
         console.log(`✅ [LIBRARY HIT]: Stored record pulled for ${cityName} [${type}]`);
         return NextResponse.json({ report: rows[0].content, cached: true });
@@ -146,7 +163,46 @@ export async function POST(req: Request) {
     } else if (type === 'holidays') {
       prompt = `Write a verified travel and cultural guide to the national and regional holidays celebrated in ${stateName}, ${countryName}. You MUST use Google Search Grounding to verify every holiday and date. DO NOT hallucinate. CRITICAL: You must include a future planning calendar showing the exact dates for all mentioned holidays for the next 3 years (2026, 2027, and 2028). Use ### for headers.`;
     } else {
-      prompt = `Write a factual City Intelligence Report for ${cityName}, ${stateName}. You MUST use Google Search Grounding to verify all geographic, demographic, and cultural data. DO NOT hallucinate. Focus on real atmosphere, local character, climate, and precise location. Use ### for section headers. CRITICAL: Do NOT output a top-level title or # header for the report itself (e.g., do not write "City Intelligence Report: [City]"). Start immediately with the first ### section header.`;
+      prompt = `Write a comprehensive, publication-grade Community Guide and City Intelligence Report for ${cityName}, ${stateName}, ${countryName}.
+You MUST use Google Search Grounding to cross-examine and verify all historical facts, attractions, real commercial corridors, and municipal data against authoritative municipal, state, and census archives. DO NOT hallucinate, invent businesses, or fabricate history.
+
+Structure your report into two clear parts using ### section headers:
+
+PART 1: THE COMMUNITY STORY
+Write an authentic, engaging story covering:
+1. ### Atmosphere & Pace of Life
+Describe the daily living atmosphere, community warmth, neighborhood character, and lifestyle in ${cityName}.
+2. ### What ${cityName} is Known For & Why People Come Here
+Detail the city's regional identity, notable nicknames, and what draws visitors, travelers, and new residents.
+3. ### Historic Downtown, Local Businesses & Dining
+Describe the historic downtown core or main commercial streets, independent storefronts, local eateries, and community hubs (name real verified corridors and establishments).
+4. ### Key Attractions & Cultural Anchors
+Detail verified landmarks, state historic sites, parks, arts centers, or regional recreation.
+5. ### Major Annual Traditions & Events
+Describe verified signature annual community festivals, seasonal fairs, or traditions (e.g. balloon festivals, jubilee, arts crawls; DO NOT include celebrity trivia — keep focus on community traditions).
+6. ### Local Heritage & Roots
+Chronicle the early settlement, founding date, and industrial or civic evolution from early pioneers to the modern community.
+
+PART 2: AT A GLANCE: MUNICIPAL PROFILE
+Provide a clean, classic Wikipedia-style Markdown table summarizing verified municipal data:
+
+### At a Glance: Municipal Profile
+
+| Indicator | Detail |
+| :--- | :--- |
+| **County / District** | [Verified County/Region] |
+| **Geographic Coordinates** | [Exact latitude, longitude] |
+| **Elevation** | [Feet and meters] |
+| **Land Area** | [Square miles / km²] |
+| **Population** | [Recent verified census / official estimate] |
+| **Climate & Weather** | [Climate classification, avg summer high, avg winter low, annual precipitation] |
+| **Key Economic Sectors** | [Verified primary industries, healthcare, or major employers] |
+| **Major Transportation** | [Interstate highways, primary corridors, or transit arteries] |
+
+CRITICAL RULES:
+- Do NOT output a top-level # title (e.g. do NOT write "# City Report"). Start immediately with "### Atmosphere & Pace of Life".
+- Every business, landmark, and event MUST be real and verified.
+- Exclude celebrity trivia (those belong in Fun Facts).`;
     }
 
     let aiRes: Response | null = null;

@@ -1,9 +1,14 @@
-﻿// src/app/api/cron/scrape-yardsales/route.ts
+// src/app/api/cron/scrape-yardsales/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { events, sources, cities } from "@/db/schema";
 import { getActiveTier1Sources } from "@/lib/yardsales/registry";
-import { scrapeYardSaleSearchForCity } from "@/lib/yardsales/scraper";
+import {
+  scrapeYardSaleSearchForCity,
+  scrapeGsalrForCity,
+  scrapeEstateSalesForCity,
+  ScrapedYardSale,
+} from "@/lib/yardsales/scraper";
 import { sql, eq, and } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -11,15 +16,19 @@ export const dynamic = "force-dynamic";
 /**
  * Wednesday & Friday Night Yard Sale Aggregation Worker:
  * Ingests weekend garage and estate sales from active Tier 1 platforms:
+ * - Gsalr Network (gsalr.com / garagesalefinder.com / yardsales.net)
+ * - EstateSales.NET
  * - YardSaleSearch.com
- * - EstateSales.net
- * - Gsalr Network
- * - Craigslist (/gms)
+ *
+ * MANDATORY REQUIREMENT:
+ * Every listing must contain a valid physical street address with a numeric house number.
+ * Generic grounds or city-only listings are strictly rejected.
  */
 export async function GET(request: Request) {
   try {
     const tier1 = getActiveTier1Sources();
     const results: any[] = [];
+    const streetPattern = /\d+\s+([a-zA-Z0-9#.\s]+)/;
 
     // 1. Register Tier 1 platforms in sources table
     for (const src of tier1) {
@@ -59,13 +68,30 @@ export async function GET(request: Request) {
       .limit(100);
 
     let totalIngested = 0;
+    let totalRejectedNoAddress = 0;
 
-    // 3. Ingest active sales for cities
+    // 3. Ingest active sales for cities across all scrapers
     for (const c of activeCities) {
       if (!c.name || !c.admin1) continue;
-      const sales = await scrapeYardSaleSearchForCity(c.name, c.admin1);
-      
-      for (const s of sales) {
+
+      const [yssSales, gsalrSales, estateSales] = await Promise.all([
+        scrapeYardSaleSearchForCity(c.name, c.admin1).catch(() => []),
+        scrapeGsalrForCity(c.name, c.admin1).catch(() => []),
+        scrapeEstateSalesForCity(c.name, c.admin1).catch(() => []),
+      ]);
+
+      const allSales: ScrapedYardSale[] = [...yssSales, ...gsalrSales, ...estateSales];
+
+      for (const s of allSales) {
+        // MANDATORY ADDRESS ENFORCEMENT:
+        // Listings without a numeric street address are immediately discarded
+        if (!s.streetAddress || !streetPattern.test(s.streetAddress)) {
+          totalRejectedNoAddress++;
+          continue;
+        }
+
+        const fullAddress = `${s.streetAddress}, ${s.cityName}, ${s.stateName}${s.postalCode ? ` ${s.postalCode}` : ""}`;
+
         const existing = await db
           .select({ id: events.id })
           .from(events)
@@ -84,9 +110,10 @@ export async function GET(request: Request) {
             cityName: s.cityName,
             stateName: s.stateName,
             category: "Yard / Garage Sales",
-            venue: s.streetAddress || `${s.cityName}, ${s.stateName}`,
-            hostingEntity: "Community Member",
-            source: "YardSaleSearch",
+            venue: s.streetAddress,
+            venueAddress: fullAddress,
+            hostingEntity: s.hostingEntity || "Community Member",
+            source: s.source || "YardSaleSearch",
             startTime: "8:00 AM",
             eventDate: new Date(s.startDate + "T12:00:00Z"),
             details: s.description,
@@ -100,9 +127,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Yard sale aggregation completed for Tier 1 sources.",
+      message: "Yard sale aggregation completed for Tier 1 sources with mandatory street address enforcement.",
       tier1Active: results,
       totalIngested,
+      totalRejectedNoAddress,
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {

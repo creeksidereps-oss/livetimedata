@@ -1,17 +1,24 @@
 import CityDashboardClient from "../../city-dashboard/ui";
 import type { Metadata, ResolvingMetadata } from "next";
+import { resolveCityFromSlug } from "@/lib/cityResolver";
 
 export async function generateMetadata(
-  { searchParams }: { searchParams: Promise<{ [key: string]: string | string[] | undefined }> },
+  { params, searchParams }: { 
+    params: Promise<{ slug: string }>;
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+  },
   parent: ResolvingMetadata
 ): Promise<Metadata> {
+  const p = await params;
   const sp = await searchParams;
-  const cityName = (sp.name as string) || "Unknown City";
-  const stateName = sp.admin1 ? `, ${sp.admin1}` : "";
-  const countryName = sp.country ? `, ${sp.country}` : "";
+  const resolved = resolveCityFromSlug(p?.slug);
 
-  const title = `Local Time, Weather & Live Webcams in ${cityName}${stateName}${countryName} | LiveTimeData`;
-  const description = `Current local time, 14-day weather forecast, live webcams, and upcoming events for ${cityName}.`;
+  const cityName = (sp?.name as string) || resolved.name;
+  const stateName = sp?.admin1 ? `, ${sp.admin1}` : (resolved.admin1 ? `, ${resolved.admin1}` : "");
+  const countryName = sp?.country ? `, ${sp.country}` : (resolved.country ? `, ${resolved.country}` : "");
+
+  const title = `Local Weather Forecast & Live Conditions in ${cityName}${stateName}${countryName} | LiveTimeData`;
+  const description = `14-day weather forecast, current temperatures, wind, humidity, and atmospheric conditions for ${cityName}${countryName}. Real-time municipal intelligence.`;
 
   return {
     title,
@@ -29,7 +36,7 @@ export async function generateMetadata(
   };
 }
 
-export default function TimeSlugPage(props: {
+export default function WeatherSlugPage(props: {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {

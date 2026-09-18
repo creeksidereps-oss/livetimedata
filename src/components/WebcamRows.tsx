@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import AdPlaceholder from "./AdPlaceholder";
+import { ADS_ENABLED } from "@/config/adSlots";
 import { X } from "lucide-react";
 
 type RowItem = { id: string; title: string; subtitle: string; kind: string; slotIndex: number; imageUrl?: string; embedUrl?: string; };
@@ -310,11 +311,13 @@ export default function WebcamRows({ cityName, stateName, countryName, scraperVe
               </div>
               
               {/* Ad Space directly underneath pills */}
-              <div style={{ width: '100%', height: '42px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                  ADVERTISEMENT SPACE
-                </span>
-              </div>
+              {ADS_ENABLED && (
+                <div style={{ width: '100%', height: '42px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    ADVERTISEMENT SPACE
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>

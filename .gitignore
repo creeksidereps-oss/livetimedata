@@ -50,5 +50,6 @@ next-env.d.ts
 !vercel.json
 /scripts/
 /scrapers/
+/scratch/
 /brain/
 /data/

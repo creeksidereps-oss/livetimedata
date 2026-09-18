@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import { X, Database, Loader2, Sparkles, Calendar, Star } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import AdSlot from "@/components/AdSlot";
+import { AD_SLOTS } from "@/config/adSlots";
 
 interface InfoModalProps {
   type: string;
@@ -132,12 +134,8 @@ export default function InfoModal({ type, cityName, stateName, countryName, time
             </button>
           </div>
           
-          {/* Ad Space directly underneath pills */}
-          <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-              ADVERTISEMENT SPACE
-            </span>
-          </div>
+          {/* Ad Slot */}
+          <AdSlot slot={AD_SLOTS.MODAL_INFO_BOTTOM} />
         </div>
       </div>
 

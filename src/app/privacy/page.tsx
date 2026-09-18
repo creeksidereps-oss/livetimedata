@@ -1,18 +1,10 @@
 import React from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import CompliancePageLayout from "@/components/CompliancePageLayout";
 
 export default function PrivacyPage() {
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8 bg-black min-h-screen text-slate-300">
-      <Link href="/" className="inline-flex items-center text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-white transition-colors mb-8">
-        <ArrowLeft size={14} className="mr-2" />
-        Back to Home
-      </Link>
-      
-      <h1 className="text-xl md:text-2xl font-black tracking-tight text-white uppercase">LiveTimeData Privacy Policy</h1>
-      
-      <div className="mt-8 space-y-5 text-[12px] md:text-[13px] leading-relaxed">
+    <CompliancePageLayout title="LiveTimeData Privacy Policy">
+      <div className="space-y-5 text-[12px] md:text-[13px] leading-relaxed">
         <p className="font-bold text-slate-400">Effective Date: August 29, 2026</p>
         <p>This Privacy Policy explains how LiveTimeData ("LiveTimeData," "we," "us," or "our") collects, uses, stores, discloses, and otherwise processes information when you access or use LiveTimeData websites, mobile web experiences, submission forms, features, content, communications, and related services (collectively, the "Service").</p>
         <p>LiveTimeData is currently operated from North Carolina, United States.</p>
@@ -208,6 +200,15 @@ export default function PrivacyPage() {
         <p>Where applicable law requires consent or an opportunity to opt out of certain advertising-related processing, LiveTimeData will provide or support an appropriate mechanism.</p>
         <p>Advertisements, affiliate links, and sponsored content may lead to third-party websites or services governed by their own privacy practices.</p>
 
+        <h4 className="font-bold text-slate-300 mt-4 mb-2">GOOGLE ADSENSE AND THIRD-PARTY ADVERTISING VENDORS</h4>
+        <p>LiveTimeData uses Google AdSense and may partner with other third-party advertising networks to serve advertisements when you visit our website.</p>
+        <ul className="list-disc pl-6 space-y-1.5">
+          <li>Third-party vendors, including Google, use cookies (including the DoubleClick cookie or similar advertising identifiers) to serve ads based on a user's prior visits to LiveTimeData or other websites on the Internet.</li>
+          <li>Google's use of advertising cookies enables it and its partners to serve ads to users based on their visits to LiveTimeData and/or other sites across the Internet.</li>
+          <li>Users may opt out of personalized advertising by visiting <a href="https://www.google.com/settings/ads" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">Google Ads Settings</a>.</li>
+          <li>Alternatively, users may opt out of a third-party vendor's use of cookies for personalized advertising by visiting the Network Advertising Initiative consumer opt-out page at <a href="https://optout.networkadvertising.org/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">optout.networkadvertising.org</a> or the Digital Advertising Alliance choice tool at <a href="https://www.aboutads.info/choices/" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">aboutads.info/choices</a>.</li>
+        </ul>
+
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">8. COMMUNICATIONS AND EMAIL</h3>
         <p>If you provide an email address or other contact information to LiveTimeData, we may use it to:</p>
         <ul className="list-disc pl-6 space-y-1.5">
@@ -384,6 +385,6 @@ export default function PrivacyPage() {
         <p>For privacy questions, privacy-rights requests, concerns about personal information, or other privacy matters, contact:</p>
         <p className="font-bold">LiveTimeData<br />P.O. Box 5272<br />Statesville, NC 28687<br />United States<br /><br />Email: LiveTimeData@gmail.com</p>
       </div>
-    </div>
+    </CompliancePageLayout>
   );
 }

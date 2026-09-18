@@ -45,16 +45,6 @@ export default function HomePage() {
             {topCities.map((city, idx) => (
               <React.Fragment key={idx}>
                 <CityGridCard city={city} />
-                
-                {/* Ad Placeholder every 3rd row (9th item) */}
-                {(idx + 1) % 9 === 0 && (
-                  <div className="col-span-full w-full h-[48px] bg-[#111] border border-white/10 rounded-2xl flex items-center justify-center relative overflow-hidden group my-2 shadow-inner">
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-[100%] group-hover:animate-[shimmer_2s_infinite]" />
-                    <span className="text-[10px] font-bold text-white/20 uppercase tracking-[0.3em]">
-                      Advertisement Space
-                    </span>
-                  </div>
-                )}
               </React.Fragment>
             ))}
           </div>

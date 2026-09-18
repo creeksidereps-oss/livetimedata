@@ -105,6 +105,7 @@ export const events = pgTable("events", {
   franchiseId: integer("franchise_id"),
   category: text("category").notNull(), 
   venue: text("venue").notNull(),
+  venueAddress: text("venue_address"),
   hostingEntity: text("hosting_entity"), // Sponsor, presenter, or organizer details profile
   source: text("source").default("Internal Submission"), // Ingestion track ledger identifier
   startTime: text("start_time").notNull(), 

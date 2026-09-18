@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ADS_ENABLED } from "@/config/adSlots";
 
 export default function PhotoSubmissionModal({ isOpen, onClose, cityName }: { isOpen: boolean, onClose: () => void, cityName: string }) {
   const [showLegalModal, setShowLegalModal] = useState(false);
@@ -456,11 +457,13 @@ export default function PhotoSubmissionModal({ isOpen, onClose, cityName }: { is
             </div>
             
             {/* Ad Space directly underneath pills */}
-            <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                ADVERTISEMENT SPACE
-              </span>
-            </div>
+            {ADS_ENABLED && (
+              <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  ADVERTISEMENT SPACE
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

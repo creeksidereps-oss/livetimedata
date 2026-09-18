@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { X, Send, Loader2, CheckCircle2, ShieldAlert } from "lucide-react";
+import { ADS_ENABLED } from "@/config/adSlots";
 
 interface ImproveFormModalProps {
   isOpen: boolean;
@@ -374,11 +375,13 @@ export default function ImproveFormModal({
           </div>
           
           {/* Ad Space directly underneath pills */}
-          <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-              ADVERTISEMENT SPACE
-            </span>
-          </div>
+          {ADS_ENABLED && (
+            <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                ADVERTISEMENT SPACE
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -425,8 +425,11 @@ function categoryAccent(category: CategoryKey) {
   }
 }
 
+import { ADS_ENABLED } from "@/config/adSlots";
+
 // Discreet, un-flamboyant ad frame at the bottom of the popups to maximize revenue beautifully
 function DiscreteModalAdSlot() {
+  if (!ADS_ENABLED) return null;
   return (
     <div style={{ width: '100%', height: '45px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
@@ -445,8 +448,9 @@ function buildTenDayBucketData(rawEvents: DBEventItem[]): DayBucket[] {
     const iso = makeIso(date);
 
     const filteredDbItems = rawEvents.filter((e) => {
-      if (!e.eventDate) return false;
-      return e.eventDate.slice(0, 10) === iso;
+      const d = e.eventDate || (e as any).event_date;
+      if (!d) return false;
+      return d.slice(0, 10) === iso;
     });
 
     const parsedItems: EventItem[] = filteredDbItems.map((e) => ({
@@ -549,12 +553,16 @@ function EventCard({
 
   return (
     <div
+      onClick={onClick}
       style={{
         border: `1px solid ${accent}40`,
         borderRadius: "12px",
         padding: "10px",
         background: "#fff",
+        cursor: "pointer",
+        transition: "all 0.15s ease",
       }}
+      className="hover:border-slate-400 hover:shadow-sm"
     >
       <div
         style={{
@@ -595,17 +603,26 @@ function EventCard({
                 {event.cityName}
               </span>
             )}
-            {event.venue_address && (
-              <div style={{ color: "#64748b", fontSize: "10.5px", marginTop: "2px" }}>
-                📍 {event.venue_address}
-              </div>
-            )}
+            {(() => {
+              const cardAddress = (event.venue_address && event.venue_address !== "null" && event.venue_address !== "undefined")
+                ? event.venue_address
+                : (/^\d+\s+/.test(event.venue || "") ? event.venue : null);
+              if (!cardAddress || cardAddress === event.venue) return null;
+              return (
+                <div style={{ color: "#64748b", fontSize: "10.5px", marginTop: "2px" }}>
+                  📍 {cardAddress}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
         <button
           type="button"
-          onClick={onClick}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
           style={{
             border: "1px solid #d1d5db",
             background: "#fff",
@@ -633,7 +650,8 @@ export function OverlayModal({
   onClose,
   children,
   noScroll,
-  noPadding
+  noPadding,
+  zIndexBase = 99999
 }: {
   title: string;
   subtitle?: string;
@@ -643,6 +661,7 @@ export function OverlayModal({
   children: React.ReactNode;
   noScroll?: boolean;
   noPadding?: boolean;
+  zIndexBase?: number;
 }) {
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -663,7 +682,7 @@ export function OverlayModal({
           background: "rgba(15,23,42,0.6)",
           backdropFilter: "blur(4px)",
           WebkitBackdropFilter: "blur(4px)",
-          zIndex: 99999,
+          zIndex: zIndexBase,
         }}
       />
 
@@ -671,7 +690,7 @@ export function OverlayModal({
         style={{
           position: "fixed",
           inset: 0,
-          zIndex: 999999,
+          zIndex: zIndexBase + 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -848,7 +867,19 @@ function getCuratedSaleInfo(ev: EventItem): { url: string; label: string } | nul
   return null;
 }
 
-function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventItem; cityName: string; onClose: () => void; setIframeUrl: (url: string) => void }) {
+function InlineEventModal({ 
+  ev, 
+  cityName, 
+  onClose, 
+  setIframeUrl,
+  zIndexBase = 1000100
+}: { 
+  ev: EventItem; 
+  cityName: string; 
+  onClose: () => void; 
+  setIframeUrl: (url: string) => void;
+  zIndexBase?: number;
+}) {
   const [flyerError, setFlyerError] = useState(false);
   const [liveScrapedUrl, setLiveScrapedUrl] = useState<string | null>(null);
   const [liveScrapedError, setLiveScrapedError] = useState(false);
@@ -957,6 +988,7 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
     <OverlayModal
       title={`${ev.cityName || cityName} - ${ev.title}`}
       onClose={onClose}
+      zIndexBase={zIndexBase}
       footerActions={
         <>
           {(ev.registration_url || ev.affiliateUrl) && (
@@ -1049,18 +1081,24 @@ function InlineEventModal({ ev, cityName, onClose, setIframeUrl }: { ev: EventIt
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               📍 <span style={{ color: "#0f172a" }}>{ev.venue}</span>{ev.cityName ? ` · ${ev.cityName}` : ''}
             </div>
-            {ev.venue_address && (
-              <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 500, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", paddingLeft: "24px" }}>
-                <span>{ev.venue_address}</span>
-                <button
-                  type="button"
-                  onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(`${ev.venue} ${ev.venue_address} ${ev.cityName || ''}`.trim())}&output=embed`)}
-                  style={{ background: "none", border: "none", padding: 0, color: "#4f46e5", fontWeight: 700, textDecoration: "underline", fontSize: "12px", cursor: "pointer" }}
-                >
-                  Map & Directions &rarr;
-                </button>
-              </div>
-            )}
+            {(() => {
+              const displayAddress = (ev.venue_address && ev.venue_address !== "null" && ev.venue_address !== "undefined")
+                ? ev.venue_address
+                : (/^\d+\s+/.test(ev.venue || "") ? `${ev.venue}${ev.cityName ? `, ${ev.cityName}` : ""}` : null);
+              const mapQuery = displayAddress || `${ev.venue} ${ev.cityName || ""}`.trim();
+              return (
+                <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 500, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", paddingLeft: "24px" }}>
+                  {displayAddress && displayAddress !== ev.venue && <span>{displayAddress}</span>}
+                  <button
+                    type="button"
+                    onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`)}
+                    style={{ background: "none", border: "none", padding: 0, color: "#4f46e5", fontWeight: 700, textDecoration: "underline", fontSize: "12px", cursor: "pointer" }}
+                  >
+                    Map & Directions &rarr;
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -1348,11 +1386,164 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
   const [categoryModalKey, setCategoryModalKey] = useState<CategoryKey | null>(null);
   const [activeDayCategory, setActiveDayCategory] = useState<CategoryKey | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
+  const [selectedModalEvent, setSelectedModalEvent] = useState<EventItem | null>(null);
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
+
+  const toModalEventItem = (event: any): EventItem => ({
+    id: event.id,
+    title: event.title || "",
+    source: event.source || "Database",
+    time: event.time || event.startTime || (event as any).start_time || "Time TBA",
+    venue: event.venue || "Local Venue",
+    categories: Array.isArray(event.categories) && event.categories.length > 0 
+      ? event.categories 
+      : normalizeCategories(event.category || (event as any).category_name || "", event.title || ""),
+    details: event.details || "",
+    affiliateUrl: event.affiliateUrl || (event as any).affiliate_url,
+    venue_address: event.venue_address,
+    hosting_entity: event.hosting_entity,
+    contact_email: event.contact_email,
+    contact_phone: event.contact_phone,
+    official_info_url: event.official_info_url,
+    social_urls: event.social_urls,
+    registration_url: event.registration_url,
+    event_flyer_url: event.event_flyer_url,
+    eventDate: event.eventDate || (event as any).event_date,
+    cityName: event.cityName || (event as any).city_name
+  });
+
+  // Dedicated Event Search Engine State
+  const [eventSearchInput, setEventSearchInput] = useState("");
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchSubmittedQuery, setSearchSubmittedQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResults, setSearchResults] = useState<{
+    query: string;
+    isEntity: boolean;
+    entity: any;
+    banned?: boolean;
+    message?: string;
+    matchedCategories: string[];
+    localEvents: EventItem[];
+    allEvents: EventItem[];
+  } | null>(null);
+  const [huntLoading, setHuntLoading] = useState(false);
+  const [huntMessage, setHuntMessage] = useState<string | null>(null);
+  const [searchUsedNearby, setSearchUsedNearby] = useState(false);
 
   const parts = useMemo(() => cityName.split(","), [cityName]);
   const citySegment = parts[0]?.trim() || cityName;
   const stateSegment = incomingStateName || parts[1]?.trim() || "";
+
+  async function executeEventSearch(queryToSearch: string, useNearby: boolean = showNearby) {
+    const q = queryToSearch.trim();
+    if (!q) return;
+
+    setSearchSubmittedQuery(q);
+    setIsSearchOpen(true);
+    setSearchLoading(true);
+    setHuntMessage(null);
+    setSearchUsedNearby(useNearby);
+
+    try {
+      const queryLat = (typeof lat === 'number' && typeof lon === 'number') ? `&lat=${lat}&lon=${lon}` : '';
+      const res = await fetch(
+        `/api/events/search?q=${encodeURIComponent(q)}&city=${encodeURIComponent(citySegment)}&state=${encodeURIComponent(stateSegment)}${useNearby ? '&nearby=true' : ''}${queryLat}`
+      );
+      const data = await res.json();
+      if (data.ok) {
+        const allEvs = data.allEvents || [];
+        const localEvs = data.localEvents || [];
+
+        // AUTOMATED INGESTION FIRE:
+        // If 0 events found and query is not banned, AUTOMATICALLY launch web spider!
+        if (allEvs.length === 0 && !data.banned) {
+          setSearchLoading(false);
+          setHuntLoading(true);
+          setHuntMessage(`⚡ Automated Ingestion Active: Scanning web & tour calendars for "${q}"...`);
+
+          try {
+            const huntRes = await fetch('/api/events/discover-entity', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                query: q,
+                city: citySegment,
+                state: stateSegment
+              })
+            });
+            const huntData = await huntRes.json();
+            if (huntData.ok && huntData.discovered) {
+              setHuntMessage(`Discovered ${huntData.entity?.name || q}! Ingested into schedule.`);
+              // Re-query search endpoint to load freshly ingested events!
+              const refetchRes = await fetch(
+                `/api/events/search?q=${encodeURIComponent(q)}&city=${encodeURIComponent(citySegment)}&state=${encodeURIComponent(stateSegment)}${useNearby ? '&nearby=true' : ''}${queryLat}`
+              );
+              const refetchData = await refetchRes.json();
+              if (refetchData.ok) {
+                setSearchResults({
+                  query: refetchData.query || q,
+                  isEntity: refetchData.isEntity || true,
+                  entity: refetchData.entity || huntData.entity,
+                  banned: false,
+                  matchedCategories: refetchData.matchedCategories || [],
+                  localEvents: (refetchData.localEvents || []).map((e: any) => ({
+                    ...e,
+                    categories: normalizeCategories(e.category, e.title)
+                  })),
+                  allEvents: (refetchData.allEvents || []).map((e: any) => ({
+                    ...e,
+                    categories: normalizeCategories(e.category, e.title)
+                  }))
+                });
+                fetchEvents(); // Refresh city events
+                setHuntLoading(false);
+                return;
+              }
+            } else {
+              setHuntMessage(huntData.message || `No confirmed official tour calendar found for "${q}".`);
+            }
+          } catch (huntErr) {
+            console.warn("Automated discovery error:", huntErr);
+            setHuntMessage("Automated web discovery scan encountered a network timeout.");
+          } finally {
+            setHuntLoading(false);
+          }
+        }
+
+        setSearchResults({
+          query: data.query || q,
+          isEntity: data.isEntity || false,
+          entity: data.entity || null,
+          banned: data.banned || false,
+          message: data.message,
+          matchedCategories: data.matchedCategories || [],
+          localEvents: localEvs.map((e: any) => ({
+            ...e,
+            categories: normalizeCategories(e.category, e.title)
+          })),
+          allEvents: allEvs.map((e: any) => ({
+            ...e,
+            categories: normalizeCategories(e.category, e.title)
+          }))
+        });
+      } else {
+        setSearchResults({
+          query: q,
+          isEntity: false,
+          entity: null,
+          matchedCategories: [],
+          localEvents: [],
+          allEvents: [],
+          message: data.error || "Search error"
+        });
+      }
+    } catch (err: any) {
+      console.error("Search failed:", err);
+    } finally {
+      setSearchLoading(false);
+    }
+  }
 
   async function fetchEvents() {
     setLoading(true);
@@ -1478,9 +1669,11 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     setCalendarOpen(false);
     setCategoryModalKey(null);
     setSubmitOpen(false);
+    setIsSearchOpen(false);
     setDayModalIso(iso);
     setActiveDayCategory(category ?? day?.categories[0]?.key ?? null);
     setOpenEventId(null);
+    setSelectedModalEvent(null);
   }
 
   function closeAllModals() {
@@ -1489,7 +1682,11 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     setCategoryModalKey(null);
     setActiveDayCategory(null);
     setOpenEventId(null);
+    setSelectedModalEvent(null);
     setSubmitOpen(false);
+    setIsSearchOpen(false);
+    setHuntLoading(false);
+    setHuntMessage(null);
     setSubmitStep("form");
     setFormMessage(null);
     setIframeUrl(null);
@@ -1620,7 +1817,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           flexWrap: "wrap",
         }}
       >
-        <div>
+        <div style={{ width: '100%' }}>
           <h2
             style={{
               fontSize: "16px",
@@ -1633,82 +1830,164 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           >
             CITY EVENTS {citySegment.toUpperCase()}{showNearby ? " - NEARBY" : ""}
           </h2>
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "#6b7280",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-              marginTop: "2px",
-            }}
-          >
-            {loading ? "Syncing data matrix..." : "10-day window"}
-          </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', alignItems: 'center', width: '100%' }}>
-          <button
-            onClick={() => setCalendarOpen(true)}
-            style={{
-              width: "100%",
-              background: "#fff",
-              border: "1px solid #111827",
-              borderRadius: "999px",
-              padding: "6px 14px",
-              fontSize: "10px",
-              fontWeight: 700,
-              color: "#111827",
-              textTransform: "uppercase",
-              cursor: "pointer",
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', width: '100%', marginTop: '4px' }}>
+          {/* Dedicated Event Search Input */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeEventSearch(eventSearchInput);
             }}
+            style={{ flex: '1 1 220px', minWidth: '180px', position: 'relative' }}
           >
-            Calendar View
-          </button>
+            <input
+              id="event-search-input-field"
+              type="text"
+              value={eventSearchInput}
+              onChange={(e) => setEventSearchInput(e.target.value)}
+              placeholder="Search artist, venue, food truck, keyword..."
+              style={{
+                width: "100%",
+                background: "#fff",
+                border: "1px solid #111827",
+                borderRadius: "8px",
+                padding: "6px 54px 6px 14px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#111827",
+                outline: "none",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                right: "8px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                display: "flex",
+                alignItems: "center",
+                gap: "2px",
+              }}
+            >
+              {eventSearchInput ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEventSearchInput("");
+                    const el = document.getElementById("event-search-input-field") as HTMLInputElement;
+                    if (el) el.focus();
+                  }}
+                  aria-label="Clear search"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "1px 4px",
+                    fontSize: "15px",
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    color: "#6b7280",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title="Clear search"
+                >
+                  ×
+                </button>
+              ) : null}
 
-          {/* Pill Toggle for Nearby */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", border: "1px solid #111827", borderRadius: "999px", overflow: "hidden", width: "100%" }}>
-            <button 
-              onClick={() => setShowNearby(false)}
-              style={{
-                background: !showNearby ? "#111827" : "#fff",
-                color: !showNearby ? "#fff" : "#111827",
-                padding: "5px 14px", fontSize: "10px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+              <button
+                type="submit"
+                aria-label="Search"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "2px",
+                  display: "flex",
+                  alignItems: "center",
+                  color: "#111827"
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </button>
+            </div>
+          </form>
+
+          {/* Action Pills */}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'nowrap' }}>
+            <button
+              type="button"
+              onClick={() => {
+                closeAllModals();
+                setSubmitStep("form");
+                setSubmitOpen(true);
               }}
-            >Local</button>
-            <button 
-              onClick={() => setShowNearby(true)}
               style={{
-                background: showNearby ? "#111827" : "#fff",
-                color: showNearby ? "#fff" : "#111827",
-                padding: "5px 14px", fontSize: "10px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                border: "none",
+                background: "#111827",
+                color: "#fff",
+                borderRadius: "999px",
+                padding: "6px 12px",
+                fontSize: "10px",
+                fontWeight: 700,
+                cursor: "pointer",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                whiteSpace: "nowrap"
               }}
-            >Nearby</button>
+            >
+              Submit Event
+            </button>
+
+            {/* Pill Toggle for Nearby */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", border: "1px solid #111827", borderRadius: "999px", overflow: "hidden" }}>
+              <button 
+                type="button"
+                onClick={() => setShowNearby(false)}
+                style={{
+                  background: !showNearby ? "#111827" : "#fff",
+                  color: !showNearby ? "#fff" : "#111827",
+                  padding: "5px 12px", fontSize: "10px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >Local</button>
+              <button 
+                type="button"
+                onClick={() => setShowNearby(true)}
+                style={{
+                  background: showNearby ? "#111827" : "#fff",
+                  color: showNearby ? "#fff" : "#111827",
+                  padding: "5px 12px", fontSize: "10px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >Nearby</button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCalendarOpen(true)}
+              style={{
+                background: "#fff",
+                border: "1px solid #111827",
+                borderRadius: "999px",
+                padding: "6px 12px",
+                fontSize: "10px",
+                fontWeight: 700,
+                color: "#111827",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                whiteSpace: "nowrap"
+              }}
+            >
+              Calendar View
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              closeAllModals();
-              setSubmitStep("form");
-              setSubmitOpen(true);
-            }}
-            style={{
-              width: "100%",
-              border: "none",
-              background: "#111827",
-              color: "#fff",
-              borderRadius: "999px",
-              padding: "5px 10px",
-              fontSize: "11px",
-              fontWeight: 700,
-              cursor: "pointer",
-              textTransform: "uppercase",
-              letterSpacing: "0.05em"
-            }}
-          >
-            Submit Event
-          </button>
         </div>
       </div>
 
@@ -1951,9 +2230,12 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 background: "#f1f5f9",
                 borderRadius: "10px",
                 border: "1px solid #e2e8f0",
+                flexShrink: 0,
+                minHeight: "42px",
+                scrollbarWidth: "thin",
               }}
             >
-              <span style={{ fontSize: "10px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: "10px", fontWeight: 800, color: "#64748b", textTransform: "uppercase", whiteSpace: "nowrap", flexShrink: 0 }}>
                 Filter City:
               </span>
               <button
@@ -1969,16 +2251,18 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                   border: "none",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 All Nearby ({dbEvents.filter(e => (e.eventDate || (e as any).event_date || "").slice(0, 10) === selectedDay.iso).length})
               </button>
               {nearbyCities.map(({ name }) => {
                 const count = dbEvents.filter(
-                  e => (e.cityName || (e as any).city_name) === name && (e.eventDate || (e as any).event_date || "").slice(0, 10) === selectedDay.iso
+                  e => ((e.cityName || (e as any).city_name) || "").trim().toLowerCase() === name.trim().toLowerCase() && 
+                       (e.eventDate || (e as any).event_date || "").slice(0, 10) === selectedDay.iso
                 ).length;
                 if (count === 0) return null;
-                const isSelected = selectedNearbyCity === name;
+                const isSelected = selectedNearbyCity && selectedNearbyCity.trim().toLowerCase() === name.trim().toLowerCase();
                 return (
                   <button
                     key={name}
@@ -1994,6 +2278,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                       border: "none",
                       cursor: "pointer",
                       whiteSpace: "nowrap",
+                      flexShrink: 0,
                     }}
                   >
                     {name} ({count})
@@ -2005,7 +2290,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
 
           {selectedDay.categories.length ? (
             <>
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "10px", flexShrink: 0 }}>
                 {selectedDay.categories.map((group) => {
                   const active = group.key === effectiveActiveCategory;
                   return (
@@ -2039,7 +2324,10 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                     <EventCard
                       key={event.id}
                       event={event}
-                      onClick={() => setOpenEventId(event.id)}
+                      onClick={() => {
+                        setSelectedModalEvent(toModalEventItem(event));
+                        setOpenEventId(String(event.id));
+                      }}
                     />
                   ))}
                 </div>
@@ -2156,6 +2444,8 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 paddingBottom: "8px",
                 marginBottom: "12px",
                 borderBottom: "1px solid #f1f5f9",
+                flexShrink: 0,
+                scrollbarWidth: "thin",
               }}
             >
               <button
@@ -2171,16 +2461,18 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                   border: "none",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 All Nearby ({dbEvents.filter(e => normalizeCategories(e.category, e.title).includes(categoryModalKey)).length})
               </button>
               {nearbyCities.map(({ name }) => {
                 const count = dbEvents.filter(
-                  e => (e.cityName || (e as any).city_name) === name && normalizeCategories(e.category, e.title).includes(categoryModalKey)
+                  e => ((e.cityName || (e as any).city_name) || "").trim().toLowerCase() === name.trim().toLowerCase() && 
+                       normalizeCategories(e.category, e.title).includes(categoryModalKey)
                 ).length;
                 if (count === 0) return null;
-                const isSelected = selectedNearbyCity === name;
+                const isSelected = selectedNearbyCity && selectedNearbyCity.trim().toLowerCase() === name.trim().toLowerCase();
                 return (
                   <button
                     key={name}
@@ -2196,6 +2488,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                       border: "none",
                       cursor: "pointer",
                       whiteSpace: "nowrap",
+                      flexShrink: 0,
                     }}
                   >
                     {name} ({count})
@@ -2210,7 +2503,10 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 <EventCard
                   key={`${categoryModalKey}-${event.id}`}
                   event={event}
-                  onClick={() => setOpenEventId(event.id)}
+                  onClick={() => {
+                    setSelectedModalEvent(toModalEventItem(event));
+                    setOpenEventId(String(event.id));
+                  }}
                 />
               ))}
             </div>
@@ -2223,16 +2519,30 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       ) : null}
 
       {/* Pop-up Overlay Container 4: Event Details Modal */}
-      {openEventId && (() => {
-        let ev: any = allEvents.find(e => String(e.id) === String(openEventId));
-        if (!ev) {
-          const rawEv = dbEvents.find(e => String(e.id) === String(openEventId));
-          if (rawEv) {
-            ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category, rawEv.title), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName } as EventItem;
+      {(selectedModalEvent || openEventId) && (() => {
+        let ev: any = selectedModalEvent;
+        if (!ev && openEventId) {
+          ev = allEvents.find(e => String(e.id) === String(openEventId));
+          if (!ev) {
+            const rawEv = dbEvents.find(e => String(e.id) === String(openEventId));
+            if (rawEv) {
+              ev = toModalEventItem(rawEv);
+            }
           }
         }
         if (!ev) return null;
-        return <InlineEventModal ev={ev} cityName={cityName} onClose={() => setOpenEventId(null)} setIframeUrl={setIframeUrl} />;
+        return (
+          <InlineEventModal 
+            ev={ev} 
+            cityName={ev.cityName || cityName} 
+            onClose={() => {
+              setSelectedModalEvent(null);
+              setOpenEventId(null);
+            }} 
+            setIframeUrl={setIframeUrl} 
+            zIndexBase={1000100}
+          />
+        );
       })()}
 
       {/* Pop-up Overlay Container 5: Form Entry Module */}
@@ -2821,6 +3131,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
               footerActions={eventFooterActions}
               noScroll={true}
               noPadding={true}
+              zIndexBase={1000200}
             >
               <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
                 <iframe
@@ -2844,6 +3155,283 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           );
         })()
       ) : null}
+
+      {/* Pop-up Overlay Container: Event Search Results Modal */}
+      {isSearchOpen && (
+        <OverlayModal
+          title={`Event Search: "${searchSubmittedQuery}"`}
+          subtitle={
+            searchResults?.isEntity && searchResults.entity
+              ? `${searchResults.entity.name} · ${(searchResults.entity.entity_type || 'performer').toUpperCase()} (${searchResults.entity.city_name || citySegment}, ${searchResults.entity.state_name || stateSegment})`
+              : `Results for "${searchSubmittedQuery}" in ${citySegment}`
+          }
+          onClose={closeAllModals}
+          headerAction={
+            <div style={{ display: "flex", border: "1px solid #111827", borderRadius: "6px", overflow: "hidden" }}>
+              <button 
+                type="button"
+                onClick={() => executeEventSearch(searchSubmittedQuery, false)}
+                style={{
+                  background: !searchUsedNearby ? "#111827" : "#fff",
+                  color: !searchUsedNearby ? "#fff" : "#111827",
+                  padding: "4px 12px", fontSize: "9px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >Local</button>
+              <button 
+                type="button"
+                onClick={() => executeEventSearch(searchSubmittedQuery, true)}
+                style={{
+                  background: searchUsedNearby ? "#111827" : "#fff",
+                  color: searchUsedNearby ? "#fff" : "#111827",
+                  padding: "4px 12px", fontSize: "9px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >Nearby</button>
+            </div>
+          }
+        >
+          {searchLoading ? (
+            <div style={{ padding: "40px 20px", textAlign: "center", color: "#64748b" }}>
+              <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "8px" }}>
+                Searching events database...
+              </div>
+              <div style={{ fontSize: "12px" }}>Scanning local schedule, artist tours, venues, and categories...</div>
+            </div>
+          ) : searchResults?.banned ? (
+            <div style={{ padding: "30px 20px", textAlign: "center", color: "#b91c1c" }}>
+              <div style={{ fontSize: "14px", fontWeight: 700, marginBottom: "6px" }}>
+                Notice
+              </div>
+              <div style={{ fontSize: "12px", color: "#4b5563" }}>
+                {searchResults.message || "This search query could not be located or is restricted from public directory listings."}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {/* Entity Highlight Card if matched */}
+              {searchResults?.isEntity && searchResults.entity && (
+                <div style={{
+                  background: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "8px"
+                }}>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: 800, color: "#166534" }}>
+                      🏷️ {searchResults.entity.name}
+                    </div>
+                    <div style={{ fontSize: "11px", color: "#15803d", marginTop: "2px" }}>
+                      {(searchResults.entity.entity_type || "performer").toUpperCase()} · {searchResults.entity.city_name ? `${searchResults.entity.city_name}, ${searchResults.entity.state_name}` : "Directory Entity"}
+                    </div>
+                  </div>
+                  {searchResults.entity.website_url && (
+                    <a
+                      href={searchResults.entity.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#166534",
+                        textDecoration: "underline",
+                        padding: "4px 8px",
+                        background: "#dcfce7",
+                        borderRadius: "6px"
+                      }}
+                    >
+                      Official Page ↗
+                    </a>
+                  )}
+                </div>
+              )}
+
+              {/* SECTION 1: Local Chronological Events */}
+              <div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                  <div style={{ fontSize: "12px", fontWeight: 800, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    📍 Upcoming in {citySegment}{searchUsedNearby ? " (Nearby Area)" : ""}
+                  </div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>
+                    {searchResults?.localEvents?.length || 0} found
+                  </span>
+                </div>
+
+                {searchResults?.localEvents && searchResults.localEvents.length > 0 ? (
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    {searchResults.localEvents.map((event: any) => {
+                      const modalEvent = toModalEventItem(event);
+                      return (
+                        <EventCard
+                          key={`local-${event.id}`}
+                          event={modalEvent}
+                          onClick={() => {
+                            setSelectedModalEvent(modalEvent);
+                            setOpenEventId(String(event.id));
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{
+                    background: "#f8fafc",
+                    border: "1px dashed #cbd5e1",
+                    borderRadius: "12px",
+                    padding: "16px",
+                    textAlign: "center"
+                  }}>
+                    <div style={{ fontSize: "12px", fontWeight: 700, color: "#475569", marginBottom: "8px" }}>
+                      No events found matching "{searchSubmittedQuery}" in {citySegment}.
+                    </div>
+
+                    {!searchUsedNearby ? (
+                      <button
+                        type="button"
+                        onClick={() => executeEventSearch(searchSubmittedQuery, true)}
+                        style={{
+                          background: "#2563eb",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "999px",
+                          padding: "6px 14px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        📍 Check Nearby ({citySegment} Area)
+                      </button>
+                    ) : (
+                      <div style={{ marginTop: "6px" }}>
+                        <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>
+                          Wow, nothing nearby either! Would you like to check another city?
+                        </div>
+                        <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              closeAllModals();
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                              setTimeout(() => {
+                                const cityInput = document.querySelector('input[placeholder*="city"]') as HTMLInputElement;
+                                if (cityInput) cityInput.focus();
+                              }, 400);
+                            }}
+                            style={{
+                              background: "#111827",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "999px",
+                              padding: "5px 14px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                          >
+                            Yes, Check Another City
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              closeAllModals();
+                              const eventInput = document.getElementById("event-search-input-field") as HTMLInputElement;
+                              if (eventInput) {
+                                eventInput.focus();
+                                eventInput.select();
+                              }
+                            }}
+                            style={{
+                              background: "#f1f5f9",
+                              color: "#475569",
+                              border: "1px solid #cbd5e1",
+                              borderRadius: "999px",
+                              padding: "5px 14px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor: "pointer"
+                            }}
+                          >
+                            No, Try Another Term
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 2: All Dates Everywhere (Chronological - includes local entries per specification) */}
+              {searchResults?.allEvents && searchResults.allEvents.length > 0 && (
+                <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: 800, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      🌐 All Upcoming Tour Dates & Schedule (Chronological)
+                    </div>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>
+                      {searchResults.allEvents.length} total
+                    </span>
+                  </div>
+
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    {searchResults.allEvents.map((event: any) => {
+                      const modalEvent = toModalEventItem(event);
+                      return (
+                        <EventCard
+                          key={`all-${event.id}`}
+                          event={modalEvent}
+                          onClick={() => {
+                            setSelectedModalEvent(modalEvent);
+                            setOpenEventId(String(event.id));
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* SECTION 3: Automated On-Demand Ingestion Status */}
+              {huntLoading && (
+                <div style={{
+                  background: "#eff6ff",
+                  border: "1px dashed #93c5fd",
+                  borderRadius: "12px",
+                  padding: "16px",
+                  textAlign: "center"
+                }}>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#1e40af", marginBottom: "4px" }}>
+                    ⚡ Live Web Spider Active
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", color: "#1d4ed8", fontSize: "12px", fontWeight: 700, marginTop: "6px" }}>
+                    <span className="animate-spin">⚙️</span> {huntMessage || `Searching web sources for "${searchSubmittedQuery}" tour schedule & events...`}
+                  </div>
+                </div>
+              )}
+
+              {!huntLoading && huntMessage && (!searchResults?.allEvents || searchResults.allEvents.length === 0) && (
+                <div style={{
+                  background: "#f8fafc",
+                  border: "1px dashed #cbd5e1",
+                  borderRadius: "12px",
+                  padding: "12px 16px",
+                  textAlign: "center",
+                  fontSize: "11.5px",
+                  color: "#475569"
+                }}>
+                  {huntMessage}
+                </div>
+              )}
+
+              {/* Discrete Modal Ad Slot */}
+              <DiscreteModalAdSlot />
+            </div>
+          )}
+        </OverlayModal>
+      )}
     </section>
   );
 } 

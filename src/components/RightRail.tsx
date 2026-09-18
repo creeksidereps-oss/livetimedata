@@ -5,11 +5,15 @@ import { X } from "lucide-react";
 import FlagVideoCard from "./FlagVideoCard";
 import GoogleMapCard from "./GoogleMapCard";
 import AdPlaceholder from "./AdPlaceholder";
+import { ADS_ENABLED } from "@/config/adSlots";
+import FeaturedFactCard from "./FeaturedFactCard";
 
 import ExchangeRateCard from "./ExchangeRateCard";
 
 type RightRailProps = {
   cityName: string;
+  stateName?: string;
+  countryName?: string;
   flagAtBottom?: boolean;
 };
 
@@ -19,14 +23,17 @@ type RailCard = {
   subtitle: string;
 };
 
-const RailAdSlot = ({ id }: { id: string }) => (
-  <div 
-    className="w-full bg-gray-50/50 border border-dashed border-gray-200 rounded flex items-center justify-center text-[9px] font-black uppercase text-gray-400 tracking-tighter h-[36px]" 
-    style={{ marginTop: "10px" }}
-  >
-    {id}
-  </div>
-);
+const RailAdSlot = ({ id }: { id: string }) => {
+  if (!ADS_ENABLED) return null;
+  return (
+    <div 
+      className="w-full bg-gray-50/50 border border-dashed border-gray-200 rounded flex items-center justify-center text-[9px] font-black uppercase text-gray-400 tracking-tighter h-[36px]" 
+      style={{ marginTop: "10px" }}
+    >
+      {id}
+    </div>
+  );
+};
 
 function buildRail(cityName: string) {
   const columnA: RailCard[] = [
@@ -200,10 +207,11 @@ function RailCardView({ card, detectedCountry, cityName, liveCam, onMapClick, on
   );
 }
 
-export default function RightRail({ cityName, flagAtBottom = false }: RightRailProps) {
+export default function RightRail({ cityName, stateName, countryName, flagAtBottom = false }: RightRailProps) {
   const { columnA, columnB } = buildRail(cityName);
-  const [currentCountry, setCurrentCountry] = useState<string>("United States");
+  const [currentCountry, setCurrentCountry] = useState<string>(countryName || "United States");
   const [currentCountryCode, setCurrentCountryCode] = useState<string>("US");
+  const [currentState, setCurrentState] = useState<string>(stateName || "");
   const [isMapModalOpen, setIsMapModalOpen] = useState<boolean>(false);
   const [railCams, setRailCams] = useState<any[]>([]);
   const [selectedCam, setSelectedCam] = useState<any>(null);
@@ -263,6 +271,14 @@ export default function RightRail({ cityName, flagAtBottom = false }: RightRailP
   }, [cityName]);
 
   useEffect(() => {
+    if (stateName) setCurrentState(stateName);
+  }, [stateName]);
+
+  useEffect(() => {
+    if (countryName) setCurrentCountry(countryName);
+  }, [countryName]);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const countryParam = params.get("country");
@@ -272,6 +288,10 @@ export default function RightRail({ cityName, flagAtBottom = false }: RightRailP
       const codeParam = params.get("country_code");
       if (codeParam) {
         setCurrentCountryCode(codeParam.trim());
+      }
+      const stateParam = params.get("admin1");
+      if (stateParam) {
+        setCurrentState(stateParam.trim());
       }
     }
   }, []);
@@ -336,6 +356,12 @@ export default function RightRail({ cityName, flagAtBottom = false }: RightRailP
 
   return (
     <>
+      <FeaturedFactCard 
+        cityName={cityName} 
+        stateName={stateName || currentState} 
+        countryName={countryName || currentCountry} 
+      />
+
       <section className="grid grid-cols-1 md:grid-cols-2 gap-[20px]">
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {displayA.map((card, index) => {
@@ -465,11 +491,13 @@ export default function RightRail({ cityName, flagAtBottom = false }: RightRailP
               </div>
               
               {/* Ad Space directly underneath pills */}
-              <div style={{ width: '100%', height: '45px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                  ADVERTISEMENT SPACE
-                </span>
-              </div>
+              {ADS_ENABLED && (
+                <div style={{ width: '100%', height: '45px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    ADVERTISEMENT SPACE
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -552,11 +580,13 @@ export default function RightRail({ cityName, flagAtBottom = false }: RightRailP
               </div>
               
               {/* Ad Space directly underneath pills */}
-              <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                  ADVERTISEMENT SPACE
-                </span>
-              </div>
+              {ADS_ENABLED && (
+                <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    ADVERTISEMENT SPACE
+                  </span>
+                </div>
+              )}
             </div>
 
           </div>
