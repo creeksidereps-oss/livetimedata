@@ -100,7 +100,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     reqBody = body;
     const { lat, lng, type = 'about', countryName = 'Global', timezone } = body;
-    const apiKey = (process.env.GEMINI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
+    const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_KEY || process.env.GEMINI_KEY || "").trim().replace(/^["']|["']$/g, "");
 
     const cityName = clean(body.cityName);
     const stateName = clean(body.stateName);
@@ -263,6 +263,11 @@ CRITICAL RULES:
       debug: {
         keyExists: Boolean(process.env.GEMINI_API_KEY),
         keyLength: (process.env.GEMINI_API_KEY || '').length,
+        hasGoogleKey: Boolean(process.env.GOOGLE_API_KEY),
+        hasGoogleAIKey: Boolean(process.env.GOOGLE_AI_KEY),
+        hasGeminiKey: Boolean(process.env.GEMINI_KEY),
+        hasGeminiApiKey: Boolean(process.env.GEMINI_API_KEY),
+        allMatchingEnvKeys: Object.keys(process.env).filter(k => k.includes('GEMINI') || k.includes('GOOGLE') || k.includes('AI')),
         aiStatus: aiRes?.status || null
       }
     });
