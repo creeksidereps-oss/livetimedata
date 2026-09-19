@@ -182,21 +182,65 @@ export default function SnapPage() {
     );
   }
 
-  // Helper to read and process image blob/file
-  function readAndProcessImageFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
-      setImagePreview(base64);
-      await triggerAIExtraction({ imageBase64: base64 });
-    };
-    reader.readAsDataURL(file);
+  // Client-Side Canvas Image Compression (resizes phone camera 15MB photos to ~250KB in milliseconds)
+  async function compressImage(file: File, maxDim = 1400, quality = 0.75): Promise<string> {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => resolve(e.target?.result as string);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve("");
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Helper to read, compress, and process image blob/file
+  async function readAndProcessImageFile(file: File) {
+    setIsParsing(true);
+    setErrorMsg("");
+    try {
+      const compressedBase64 = await compressImage(file, 1400, 0.75);
+      if (!compressedBase64) throw new Error("Could not process image file.");
+      setImagePreview(compressedBase64);
+      await triggerAIExtraction({ imageBase64: compressedBase64 });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to process image.");
+      setIsParsing(false);
+    }
   }
 
   // Handle Photo selection from camera or gallery
   function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (file) readAndProcessImageFile(file);
+    if (file) {
+      readAndProcessImageFile(file);
+      // Reset input value so same file can be re-selected if needed
+      e.target.value = "";
+    }
   }
 
   // Handle Paste from Clipboard button
@@ -275,6 +319,22 @@ export default function SnapPage() {
           defaultState: state
         })
       });
+
+      if (!res.ok) {
+        const text = await res.text();
+        let errMsg = "Extraction failed";
+        try {
+          const parsed = JSON.parse(text);
+          errMsg = parsed.error || errMsg;
+        } catch {
+          if (res.status === 413) {
+            errMsg = "Image file is too large for upload. Try retaking or cropping.";
+          } else {
+            errMsg = text.slice(0, 100) || `Server error (${res.status})`;
+          }
+        }
+        throw new Error(errMsg);
+      }
 
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Extraction failed");
@@ -671,15 +731,32 @@ export default function SnapPage() {
               </p>
             </div>
           ) : (
-            <div className="relative rounded-2xl overflow-hidden border border-white/20 bg-black max-h-56 flex items-center justify-center group">
-              <img src={imagePreview} alt="Screenshot/flyer preview" className="w-full h-full object-contain max-h-56" />
-              <div className="absolute bottom-2 right-2 flex gap-1.5">
+            <div className="relative rounded-2xl overflow-hidden border border-white/20 bg-black max-h-64 flex items-center justify-center group">
+              <img src={imagePreview} alt="Screenshot/flyer preview" className="w-full h-full object-contain max-h-64" />
+              <div className="absolute bottom-2 right-2 flex gap-1.5 flex-wrap justify-end">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="px-2.5 py-1.5 rounded-lg bg-black/80 backdrop-blur border border-white/20 text-xs font-semibold text-white flex items-center gap-1 shadow hover:bg-white/20 transition-colors"
+                >
+                  <Camera className="w-3.5 h-3.5" /> Retake Photo
+                </button>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2.5 py-1.5 rounded-lg bg-black/80 backdrop-blur border border-white/20 text-xs font-semibold text-white flex items-center gap-1 shadow"
+                  className="px-2.5 py-1.5 rounded-lg bg-black/80 backdrop-blur border border-white/20 text-xs font-semibold text-white flex items-center gap-1 shadow hover:bg-white/20 transition-colors"
                 >
-                  <RefreshCw className="w-3 h-3" /> Change
+                  <ImageIcon className="w-3.5 h-3.5" /> Gallery
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImagePreview(null);
+                    setErrorMsg("");
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-red-950/80 backdrop-blur border border-red-500/30 text-xs font-semibold text-red-300 flex items-center gap-1 shadow hover:bg-red-900/80 transition-colors"
+                >
+                  ✕ Clear
                 </button>
               </div>
             </div>
