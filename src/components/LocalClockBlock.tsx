@@ -3,10 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import ClockCard from './ClockCard';
 
-export default function LocalClockBlock() {
+export default function LocalClockBlock({ variant = "light" }: { variant?: "dark" | "light" }) {
   const [mounted, setMounted] = useState(false);
   const [tz, setTz] = useState("");
   const [is24h, setIs24h] = useState(false);
+  const isLight = variant === "light";
 
   useEffect(() => {
     // 1. Detect timezone
@@ -34,7 +35,9 @@ export default function LocalClockBlock() {
 
   if (!mounted || !tz) {
     return (
-      <div className="w-full max-w-[820px] h-[140px] rounded-3xl bg-[#1A1A1A] animate-pulse border border-white/5 mx-auto"></div>
+      <div className={`w-full max-w-[820px] h-[140px] rounded-3xl animate-pulse mx-auto ${
+        isLight ? "bg-slate-100 border border-slate-200" : "bg-[#1A1A1A] border border-white/5"
+      }`} />
     );
   }
 
@@ -42,12 +45,15 @@ export default function LocalClockBlock() {
 
   return (
     <div className="w-full max-w-[820px] mx-auto animate-in fade-in duration-700">
-      <div className="border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+      <div className={`rounded-3xl overflow-hidden shadow-sm ${
+        isLight ? "border border-slate-200" : "border border-white/10 shadow-2xl"
+      }`}>
         <ClockCard 
-          locationLine={`${locationName} (Detected)`}
+          locationLine={`${locationName} (Your Local Time)`}
           tz={tz}
           is24h={is24h}
           onToggle24h={handleToggle}
+          variant={variant}
         />
       </div>
     </div>

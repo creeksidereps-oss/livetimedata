@@ -8,9 +8,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: "daily", priority: 1 },
     { url: `${base}/about`, changeFrequency: "monthly", priority: 0.4 },
-    { url: `${base}/terms`, changeFrequency: "monthly", priority: 0.4 },
-    { url: `${base}/privacy`, changeFrequency: "monthly", priority: 0.4 },
     { url: `${base}/contact`, changeFrequency: "monthly", priority: 0.4 },
+    { url: `${base}/privacy`, changeFrequency: "monthly", priority: 0.4 },
+    { url: `${base}/legal`, changeFrequency: "monthly", priority: 0.4 },
+    { url: `${base}/terms`, changeFrequency: "monthly", priority: 0.4 },
   ];
 
   const cityRoutes: MetadataRoute.Sitemap = TOP_CITIES.flatMap((c) => [

@@ -173,7 +173,9 @@ export default function Page(props: {
             <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_WEBCAMS} />
             */}
 
-            <EventsBlock cityName={cityName} stateName={searchParams?.admin1} countryCode={searchParams?.country_code as string} lat={lat} lon={lon} />
+            <div id="events">
+              <EventsBlock cityName={cityName} stateName={searchParams?.admin1} countryCode={searchParams?.country_code as string} lat={lat} lon={lon} />
+            </div>
             <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_EVENTS} />
 
             <PhotoReel cityName={cityName} />

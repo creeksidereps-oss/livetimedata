@@ -7,32 +7,51 @@ import { ADS_ENABLED } from "@/config/adSlots";
 interface ImproveFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  cityName: string;
-  stateName: string;
-  countryCode: string;
-  lat: number;
-  lng: number;
+  cityName?: string;
+  stateName?: string;
+  countryCode?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export default function ImproveFormModal({
   isOpen,
   onClose,
-  cityName,
-  stateName,
-  countryCode,
-  lat,
-  lng
+  cityName = "",
+  stateName = "",
+  countryCode = "",
+  lat = 0,
+  lng = 0
 }: ImproveFormModalProps) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
+  const [enteredCity, setEnteredCity] = useState(cityName || "");
+  const [enteredState, setEnteredState] = useState(stateName || "");
+
   const [uploadedPhotos, setUploadedPhotos] = useState<File[]>([]);
   const [uploadedDocs, setUploadedDocs] = useState<File[]>([]);
   const [ageRange, setAgeRange] = useState<string>("18+");
   
   const photoInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (cityName) setEnteredCity(cityName);
+    if (stateName) setEnteredState(stateName);
+  }, [cityName, stateName]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -108,12 +127,22 @@ export default function ImproveFormModal({
     const form = e.currentTarget;
     const formData = new FormData(form);
 
-    formData.append("cityName", cityName);
-    formData.append("stateName", stateName);
-    formData.append("countryCode", countryCode);
-    formData.append("lat", String(lat));
-    formData.append("lng", String(lng));
-    formData.append("cityPageUrl", typeof window !== "undefined" ? window.location.href : "");
+    const finalCity = cityName || (formData.get("cityName") as string)?.trim() || enteredCity.trim();
+    const finalState = stateName || (formData.get("stateName") as string)?.trim() || enteredState.trim();
+    const finalCountry = countryCode || (formData.get("countryCode") as string)?.trim() || "";
+
+    if (!finalCity) {
+      setErrorMsg("Please enter a city name.");
+      setLoading(false);
+      return;
+    }
+
+    formData.set("cityName", finalCity);
+    formData.set("stateName", finalState);
+    formData.set("countryCode", finalCountry);
+    formData.set("lat", String(lat || 0));
+    formData.set("lng", String(lng || 0));
+    formData.set("cityPageUrl", typeof window !== "undefined" ? window.location.href : "");
 
     uploadedPhotos.forEach((file) => formData.append("photos", file));
     uploadedDocs.forEach((file) => formData.append("documents", file));
@@ -136,10 +165,17 @@ export default function ImproveFormModal({
 
   // SUCCESS STATE MODAL: Hard Truths Exit Strategy (X, Pill, Click Outside)
   if (success) {
+    const handleSuccessClose = () => {
+      setSuccess(false);
+      setUploadedPhotos([]);
+      setUploadedDocs([]);
+      onClose();
+    };
+
     return (
       <div 
         className="fixed inset-0 z-[2000] flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-4 animate-in fade-in duration-200"
-        onClick={onClose}
+        onClick={handleSuccessClose}
       >
         <div 
           className="bg-white w-full max-w-md rounded-[32px] shadow-2xl border-2 border-black flex flex-col p-10 relative animate-in zoom-in-95 duration-200 text-left"
@@ -147,7 +183,7 @@ export default function ImproveFormModal({
         >
           {/* EXIT 1: TOP RIGHT X */}
           <button 
-            onClick={onClose} 
+            onClick={handleSuccessClose} 
             className="absolute top-6 right-6 p-2 hover:bg-slate-100 rounded-full text-black transition-all cursor-pointer"
           >
             <X size={20} />
@@ -156,15 +192,15 @@ export default function ImproveFormModal({
           <div className="pt-4 pb-20">
             <h2 className="text-4xl font-black uppercase tracking-tighter text-black mb-2">Thank You</h2>
             <p className="text-black font-black text-sm uppercase tracking-wide leading-tight">
-              Your submission has been successfully received.
+              Your submission has been successfully received and added to our system.
             </p>
           </div>
 
-          {/* EXIT 2: BOTTOM LEFT PILL (Corrected size/spot) */}
+          {/* EXIT 2: BOTTOM LEFT PILL */}
           <div className="flex justify-start">
             <button 
               type="button"
-              onClick={onClose} 
+              onClick={handleSuccessClose} 
               className="bg-black text-white px-6 py-2.5 rounded-full font-black text-[10px] tracking-[0.2em] uppercase hover:bg-blue-600 transition-all active:scale-95 cursor-pointer"
             >
               Return to Site
@@ -174,6 +210,9 @@ export default function ImproveFormModal({
       </div>
     );
   }
+
+  const activeCity = (cityName || enteredCity).trim();
+  const displayCity = activeCity || "this city";
 
   return (
     <div 
@@ -196,7 +235,7 @@ export default function ImproveFormModal({
             Share local insights & webcams
           </h2>
           <p className="text-black font-black text-sm uppercase tracking-wide mt-1">
-            {cityName}, {stateName}
+            {activeCity ? `${activeCity}${stateName || enteredState ? `, ${stateName || enteredState}` : ''}` : "Community Submissions"}
           </p>
         </div>
 
@@ -208,23 +247,68 @@ export default function ImproveFormModal({
             </div>
           )}
 
+          {/* CITY IDENTIFIER: Prominently asked when coming from Home Page or without pre-selected city */}
+          {!cityName && (
+            <div className="bg-amber-500/10 border-2 border-black p-5 rounded-2xl space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block animate-pulse" />
+                <h3 className="font-black text-xs uppercase tracking-wider text-black">
+                  City Identifier (Required)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-700 font-medium">
+                Which city, town, or region are you submitting insights, photos, or a webcam for?
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-black block">
+                    City / Town Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    name="cityName"
+                    type="text"
+                    required
+                    value={enteredCity}
+                    onChange={(e) => setEnteredCity(e.target.value)}
+                    placeholder="e.g. Chicago, Paris, Kyoto"
+                    className="w-full bg-white border-2 border-black p-3 rounded-xl font-bold text-sm text-black outline-none focus:border-blue-600"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-black block">
+                    State / Region / Country <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    name="stateName"
+                    type="text"
+                    required
+                    value={enteredState}
+                    onChange={(e) => setEnteredState(e.target.value)}
+                    placeholder="e.g. Illinois, France, Japan"
+                    className="w-full bg-white border-2 border-black p-3 rounded-xl font-bold text-sm text-black outline-none focus:border-blue-600"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <label className="text-sm font-normal block">
-              What are the most interesting, unusual, surprising, or unforgettable things about {cityName}?
+              What are the most interesting, unusual, surprising, or unforgettable things about {displayCity}?
             </label>
             <textarea name="question1" rows={3} className="w-full bg-white border-2 border-black p-4 rounded-xl font-bold text-sm text-black outline-none focus:border-blue-600" />
           </div>
 
           <div className="space-y-1.5">
             <label className="text-sm font-normal block">
-              What do locals know about {cityName} that most visitors miss?
+              What do locals know about {displayCity} that most visitors miss?
             </label>
             <textarea name="question2" rows={3} className="w-full bg-white border-2 border-black p-4 rounded-xl font-bold text-sm text-black outline-none focus:border-blue-600" />
           </div>
 
           <div className="space-y-3">
             <label className="text-sm font-normal block">
-              Please share a story, legend, myth, historical detail, or local tradition connected to {cityName}.
+              Please share a story, legend, myth, historical detail, or local tradition connected to {displayCity}.
             </label>
             <textarea name="question3" rows={5} className="w-full bg-white border-2 border-black p-4 rounded-xl font-bold text-sm text-black outline-none focus:border-blue-600" />
             <div className="border-2 border-dashed border-black rounded-xl p-4 text-center bg-slate-50/50">
@@ -237,14 +321,14 @@ export default function ImproveFormModal({
 
           <div className="space-y-1.5">
             <label className="text-sm font-normal block">
-              What places, experiences, attractions, or hidden spots should people discover in {cityName}?
+              What places, experiences, attractions, or hidden spots should people discover in {displayCity}?
             </label>
             <textarea name="question4" rows={3} className="w-full bg-white border-2 border-black p-4 rounded-xl font-bold text-sm text-black outline-none focus:border-blue-600" />
           </div>
 
           <div className="space-y-2">
             <label className="text-sm font-normal block">
-              Share your photos of {cityName}. Selected images may appear across our network, projects, publications, related media, or partner projects.
+              Share your photos of {displayCity}. Selected images may appear across our network, projects, publications, related media, or partner projects.
             </label>
             <div className="border-2 border-dashed border-black rounded-xl p-6 text-center bg-slate-50/50">
               <input type="file" ref={photoInputRef} onChange={handlePhotoChange} accept="image/jpeg,image/png,image/webp" multiple className="hidden" />
@@ -256,7 +340,7 @@ export default function ImproveFormModal({
 
           <div className="space-y-1.5">
             <label className="text-sm font-normal block">
-              Know of any public webcams in or around {cityName}? Share them with us.
+              Know of any public webcams in or around {displayCity}? Share them with us.
             </label>
             <textarea id="webcam-question" name="question6" rows={2} className="w-full bg-white border-2 border-black p-4 rounded-xl font-bold text-sm text-black outline-none focus:border-blue-600" />
           </div>
@@ -373,15 +457,6 @@ export default function ImproveFormModal({
               SUBMIT WEBCAM
             </button>
           </div>
-          
-          {/* Ad Space directly underneath pills */}
-          {ADS_ENABLED && (
-            <div style={{ width: '100%', height: '60px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                ADVERTISEMENT SPACE
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>

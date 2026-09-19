@@ -427,16 +427,8 @@ function categoryAccent(category: CategoryKey) {
 
 import { ADS_ENABLED } from "@/config/adSlots";
 
-// Discreet, un-flamboyant ad frame at the bottom of the popups to maximize revenue beautifully
 function DiscreteModalAdSlot() {
-  if (!ADS_ENABLED) return null;
-  return (
-    <div style={{ width: '100%', height: '45px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-        ADVERTISEMENT SPACE
-      </span>
-    </div>
-  );
+  return null;
 }
 
 function buildTenDayBucketData(rawEvents: DBEventItem[]): DayBucket[] {

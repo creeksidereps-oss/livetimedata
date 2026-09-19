@@ -122,7 +122,7 @@ export default function PhotoReel({ cityName }: PhotoReelProps) {
   };
 
   return (
-    <section style={{ 
+    <section id="photos" style={{ 
       marginTop: "10px", marginBottom: "10px", border: "1.5px solid #e2e8f0", 
       borderRadius: "16px", padding: "16px 20px", background: "#ffffff", boxShadow: "0 4px 12px rgba(0,0,0,0.03)" 
     }}>
@@ -254,15 +254,6 @@ export default function PhotoReel({ cityName }: PhotoReelProps) {
                   SUBMIT WEBCAM
                 </button>
               </div>
-              
-              {/* Ad Space directly underneath pills */}
-              {ADS_ENABLED && (
-                <div style={{ width: '100%', height: '45px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 900, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                    ADVERTISEMENT SPACE
-                  </span>
-                </div>
-              )}
             </div>
           </div>
         </div>
