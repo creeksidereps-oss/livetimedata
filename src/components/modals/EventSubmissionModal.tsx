@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Loader2, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { X, Loader2, Sparkles, Zap } from "lucide-react";
 import { ADS_ENABLED } from "@/config/adSlots";
 
 interface EventSubmissionModalProps {
@@ -240,6 +241,22 @@ export default function EventSubmissionModal({
               }}
               className="space-y-4"
             >
+              {/* Quick Snap Notice for Mobile / Admins */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-900 font-semibold shadow-sm">
+                <span className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-emerald-600 shrink-0 fill-emerald-600" />
+                  <span>On mobile? Snap a flyer or speak a note with <b>Quick Snap & Voice (15s)</b>.</span>
+                </span>
+                <Link
+                  href="/snap"
+                  onClick={onClose}
+                  className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
+                >
+                  <span>Open Quick Snap</span>
+                  <span>→</span>
+                </Link>
+              </div>
+
               {formMessage && (
                 <div
                   className={`p-3 rounded-xl text-xs font-bold border ${
