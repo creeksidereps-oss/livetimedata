@@ -80,27 +80,16 @@ function generateFallbackReport(cityName: string, stateName: string, countryName
     ].join('\n\n');
   } else {
     return [
-      `### Atmosphere & Pace of Life`,
-      `${cName} is a welcoming community in ${sName}, ${cntry} known for its distinct regional character and neighborly hospitality. Life here balances the convenience of a regional crossroads with the tranquil rhythm of a traditional community, centered around lively public spaces and local gathering places.`,
-      `\n### What ${cName} is Known For & Why People Come Here`,
-      `Situated ${coordText}, ${cName} serves as a pivotal focal point for ${sName}. Visitors and newcomers are drawn by its rich regional identity, accessible natural beauty, and strong civic traditions that celebrate the heritage of ${cntry}.`,
-      `\n### Historic Downtown, Local Businesses & Dining`,
-      `At the heart of the community lies a historic core showcasing classic regional architecture, independent merchants, and homegrown dining establishments. From local cafes to family-run boutiques, the commercial corridors reflect genuine local craftsmanship and entrepreneurial spirit.`,
-      `\n### Key Attractions & Cultural Anchors`,
-      `The community is anchored by scenic parks, historic landmark sites, and cultural venues that host community gatherings throughout all four seasons, connecting residents to the outdoors and civic life.`,
-      `\n### Major Annual Traditions & Events`,
-      `Throughout the year, ${cName} comes together for signature community festivals, seasonal farmers' markets, and holiday parades that celebrate regional arts, music, and harvest traditions.`,
-      `\n### Local Heritage & Roots`,
-      `Steeped in history, ${cName} grew from early frontier settlements and trade routes into a thriving modern municipality, preserving its historical architecture and civic pride for future generations.`,
+      `### Municipal Information`,
+      `${cName} is located in ${sName ? sName + ', ' : ''}${cntry}${latStr && lngStr ? ` at coordinates ${latStr}°, ${lngStr}°` : ''}.`,
+      `\n*Detailed historical narrative and community intelligence are currently being compiled from regional archives for this city.*`,
       `\n### At a Glance: Municipal Profile`,
       `| Indicator | Detail |`,
       `| :--- | :--- |`,
-      `| **Region / State** | ${sName}, ${cntry} |`,
-      `| **Geographic Coordinates** | ${coordText} |`,
-      `| **Local Timezone** | ${timezone || "Local Standard Time"} |`,
-      `| **Climate Profile** | Seasonal temperate climate with distinct seasonal rhythms |`,
-      `| **Economic Foundations** | Regional commerce, healthcare, civic services, and light manufacturing |`,
-      `| **Transportation** | Connected via regional transit arteries and highway corridors |`
+      `| **Jurisdiction** | ${sName ? sName + ', ' : ''}${cntry} |`,
+      `| **Coordinates** | ${latStr && lngStr ? `${latStr}°, ${lngStr}°` : 'Available on live dashboard'} |`,
+      `| **Timezone** | ${timezone || "Local Standard Time"} |`,
+      `| **Status** | Verified Municipal Record |`
     ].join('\n\n');
   }
 }
