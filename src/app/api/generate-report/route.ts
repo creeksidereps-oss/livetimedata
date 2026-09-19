@@ -256,21 +256,7 @@ CRITICAL RULES:
     // 4. AUTONOMOUS VERIFIED FALLBACK LAYER: Never leave the modal empty or broken
     console.log(`🛡️ [AUTONOMOUS FALLBACK]: Synthesizing clean local intelligence report for ${cityName} [${type}]`);
     const fallback = generateFallbackReport(cityName, stateName, countryName, type, lat, lng, timezone);
-    return NextResponse.json({ 
-      report: fallback, 
-      cached: false, 
-      fallback: true,
-      debug: {
-        keyExists: Boolean(process.env.GEMINI_API_KEY),
-        keyLength: (process.env.GEMINI_API_KEY || '').length,
-        hasGoogleKey: Boolean(process.env.GOOGLE_API_KEY),
-        hasGoogleAIKey: Boolean(process.env.GOOGLE_AI_KEY),
-        hasGeminiKey: Boolean(process.env.GEMINI_KEY),
-        hasGeminiApiKey: Boolean(process.env.GEMINI_API_KEY),
-        allMatchingEnvKeys: Object.keys(process.env).filter(k => k.includes('GEMINI') || k.includes('GOOGLE') || k.includes('AI')),
-        aiStatus: aiRes?.status || null
-      }
-    });
+    return NextResponse.json({ report: fallback, cached: false, fallback: true });
 
   } catch (err: any) {
     console.error("❌ ROUTE PIPELINE FAULT:", err.message);
@@ -283,15 +269,6 @@ CRITICAL RULES:
       reqBody?.lng,
       reqBody?.timezone
     );
-    return NextResponse.json({ 
-      report: fallback, 
-      cached: false, 
-      fallback: true,
-      debug: {
-        error: err.message,
-        keyExists: Boolean(process.env.GEMINI_API_KEY),
-        keyLength: (process.env.GEMINI_API_KEY || '').length
-      }
-    });
+    return NextResponse.json({ report: fallback, cached: false, fallback: true });
   }
 }
