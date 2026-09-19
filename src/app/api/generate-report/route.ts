@@ -240,9 +240,11 @@ CRITICAL RULES:
     if (reportText && reportText.length > 50) {
       // 3. ARCHIVE UPSERT CORRECTION LAYER
       try {
+        const safeLat = (typeof lat === 'number' && !isNaN(lat)) ? lat : 0;
+        const safeLng = (typeof lng === 'number' && !isNaN(lng)) ? lng : 0;
         await sql`
           INSERT INTO city_reports (city_name, state_name, lat, lng, report_type, content, created_at, updated_at)
-          VALUES (${queryCityName}, ${queryStateName}, ${lat}, ${lng}, ${type}, ${reportText}, NOW(), NOW())
+          VALUES (${queryCityName}, ${queryStateName}, ${safeLat}, ${safeLng}, ${type}, ${reportText}, NOW(), NOW())
           ON CONFLICT (city_name, state_name, report_type) 
           DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()
         `;
