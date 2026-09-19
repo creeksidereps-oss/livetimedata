@@ -256,7 +256,16 @@ CRITICAL RULES:
     // 4. AUTONOMOUS VERIFIED FALLBACK LAYER: Never leave the modal empty or broken
     console.log(`🛡️ [AUTONOMOUS FALLBACK]: Synthesizing clean local intelligence report for ${cityName} [${type}]`);
     const fallback = generateFallbackReport(cityName, stateName, countryName, type, lat, lng, timezone);
-    return NextResponse.json({ report: fallback, cached: false, fallback: true });
+    return NextResponse.json({ 
+      report: fallback, 
+      cached: false, 
+      fallback: true,
+      debug: {
+        keyExists: Boolean(process.env.GEMINI_API_KEY),
+        keyLength: (process.env.GEMINI_API_KEY || '').length,
+        aiStatus: aiRes?.status || null
+      }
+    });
 
   } catch (err: any) {
     console.error("❌ ROUTE PIPELINE FAULT:", err.message);
@@ -269,6 +278,15 @@ CRITICAL RULES:
       reqBody?.lng,
       reqBody?.timezone
     );
-    return NextResponse.json({ report: fallback, cached: false, fallback: true });
+    return NextResponse.json({ 
+      report: fallback, 
+      cached: false, 
+      fallback: true,
+      debug: {
+        error: err.message,
+        keyExists: Boolean(process.env.GEMINI_API_KEY),
+        keyLength: (process.env.GEMINI_API_KEY || '').length
+      }
+    });
   }
 }
