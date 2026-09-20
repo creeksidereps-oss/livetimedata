@@ -83,6 +83,39 @@ function categorizeEvent(title, desc = '') {
   return 'Community & Social';
 }
 
+function parseHumanDateString(dateStr) {
+  if (!dateStr) return null;
+  const clean = dateStr.replace(/\s+/g, ' ').trim();
+
+  // Range: "September 2 - 20, 2026"
+  const rangeMatch = clean.match(/^([A-Za-z]+)\s+(\d{1,2})\s*-\s*(\d{1,2}),?\s*(\d{4})$/);
+  if (rangeMatch) {
+    const [_, monthStr, startDay, endDay, year] = rangeMatch;
+    const d = new Date(`${monthStr} ${startDay}, ${year} 12:00:00 UTC`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Single date with year: "Sep 24, 2026" or "October 2, 2026"
+  const singleMatch = clean.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/);
+  if (singleMatch) {
+    const d = new Date(`${singleMatch[1]} ${singleMatch[2]}, ${singleMatch[3]} 12:00:00 UTC`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Single date without year: "Sep 24", "September 24", "Sep 24th"
+  const monthDayMatch = clean.match(/^([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?$/i);
+  if (monthDayMatch) {
+    const currentYear = new Date().getFullYear();
+    const d = new Date(`${monthDayMatch[1]} ${monthDayMatch[2]}, ${currentYear} 12:00:00 UTC`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const fallback = new Date(clean);
+  if (!isNaN(fallback.getTime())) return fallback;
+
+  return null;
+}
+
 /**
  * Universal HTML and table event crawler
  */
@@ -172,6 +205,92 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
         parseJsonLd(data);
       } catch {}
     });
+
+    // 2b. DOM Event Cards & RHP Event Wrappers
+    if (events.length === 0) {
+      const cardSelectors = [
+        '.rhpSingleEvent',
+        '.eventWrapper',
+        '.rhp-event__single-event--list',
+        '.eventItem',
+        '.event-item',
+        '.event_item',
+        '.event-card',
+        '.eventCard',
+        '.events-card',
+        'article.event',
+        '.show-item',
+        '.c-card--event',
+        '.eventlist-event',
+        'article.hentry',
+      ];
+
+      for (const sel of cardSelectors) {
+        const cards = $(sel);
+        if (cards.length > 0) {
+          cards.each((_, el) => {
+            let title = $(el)
+              .find('.rhp-event__title--list, h2 a, h3 a, h4 a, .title a, .event-title a, h2, h3, h4, .title, .event-title')
+              .first()
+              .text()
+              .trim();
+            title = title.split('\t')[0].trim().replace(/\s+/g, ' ');
+
+            const dateText = $(el)
+              .find('.eventDateListTop, .rhp-event__date--list, .date, .event-date, time, [class*="date"]')
+              .first()
+              .text()
+              .trim();
+            if (!title || !dateText || title.length < 3 || title.length > 200) return;
+
+            const parsedDate = parseHumanDateString(dateText);
+            if (!parsedDate || isNaN(parsedDate.getTime())) return;
+
+            const tagline = $(el)
+              .find('.tagline, .sub-title, .event-sub-title, .desc, p')
+              .first()
+              .text()
+              .trim();
+
+            let detailUrl =
+              $(el)
+                .find('a[href*="/event"], a[href*="/show"], a[href*="/detail"], .title a, h3 a, a')
+                .first()
+                .attr('href') || url;
+            try {
+              detailUrl = new URL(detailUrl, url).href;
+            } catch {}
+
+            let flyerUrl = $(el).find('img').first().attr('src');
+            try {
+              if (flyerUrl) flyerUrl = new URL(flyerUrl, url).href;
+            } catch {}
+
+            const category = categorizeEvent(title, tagline);
+            let venueName = $(el).find('.rhp-event__venue--list, .rhp-event-info, .venue, .location').first().text().trim();
+            if (venueName.includes('Richmond Music Hall')) venueName = 'Richmond Music Hall';
+            else if (venueName.includes('The Broadberry')) venueName = 'The Broadberry';
+            else if (!venueName) venueName = $('h1').first().text().trim() || defaultCity;
+
+            events.push({
+              title,
+              cityName: defaultCity,
+              stateName: defaultState,
+              venue: venueName,
+              category,
+              startTime: '7:30 PM',
+              eventDate: parsedDate,
+              details: tagline ? `${title} - ${tagline}. Live at ${venueName}.` : `${title} live at ${venueName}.`,
+              officialInfoUrl: detailUrl,
+              eventFlyerUrl: flyerUrl,
+              source: url,
+            });
+          });
+
+          if (events.length > 0) break;
+        }
+      }
+    }
 
     // 3. HTML Tables and Monthly Accordions
     if ($('table').length > 0) {

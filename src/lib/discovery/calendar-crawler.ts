@@ -183,6 +183,14 @@ export function parseHumanDateString(dateStr?: string): Date | null {
     if (!isNaN(d.getTime())) return d;
   }
 
+  // Single date without year: "Sep 24", "September 24", "Sep 24th"
+  const monthDayMatch = clean.match(/^([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?$/i);
+  if (monthDayMatch) {
+    const currentYear = new Date().getFullYear();
+    const d = new Date(`${monthDayMatch[1]} ${monthDayMatch[2]}, ${currentYear} 12:00:00 UTC`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
   const fallback = new Date(clean);
   if (!isNaN(fallback.getTime())) return fallback;
 
@@ -469,6 +477,9 @@ export async function extractEventsFromUrl(
     // 1b. Fallback: Standard DOM Event Card Parsing (for theater, arena, and arts pages without JSON-LD)
     if (eventsFound.length === 0) {
       const cardSelectors = [
+        ".rhpSingleEvent",
+        ".eventWrapper",
+        ".rhp-event__single-event--list",
         ".eventItem",
         ".event-item",
         ".event_item",
@@ -478,6 +489,8 @@ export async function extractEventsFromUrl(
         "article.event",
         ".show-item",
         ".c-card--event",
+        ".eventlist-event",
+        "article.hentry",
       ];
 
       for (const sel of cardSelectors) {
@@ -485,13 +498,13 @@ export async function extractEventsFromUrl(
         if (cards.length > 0) {
           cards.each((_, el) => {
             let title = $(el)
-              .find("h2 a, h3 a, h4 a, .title a, .event-title a, h2, h3, h4, .title, .event-title")
+              .find(".rhp-event__title--list, h2 a, h3 a, h4 a, .title a, .event-title a, h2, h3, h4, .title, .event-title")
               .first()
               .text()
               .trim();
             title = title.split("\t")[0].trim().replace(/\s+/g, " ");
             const dateText = $(el)
-              .find(".date, .event-date, time, [class*='date']")
+              .find(".eventDateListTop, .rhp-event__date--list, .date, .event-date, time, [class*='date']")
               .first()
               .text()
               .trim();
@@ -520,7 +533,10 @@ export async function extractEventsFromUrl(
             } catch {}
 
             const category = categorizeEvent(title, tagline);
-            const venueName = $("h1").first().text().trim() || fallbackCity;
+            let venueName = $(el).find(".rhp-event__venue--list, .rhp-event-info, .venue, .location").first().text().trim();
+            if (venueName.includes("Richmond Music Hall")) venueName = "Richmond Music Hall";
+            else if (venueName.includes("The Broadberry")) venueName = "The Broadberry";
+            else if (!venueName) venueName = $("h1").first().text().trim() || fallbackCity;
 
             eventsFound.push({
               title,
