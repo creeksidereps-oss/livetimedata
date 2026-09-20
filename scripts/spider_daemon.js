@@ -364,6 +364,8 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
         '.c-card--event',
         '.eventlist-event',
         'article.hentry',
+        '.event_list .entry',
+        '.entry',
       ];
 
       for (const sel of cardSelectors) {
@@ -634,13 +636,20 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
           href.includes('/happenings/'))
       ) {
         try {
-          const parsed = new URL(href, url);
-          const isSingle =
+          const isSingleOrPagination =
             (parsed.hostname.includes('facebook.com') && /\/events\/\d+/.test(parsed.pathname)) ||
             (parsed.hostname.includes('eventbrite.com') && parsed.pathname.startsWith('/e/')) ||
-            (parsed.hostname.includes('ticketmaster.com') && parsed.pathname.includes('/event/'));
+            (parsed.hostname.includes('ticketmaster.com') && parsed.pathname.includes('/event/')) ||
+            parsed.searchParams.has('tribe-bar-date') ||
+            parsed.searchParams.has('eventDate') ||
+            parsed.searchParams.has('date') ||
+            parsed.searchParams.has('page') ||
+            parsed.searchParams.has('p') ||
+            parsed.searchParams.has('offset');
 
-          if (!isSingle && parsed.protocol.startsWith('http') && parsed.href !== url) {
+          const isSameExactPage = parsed.origin + parsed.pathname === new URL(url).origin + new URL(url).pathname;
+
+          if (!isSingleOrPagination && !isSameExactPage && parsed.protocol.startsWith('http') && parsed.href !== url) {
             childUrls.add(parsed.href);
           }
         } catch {}
@@ -833,13 +842,15 @@ async function ingestCrawlResults(source, crawl) {
   // 2. Ingest discovered child URLs into sources with next_scrape_due = NOW()
   for (const childUrl of crawl.childUrls) {
     try {
+      const baseName = (source.name || 'Discovered Venue').replace(/(\s*(Child Source|Sub-Calendar))+/gi, '').trim();
+      const childName = `${baseName} Sub-Calendar`;
       const childRes = await sql`
         INSERT INTO sources (
           url, name, source_type, city_name, state_name,
           scrape_interval_days, scrape_horizon_months, status,
           next_scrape_due, created_at, updated_at
         ) VALUES (
-          ${childUrl}, ${`${source.name || 'Discovered'} Child Source`}, 'venue', ${source.city_name || 'Raleigh'}, ${source.state_name || 'NC'},
+          ${childUrl}, ${childName}, 'venue', ${source.city_name || 'Raleigh'}, ${source.state_name || 'NC'},
           30, 6, 'active', NOW(), NOW(), NOW()
         )
         ON CONFLICT DO NOTHING
