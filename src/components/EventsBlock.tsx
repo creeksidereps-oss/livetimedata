@@ -1167,7 +1167,7 @@ function InlineEventModal({
                 <span style={{ fontSize: "24px" }}>📸</span>
                 <div>
                   <div style={{ fontSize: "13px", fontWeight: 800, color: "#166534" }}>
-                    {saleInfo ? "Is this your sale or listing?" : "Are you organizing this event?"}
+                    {saleInfo ? "Is this your sale or listing?" : "Are you associated with this event?"}
                   </div>
                   <div style={{ fontSize: "12px", color: "#15803d", marginTop: "2px" }}>
                     {saleInfo 

@@ -474,7 +474,54 @@ export async function extractEventsFromUrl(
       } catch {}
     });
 
-    // 1b. Fallback: Standard DOM Event Card Parsing (for theater, arena, and arts pages without JSON-LD)
+    // 1b. AEG / Bowery / AXS Venues JSON Feed Detection (data-file attribute)
+    if (eventsFound.length === 0) {
+      const dataFileMatch = html.match(/data-file=["'](https?:\/\/[^"']+\.json[^"']*)["']/i);
+      if (dataFileMatch) {
+        const jsonUrl = dataFileMatch[1];
+        try {
+          const jsonRes = await fetch(jsonUrl, {
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (jsonRes.ok) {
+            const jsonData = await jsonRes.json();
+            const rawEvents = jsonData.events || (Array.isArray(jsonData) ? jsonData : []);
+            for (const ev of rawEvents) {
+              if (!ev.eventDateTime) continue;
+              const eventDate = new Date(ev.eventDateTime);
+              if (isNaN(eventDate.getTime()) || eventDate < new Date(Date.now() - 24 * 60 * 60 * 1000)) continue;
+
+              const title = (ev.title?.eventTitleText || ev.title?.headlinersText || (typeof ev.title === "string" ? ev.title : "Concert")).replace(/<[^>]+>/g, "").trim();
+              const venueName = ev.venue?.title || fallbackCity;
+              const cityName = ev.venue?.city || fallbackCity;
+              const stateName = ev.venue?.state || fallbackState;
+              const ticketUrl = ev.ticketing?.ticketURL || ev.ticketing?.url || ev.ticketing?.eventUrl || url;
+              const flyerUrl = ev.media?.["17"]?.file_name || ev.media?.["86"]?.file_name || (ev.media ? (Object.values(ev.media)[0] as any)?.file_name : undefined);
+              const desc = (ev.bio || ev.description || `${title} live in concert at ${venueName}.`).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+              eventsFound.push({
+                title,
+                venue: venueName,
+                cityName,
+                stateName,
+                category: categorizeEvent(title, desc),
+                startTime: ev.eventDateTime ? new Date(ev.eventDateTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "7:00 PM",
+                eventDate,
+                details: desc,
+                officialInfoUrl: ticketUrl,
+                eventFlyerUrl: flyerUrl,
+                source: url,
+              });
+            }
+          }
+        } catch (err: any) {
+          console.error(`[AEG_FEED_ERROR] Error fetching ${jsonUrl}:`, err.message);
+        }
+      }
+    }
+
+    // 1c. Fallback: Standard DOM Event Card Parsing (for theater, arena, and arts pages without JSON-LD)
     if (eventsFound.length === 0) {
       const cardSelectors = [
         ".rhpSingleEvent",
