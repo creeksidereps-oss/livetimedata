@@ -36,6 +36,100 @@ if (fs.existsSync(envFile)) {
 
 const { sql } = require('@vercel/postgres');
 const cheerio = require('cheerio');
+const { GoogleGenAI } = require('@google/genai');
+
+/**
+ * Autonomous Web Search: Resolve official calendar URL for entity using Google Search grounding
+ */
+async function resolveEntityWebsiteAndCalendar(name, entityType, city, state) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const locationStr = [city, state].filter(Boolean).join(', ');
+    const prompt = `
+      Search Google to find the official website and official tour/events calendar page for this ${entityType}:
+      Name: ${name}
+      ${locationStr ? `Location: ${locationStr}` : ''}
+
+      Return ONLY a JSON object:
+      {
+        "officialWebsite": "https://...",
+        "calendarUrl": "https://..."
+      }
+      Do not use markdown formatting or backticks.
+    `;
+
+    const res = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+
+    if (!res.text) return null;
+    const clean = res.text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const data = JSON.parse(clean);
+    return {
+      officialWebsite: data.officialWebsite?.startsWith('http') ? data.officialWebsite : undefined,
+      calendarUrl: data.calendarUrl?.startsWith('http') ? data.calendarUrl : undefined,
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Pre-Check Deduplication Guard: Check if entity already exists in our system before wasting crawl resources
+ */
+async function checkEntityInSystem(name) {
+  const normName = name.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+  // 1. Check sources by name
+  const existingSource = await sql`
+    SELECT id, name, url, last_scraped_at, next_scrape_due, scrape_interval_days
+    FROM sources
+    WHERE LOWER(TRIM(name)) = LOWER(TRIM(${name}))
+    LIMIT 1;
+  `;
+  if (existingSource.rowCount > 0) {
+    const s = existingSource.rows[0];
+    return {
+      exists: true,
+      hasActiveSource: true,
+      url: s.url,
+      reason: 'Already queued or present in sources'
+    };
+  }
+
+  // 2. Check entities table
+  const existingEntity = await sql`
+    SELECT id, name, city_name, state_name, website_url
+    FROM entities
+    WHERE normalized_name = ${normName} OR LOWER(TRIM(name)) = LOWER(TRIM(${name}))
+    LIMIT 1;
+  `;
+  if (existingEntity.rowCount > 0) {
+    const e = existingEntity.rows[0];
+    if (e.website_url) {
+      return {
+        exists: true,
+        hasActiveSource: false,
+        hasWebsite: true,
+        url: e.website_url,
+        reason: 'Entity exists with calendar website'
+      };
+    }
+    return {
+      exists: true,
+      hasActiveSource: false,
+      hasWebsite: false,
+      reason: 'Entity exists in graph but lacks website'
+    };
+  }
+
+  return { exists: false };
+}
 
 const args = process.argv.slice(2);
 const isSingleRun = args.includes('--single-run');
@@ -558,6 +652,38 @@ async function ingestCrawlResults(source, crawl) {
           )
           ON CONFLICT DO NOTHING;
         `;
+
+        // Pre-check graph before firing child spider!
+        const venueCheck = await checkEntityInSystem(ev.venue);
+        if (venueCheck.exists && (venueCheck.hasActiveSource || venueCheck.hasWebsite)) {
+          // Entity already known with active calendar source. Skip resolution.
+        } else {
+          // Brand new venue or missing calendar: Resolve & birth child spider!
+          const resolvedVenue = await resolveEntityWebsiteAndCalendar(ev.venue, 'music venue / concert hall / event center', ev.cityName, ev.stateName);
+          const venueCalUrl = resolvedVenue?.calendarUrl || resolvedVenue?.officialWebsite;
+          if (venueCalUrl) {
+            await sql`
+              UPDATE entities SET website_url = ${venueCalUrl}, updated_at = NOW()
+              WHERE normalized_name = ${norm};
+            `;
+            const childRes = await sql`
+              INSERT INTO sources (
+                url, name, source_type, city_name, state_name,
+                scrape_interval_days, scrape_horizon_months, status,
+                next_scrape_due, created_at, updated_at
+              ) VALUES (
+                ${venueCalUrl}, ${ev.venue}, 'venue', ${ev.cityName}, ${ev.stateName || 'NC'},
+                14, 6, 'active', NOW(), NOW(), NOW()
+              )
+              ON CONFLICT (url) DO UPDATE SET next_scrape_due = NOW()
+              RETURNING id;
+            `;
+            if (childRes.rowCount > 0) {
+              console.log(`    ==> [NEW SPIDER FIRED] Child spider birthed for venue "${ev.venue}" at ${venueCalUrl} (queued at NOW)`);
+              childrenQueued++;
+            }
+          }
+        }
       }
 
       // Upsert organizer if present
@@ -600,6 +726,57 @@ async function ingestCrawlResults(source, crawl) {
             tour_page_url = COALESCE(performers.tour_page_url, EXCLUDED.tour_page_url),
             updated_at = NOW();
         `;
+
+        if (ev.performerUrl && ev.performerUrl.startsWith('http')) {
+          const perfSrc = await sql`
+            INSERT INTO sources (
+              url, name, source_type, city_name, state_name,
+              scrape_interval_days, scrape_horizon_months, status,
+              next_scrape_due, created_at, updated_at
+            ) VALUES (
+              ${ev.performerUrl}, ${`${ev.performerName} Tour`}, 'artist_tour', ${ev.cityName}, ${ev.stateName || 'NC'},
+              30, 12, 'active', NOW(), NOW(), NOW()
+            )
+            ON CONFLICT (url) DO UPDATE SET next_scrape_due = NOW()
+            RETURNING id;
+          `;
+          if (perfSrc.rowCount > 0) childrenQueued++;
+        } else {
+          // Pre-check graph before firing performer spider!
+          const perfCheck = await checkEntityInSystem(ev.performerName);
+          if (perfCheck.exists && (perfCheck.hasActiveSource || perfCheck.hasWebsite)) {
+            // Performer already known with active calendar source. Skip resolution.
+          } else {
+            const resolvedPerf = await resolveEntityWebsiteAndCalendar(ev.performerName, 'band / musician / performer');
+            const tourUrl = resolvedPerf?.calendarUrl || resolvedPerf?.officialWebsite;
+            if (tourUrl) {
+              await sql`
+                UPDATE entities SET website_url = ${tourUrl}, updated_at = NOW()
+                WHERE normalized_name = ${perfNorm};
+              `;
+              await sql`
+                UPDATE performers SET tour_page_url = ${tourUrl}, official_site = ${tourUrl}, updated_at = NOW()
+                WHERE name = ${ev.performerName};
+              `;
+              const perfSrc = await sql`
+                INSERT INTO sources (
+                  url, name, source_type, city_name, state_name,
+                  scrape_interval_days, scrape_horizon_months, status,
+                  next_scrape_due, created_at, updated_at
+                ) VALUES (
+                  ${tourUrl}, ${`${ev.performerName} Tour`}, 'artist_tour', ${ev.cityName}, ${ev.stateName || 'NC'},
+                  30, 12, 'active', NOW(), NOW(), NOW()
+                )
+                ON CONFLICT (url) DO UPDATE SET next_scrape_due = NOW()
+                RETURNING id;
+              `;
+              if (perfSrc.rowCount > 0) {
+                console.log(`    ==> [NEW SPIDER FIRED] Child spider birthed for artist "${ev.performerName}" at ${tourUrl} (queued at NOW)`);
+                childrenQueued++;
+              }
+            }
+          }
+        }
       }
     } catch (err) {
       // Ignore individual event collisions
