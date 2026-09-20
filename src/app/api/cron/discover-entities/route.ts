@@ -76,6 +76,10 @@ export async function GET(request: Request) {
         AND TRIM(e.venue) != ''
         AND TRIM(e.venue) != 'Local Venue'
         AND TRIM(e.venue) != 'Unknown Venue'
+        AND e.source NOT IN ('EstateSales.NET', 'YardSaleSearch', 'Gsalr Network')
+        AND (e.category IS NULL OR e.category NOT IN ('Yard Sale', 'Estate Sale', 'Garage Sale'))
+        AND TRIM(e.venue) !~ '^[0-9]+\\s+[A-Za-z]'
+        AND TRIM(e.venue) !~ '^#[0-9]+'
         AND NOT EXISTS (
           SELECT 1 FROM entities ent 
           WHERE LOWER(TRIM(ent.name)) = LOWER(TRIM(e.venue))

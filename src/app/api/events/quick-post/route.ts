@@ -170,31 +170,34 @@ export async function POST(request: Request) {
         });
       }
 
-      // 3. LIFECYCLE SEEDING: Ingest Venue into Entities & Venue Profiles
-      try {
-        const normVenue = venueName.toLowerCase().trim();
-        await sql`
-          INSERT INTO entities (
-            name, normalized_name, entity_type, city_name, state_name,
-            country_code, website_url, verification_status, created_at, updated_at
-          ) VALUES (
-            ${venueName}, ${normVenue}, 'venue', ${cityName}, ${stateName || null},
-            'US', ${officialInfoUrl || null}, 'published', NOW(), NOW()
-          )
-          ON CONFLICT DO NOTHING;
-        `;
+      // 3. LIFECYCLE SEEDING: Ingest Venue into Entities & Venue Profiles (Businesses & named venues only)
+      const isResidentialAddress = /^[0-9]+\s+[A-Za-z]/.test(venueName.trim()) || /^#[0-9]+/.test(venueName.trim());
+      if (!isResidentialAddress) {
+        try {
+          const normVenue = venueName.toLowerCase().trim();
+          await sql`
+            INSERT INTO entities (
+              name, normalized_name, entity_type, city_name, state_name,
+              country_code, website_url, verification_status, created_at, updated_at
+            ) VALUES (
+              ${venueName}, ${normVenue}, 'venue', ${cityName}, ${stateName || null},
+              'US', ${officialInfoUrl || null}, 'published', NOW(), NOW()
+            )
+            ON CONFLICT DO NOTHING;
+          `;
 
-        await sql`
-          INSERT INTO venue_profiles (
-            venue_name, city_name, state_name, website_url, is_trusted_source
-          ) VALUES (
-            ${venueName}, ${cityName}, ${stateName || null}, ${officialInfoUrl || null}, true
-          )
-          ON CONFLICT (venue_name) DO UPDATE 
-          SET website_url = COALESCE(venue_profiles.website_url, EXCLUDED.website_url);
-        `;
-      } catch (entityErr) {
-        console.warn("Venue lifecycle insertion warning:", entityErr);
+          await sql`
+            INSERT INTO venue_profiles (
+              venue_name, city_name, state_name, website_url, is_trusted_source
+            ) VALUES (
+              ${venueName}, ${cityName}, ${stateName || null}, ${officialInfoUrl || null}, true
+            )
+            ON CONFLICT (venue_name) DO UPDATE 
+            SET website_url = COALESCE(venue_profiles.website_url, EXCLUDED.website_url);
+          `;
+        } catch (entityErr) {
+          console.warn("Venue lifecycle insertion warning:", entityErr);
+        }
       }
 
       // 4. LIFECYCLE SEEDING: Ingest Performers / Bands into Entities & Performers Graph

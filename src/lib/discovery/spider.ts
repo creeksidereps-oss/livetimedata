@@ -93,15 +93,19 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
     emailsIngested: 0,
   };
 
-  // 1. Fetch next batch of entities needing spidering (least recently updated first)
+  // 1. Fetch next batch of entities needing spidering (least recently updated first, business/cultural venues only)
   const candidateEntities = await db
     .select()
     .from(entities)
     .where(
-      or(
-        eq(entities.verificationStatus, "discovered"),
-        eq(entities.verificationStatus, "verified"),
-        isNull(entities.updatedAt)
+      and(
+        or(
+          eq(entities.verificationStatus, "discovered"),
+          eq(entities.verificationStatus, "verified"),
+          isNull(entities.updatedAt)
+        ),
+        sql`TRIM(${entities.name}) !~ '^[0-9]+\\s+[A-Za-z]'`,
+        sql`TRIM(${entities.name}) !~ '^#[0-9]+'`
       )
     )
     .orderBy(asc(entities.updatedAt))
