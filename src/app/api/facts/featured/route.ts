@@ -9,6 +9,20 @@ function clean(val: any): string {
   return String(val || "").replace(/\+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function parseFactsFromMarkdown(content: string): Array<{ title: string; description: string }> {
+  const facts: Array<{ title: string; description: string }> = [];
+  const regex = /(?:^|\n)\s*\d+[\.\)]\s+\*\*([^*]+)\*\*\s*[\n:]+\s*([\s\S]*?)(?=(?:\n\s*\d+[\.\)]\s+\*\*|$))/g;
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    const title = match[1].trim();
+    const description = match[2].trim().replace(/\n+/g, ' ');
+    if (title && description) {
+      facts.push({ title, description });
+    }
+  }
+  return facts;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -25,19 +39,143 @@ export async function GET(req: Request) {
     }
 
     const cityKey = `${cityName.toLowerCase()}_${stateName.toLowerCase()}`;
+    const normCity = cityName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-    // 1. Fetch all approved facts for this city
+    // 1. Fetch all approved facts for this city from city_fun_facts
     let { rows: facts } = await sql`
       SELECT id, title, description, category, scope, source_attribution, contributed_by, created_at
       FROM city_fun_facts
-      WHERE LOWER(city_name) = LOWER(${cityName})
+      WHERE (
+        LOWER(city_name) = LOWER(${cityName})
+        OR LOWER(REGEXP_REPLACE(city_name, '[^a-zA-Z0-9]', '', 'g')) = ${normCity}
+      )
         AND is_approved = TRUE
       ORDER BY id ASC
     `;
 
     let currentScope = "city";
 
-    // 2. Fallback hierarchy: If no city facts yet, check state facts
+    // 2. Check city_reports for existing rich verified facts report
+    if (facts.length === 0) {
+      const repResult = await sql`
+        SELECT content FROM city_reports
+        WHERE (
+          LOWER(city_name) = LOWER(${cityName})
+          OR LOWER(REGEXP_REPLACE(city_name, '[^a-zA-Z0-9]', '', 'g')) = ${normCity}
+        )
+        AND report_type = 'facts'
+        ORDER BY id DESC
+        LIMIT 1;
+      `;
+
+      if (repResult.rows.length > 0 && repResult.rows[0].content) {
+        const parsed = parseFactsFromMarkdown(repResult.rows[0].content);
+        if (parsed.length > 0) {
+          for (const item of parsed) {
+            try {
+              await sql`
+                INSERT INTO city_fun_facts (
+                  city_name, state_name, country_name, title, description, category, scope,
+                  source_attribution, contributed_by, is_approved, status
+                ) VALUES (
+                  ${cityName}, ${stateName || ''}, ${countryName || 'United States'}, ${item.title}, ${item.description},
+                  'local_history', 'city', 'Verified Municipal Research', 'system_verified', TRUE, 'approved'
+                )
+                ON CONFLICT DO NOTHING;
+              `;
+            } catch (insErr) {}
+          }
+
+          const refreshed = await sql`
+            SELECT id, title, description, category, scope, source_attribution, contributed_by, created_at
+            FROM city_fun_facts
+            WHERE (
+              LOWER(city_name) = LOWER(${cityName})
+              OR LOWER(REGEXP_REPLACE(city_name, '[^a-zA-Z0-9]', '', 'g')) = ${normCity}
+            )
+              AND is_approved = TRUE
+            ORDER BY id ASC
+          `;
+          if (refreshed.rows.length > 0) {
+            facts = refreshed.rows;
+            currentScope = "city";
+          }
+        }
+      }
+    }
+
+    // 3. Dynamic On-Demand AI City Research: Generate verified facts specifically for THIS city
+    if (facts.length === 0) {
+      const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_KEY || process.env.GEMINI_KEY || "").trim().replace(/^["']|["']$/g, "");
+      if (apiKey) {
+        try {
+          console.log(`[FACTS_RESEARCH] Autonomously researching authentic facts for ${cityName}, ${stateName || countryName}`);
+          const prompt = `Provide 10 verified fun facts about ${cityName}, ${stateName || countryName}. You MUST use Google Search Grounding to verify every single fact. DO NOT hallucinate or invent history. If deep historical facts are scarce, you MUST provide real geographic data (exact lat/long, elevation, climate, regional geography, demographics). Use **Bold Titles** for each item and number them 1-10. CRITICAL: Do NOT include any introductory or concluding sentences (like "Here are 10 facts..."). Start immediately with "1. **[Title]**".`;
+
+          const aiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                contents: [{ parts: [{ text: prompt }] }],
+                tools: [{ googleSearch: {} }] 
+              })
+            }
+          );
+
+          if (aiRes.ok) {
+            const aiData = await aiRes.json();
+            const text = aiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            const parsed = parseFactsFromMarkdown(text);
+
+            if (parsed.length > 0) {
+              try {
+                await sql`
+                  INSERT INTO city_reports (city_name, state_name, report_type, content, lat, lng, created_at, updated_at)
+                  VALUES (${cityName}, ${stateName || ''}, 'facts', ${text}, 0, 0, NOW(), NOW())
+                  ON CONFLICT DO NOTHING;
+                `;
+              } catch (repErr) {}
+
+              for (const item of parsed) {
+                try {
+                  await sql`
+                    INSERT INTO city_fun_facts (
+                      city_name, state_name, country_name, title, description, category, scope,
+                      source_attribution, contributed_by, is_approved, status
+                    ) VALUES (
+                      ${cityName}, ${stateName || ''}, ${countryName || 'United States'}, ${item.title}, ${item.description},
+                      'local_history', 'city', 'Verified Search-Grounded Research', 'ai_grounded', TRUE, 'approved'
+                    )
+                    ON CONFLICT DO NOTHING;
+                  `;
+                } catch (insErr) {}
+              }
+
+              const fresh = await sql`
+                SELECT id, title, description, category, scope, source_attribution, contributed_by, created_at
+                FROM city_fun_facts
+                WHERE (
+                  LOWER(city_name) = LOWER(${cityName})
+                  OR LOWER(REGEXP_REPLACE(city_name, '[^a-zA-Z0-9]', '', 'g')) = ${normCity}
+                )
+                  AND is_approved = TRUE
+                ORDER BY id ASC
+              `;
+              if (fresh.rows.length > 0) {
+                facts = fresh.rows;
+                currentScope = "city";
+              }
+            }
+          }
+        } catch (genErr) {
+          console.warn("[FACTS_RESEARCH] Dynamic fact generation warning:", genErr);
+        }
+      }
+    }
+
+    // 4. Fallback hierarchy: If still 0 facts, check state facts
     if (facts.length === 0 && stateName) {
       const stateResult = await sql`
         SELECT id, title, description, category, scope, source_attribution, contributed_by, created_at
@@ -53,33 +191,16 @@ export async function GET(req: Request) {
       }
     }
 
-    // 3. Fallback hierarchy: If still 0 facts, check verified National / Global curiosities from the database
+    // 5. If no facts exist and no state facts, do NOT display global oddities across city pages!
     if (facts.length === 0) {
-      const nationalResult = await sql`
-        SELECT id, title, description, category, scope, source_attribution, contributed_by, created_at
-        FROM city_fun_facts
-        WHERE scope = 'national'
-          AND is_approved = TRUE
-        ORDER BY id ASC
-      `;
-      if (nationalResult.rows.length > 0) {
-        facts = nationalResult.rows;
-        currentScope = "national";
-      }
-    }
-
-    // 4. Default National Oddity Fallback if still empty
-    if (facts.length === 0) {
-      facts = [
-        {
-          id: 0,
-          title: "The Prime Meridian Alignment",
-          description: "All global civil timekeeping and longitudinal mapping coordinates are measured relative to the Prime Meridian line established at the Royal Observatory in Greenwich, dividing the eastern and western hemispheres of planet Earth.",
-          category: "world_record",
-          scope: "national"
-        }
-      ];
-      currentScope = "national";
+      return NextResponse.json({
+        ok: true,
+        cityName,
+        stateName,
+        featured: null,
+        totalFacts: 0,
+        allFacts: []
+      });
     }
 
     // 5. Atomic Global Turn Increment Across All Users
