@@ -205,10 +205,10 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
               sourceType: "venue",
               cityName: entity.cityName,
               stateName: entity.stateName || "NC",
-              scrapeIntervalDays: 14,
+              scrapeIntervalDays: 30,
               scrapeHorizonMonths: 6,
               status: "active",
-              nextScrapeDue: sql`NOW() + interval '3 days'`,
+              nextScrapeDue: sql`NOW()`,
             })
             .onConflictDoNothing();
         }
@@ -376,10 +376,10 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
               sourceType: "venue",
               cityName: src.cityName,
               stateName: src.stateName || "NC",
-              scrapeIntervalDays: 14,
+              scrapeIntervalDays: 30,
               scrapeHorizonMonths: 6,
               status: "active",
-              nextScrapeDue: sql`NOW() + interval '3 days'`,
+              nextScrapeDue: sql`NOW()`,
             })
             .onConflictDoNothing();
         }

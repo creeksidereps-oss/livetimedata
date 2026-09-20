@@ -603,6 +603,141 @@ export async function extractEventsFromUrl(
       }
     }
 
+    // 1d. Universal HTML Table & Monthly Accordion Calendars
+    // (for state fairgrounds, civic arenas, municipal centers, expo halls)
+    if (eventsFound.length === 0 && $("table").length > 0) {
+      const months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+      ];
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const baseVenue = $("h1").first().text().trim() || $("title").first().text().split(/[-|]/)[0].trim() || fallbackCity;
+
+      $("table").each((i, tbl) => {
+        let monthName: string | null = null;
+        const prevHeader = $(tbl)
+          .closest(".ui-accordion-content, .views-field, .accordion-item, div")
+          .prevAll("h1, h2, h3, h4, button, .accordion-header")
+          .first()
+          .text()
+          .trim();
+
+        for (const m of months) {
+          if (prevHeader.toLowerCase().includes(m.toLowerCase())) {
+            monthName = m;
+            break;
+          }
+        }
+        if (!monthName && i < 12) {
+          monthName = months[i];
+        }
+        if (!monthName) return;
+
+        const monthIndex = months.indexOf(monthName);
+
+        $(tbl).find("tbody tr, tr").each((_, tr) => {
+          const tds = $(tr).find("td");
+          if (tds.length < 2) return;
+
+          const dateStr = $(tds[0]).text().replace(/\s+/g, " ").trim();
+          const eventCell = $(tds[1]);
+          const buildingStr = tds.length >= 3 ? $(tds[2]).text().replace(/\s+/g, " ").trim() : "";
+          const contactStr = tds.length >= 4 ? $(tds[3]).text().replace(/\s+/g, " ").trim() : "";
+
+          // Skip header row
+          if (/date/i.test(dateStr) && /event/i.test(eventCell.text())) return;
+
+          // Clean child elements for clean text splitting
+          const cellClone = eventCell.clone();
+          cellClone.find("br").replaceWith("\n");
+          cellClone.find("p, div").append("\n");
+
+          let title = eventCell.find("strong, b, h4, h3, a").first().text().replace(/\s+/g, " ").trim();
+          if (!title) {
+            title = cellClone.text().split("\n")[0].replace(/\s+/g, " ").trim();
+          }
+          if (title.length > 70 && title.includes(".")) {
+            title = title.split(/\. |\n/)[0].trim();
+          }
+          if (!title || title.length < 3) return;
+
+          let detailUrl = eventCell.find("a[href^='http']").first().attr("href") ||
+                          eventCell.find("a[href]").first().attr("href") || url;
+          try {
+            detailUrl = new URL(detailUrl, url).href;
+          } catch {}
+
+          let organizerUrl: string | undefined = undefined;
+          let organizerName: string | undefined = undefined;
+
+          // Check if contactCell or eventCell has an external organizer link
+          const externalLink = $(tr).find("a[href^='http']").filter((_, a) => {
+            const h = $(a).attr("href") || "";
+            return !h.includes("facebook.com") && !h.includes("instagram.com") && !h.includes("twitter.com");
+          }).first();
+
+          if (externalLink.length > 0) {
+            organizerUrl = externalLink.attr("href");
+            const linkText = externalLink.text().trim();
+            organizerName = linkText.length > 2 ? linkText : title;
+            if (organizerUrl && !subUrls.includes(organizerUrl)) {
+              subUrls.push(organizerUrl);
+            }
+          } else if (contactStr && contactStr.length > 3) {
+            const cleanedContact = contactStr.split(/[:\d(]/)[0].trim();
+            if (cleanedContact.length > 2 && !cleanedContact.toLowerCase().includes("information")) {
+              organizerName = cleanedContact;
+            }
+          }
+
+          // Scan emails in row
+          const rowText = $(tr).text();
+          const rowEmails = rowText.match(/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g) || [];
+          for (const em of rowEmails) {
+            if (isValidEmail(em)) extractedEmails.add(em.toLowerCase().trim());
+          }
+
+          // Parse date: "4-6", "17-19", "Every Saturday and Sunday", etc.
+          let eventDate: Date | null = null;
+          const dayMatch = dateStr.match(/^(\d{1,2})/);
+          if (dayMatch) {
+            const dayNum = parseInt(dayMatch[1], 10);
+            let targetYear = currentYear;
+            if (monthIndex < now.getMonth() - 1) {
+              targetYear += 1;
+            }
+            eventDate = new Date(Date.UTC(targetYear, monthIndex, dayNum, 14, 0, 0));
+          } else if (dateStr.toLowerCase().includes("every saturday") || dateStr.toLowerCase().includes("weekend")) {
+            let targetYear = currentYear;
+            if (monthIndex < now.getMonth() - 1) targetYear += 1;
+            eventDate = new Date(Date.UTC(targetYear, monthIndex, 15, 14, 0, 0));
+          }
+
+          if (eventDate && eventDate >= new Date(Date.now() - 24 * 60 * 60 * 1000)) {
+            const fullDesc = eventCell.text().replace(/\s+/g, " ").trim();
+            const category = categorizeEvent(title, fullDesc);
+            const venueName = buildingStr ? `${baseVenue} (${buildingStr})` : baseVenue;
+
+            eventsFound.push({
+              title,
+              cityName: fallbackCity,
+              stateName: fallbackState,
+              venue: venueName,
+              category,
+              startTime: "9:00 AM",
+              eventDate,
+              details: fullDesc || `${title} at ${venueName}.`,
+              officialInfoUrl: detailUrl,
+              source: url,
+              organizerName,
+              organizerUrl,
+            });
+          }
+        });
+      });
+    }
+
     // 2. Discover sub-links for deeper recursive calendar crawling
     $("a[href]").each((_, el) => {
       const href = $(el).attr("href");
@@ -868,10 +1003,10 @@ export async function ingestDiscoveredEvents(
               sourceType: "venue",
               cityName: ev.cityName,
               stateName: ev.stateName || "NC",
-              scrapeIntervalDays: 14,
+              scrapeIntervalDays: 30,
               scrapeHorizonMonths: 6,
               status: "active",
-              nextScrapeDue: sql`NOW() + interval '7 days'`,
+              nextScrapeDue: sql`NOW()`,
             })
             .onConflictDoNothing();
         }
@@ -919,7 +1054,7 @@ export async function ingestDiscoveredEvents(
               scrapeIntervalDays: 30,
               scrapeHorizonMonths: 12,
               status: "active",
-              nextScrapeDue: sql`NOW() + interval '7 days'`,
+              nextScrapeDue: sql`NOW()`,
             })
             .onConflictDoNothing();
         }
@@ -980,10 +1115,10 @@ export async function ingestDiscoveredEvents(
               sourceType: "organizer",
               cityName: ev.cityName,
               stateName: ev.stateName || "NC",
-              scrapeIntervalDays: 14,
+              scrapeIntervalDays: 30,
               scrapeHorizonMonths: 6,
               status: "active",
-              nextScrapeDue: sql`NOW() + interval '7 days'`,
+              nextScrapeDue: sql`NOW()`,
             })
             .onConflictDoNothing();
         }

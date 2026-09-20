@@ -82,10 +82,10 @@ export async function GET(request: Request) {
                 sourceType: 'venue',
                 cityName: src.cityName,
                 stateName: src.stateName || 'NC',
-                scrapeIntervalDays: 14,
+                scrapeIntervalDays: 30,
                 scrapeHorizonMonths: 6,
                 status: 'active',
-                nextScrapeDue: sql`NOW() + interval '3 days'`,
+                nextScrapeDue: sql`NOW()`,
               })
               .onConflictDoNothing();
           }
