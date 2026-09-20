@@ -48,6 +48,15 @@ export const YARD_SALE_SOURCES: YardSaleSourceDef[] = [
     feedType: 'json_api',
     notes: 'Shared underlying map and sale API. Single endpoint extracts across 3 sites.'
   },
+  {
+    id: 'storagetreasures_live',
+    name: 'StorageTreasures Live In-Person Auctions',
+    domain: 'storagetreasures.com',
+    tier: 1,
+    status: 'active',
+    feedType: 'json_api',
+    notes: 'Nationwide live in-person self-storage lien auctions held on-site at physical facilities with exact street addresses.'
+  },
 
   // --- TIER 2: SECONDARY FEEDS (Backlog Cache) ---
   {

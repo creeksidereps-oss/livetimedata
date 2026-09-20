@@ -11,6 +11,7 @@ export interface ScrapedYardSale {
   postalCode?: string;
   startDate: string; // YYYY-MM-DD
   endDate?: string;
+  startTime?: string;
   description: string;
   photoUrl?: string;
   hostingEntity?: string;
@@ -239,5 +240,95 @@ export async function scrapeEstateSalesForCity(
     console.error(`EstateSales.NET scraper error for ${citySlug}, ${stateSlug}:`, err.message);
     return [];
   }
+}
+
+/**
+ * Scrapes nationwide live in-person storage lien auctions from StorageTreasures.
+ * STRICT ENFORCEMENT:
+ * - Only live on-site auctions at physical storage facilities are ingested.
+ * - Online-only auctions and digital bids are strictly excluded.
+ * - Every auction must contain a verified numeric physical street address.
+ */
+export async function scrapeStorageTreasuresLiveAuctions(): Promise<ScrapedYardSale[]> {
+  const apiKey = "oiXHdXqV7N1hm4y9qA8NGJCqBa9tSs6aU6dBBQCf";
+  const baseUrl = "https://api.st-prd-1.aws.storagetreasures.com/p/";
+  const streetPattern = /\d+\s+([a-zA-Z0-9#.\s]+)/;
+  const auctions: ScrapedYardSale[] = [];
+
+  let page = 1;
+  try {
+    while (page <= 10) {
+      const res = await fetch(`${baseUrl}live-auctions?page_num=${page}&page_count=100`, {
+        headers: {
+          "x-api-key": apiKey,
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept: "application/json, text/plain, */*",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!res.ok) break;
+      const json = await res.json();
+      const items = json.live_auctions || [];
+      if (items.length === 0) break;
+
+      for (const item of items) {
+        const facility = item.facility || {};
+        const street = (facility.address || "").trim();
+
+        // STRICT PHYSICAL ADDRESS ENFORCEMENT
+        if (!street || !streetPattern.test(street)) {
+          continue;
+        }
+
+        const cityName = (facility.city || "").trim();
+        const stateName = (facility.state || "").trim();
+        const postalCode = (facility.zipcode || "").trim();
+        const facilityName = (facility.facility_name || "Self Storage Facility").trim();
+        const unitCount = item.unit_count
+          ? `${item.unit_count} unit${Number(item.unit_count) > 1 ? "s" : ""}`
+          : "Storage units";
+
+        const expDate =
+          item.expire_date?.user?.date ||
+          item.expire_date?.utc?.date ||
+          (item.expire_date?.utc?.datetime ? item.expire_date.utc.datetime.slice(0, 10) : "");
+        const expTime =
+          item.expire_date?.user?.time_formatted ||
+          item.expire_date?.user?.time ||
+          "10:00 AM";
+
+        if (!expDate) continue;
+
+        const auctionUrl = `https://www.storagetreasures.com/facilities/${facility.facility_id || item.facility_id}#live-auctions`;
+        const title = `Live Storage Auction (${unitCount}) - ${facilityName}`;
+        const desc = `Live in-person storage lien auction at ${facilityName}. Unit count: ${unitCount}. Address: ${street}, ${cityName}, ${stateName} ${postalCode}. In-person attendance required.`;
+
+        auctions.push({
+          title,
+          url: auctionUrl,
+          streetAddress: street,
+          cityName,
+          stateName,
+          postalCode,
+          startDate: expDate,
+          startTime: expTime,
+          description: desc,
+          hostingEntity: facilityName,
+          source: "StorageTreasures",
+          latitude: facility.marker?.lat ? parseFloat(facility.marker.lat) : undefined,
+          longitude: facility.marker?.lng ? parseFloat(facility.marker.lng) : undefined,
+        });
+      }
+
+      if (items.length < 100) break;
+      page++;
+    }
+  } catch (err: any) {
+    console.error("StorageTreasures live auction scraper error:", err.message);
+  }
+
+  return auctions;
 }
 
