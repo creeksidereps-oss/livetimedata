@@ -544,6 +544,65 @@ export async function extractEventsFromUrl(
       }
     }
 
+    // 1c. Simpleview / ASM Global REST API detection (for arenas, expo centers, and convention centers)
+    if (
+      eventsFound.length === 0 &&
+      (html.includes("plugins_events_events") ||
+        html.includes("asm_list") ||
+        html.includes("get_simple_token"))
+    ) {
+      try {
+        const origin = new URL(url).origin;
+        const tokenRes = await fetch(`${origin}/plugins/core/get_simple_token/`, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (tokenRes.ok) {
+          const token = (await tokenRes.text()).trim();
+          const apiUrl = `${origin}/includes/rest_v2/plugins_events_events/find/?token=${encodeURIComponent(
+            token
+          )}&json=${encodeURIComponent(JSON.stringify({ filter: {}, options: { limit: 100 } }))}`;
+          const apiRes = await fetch(apiUrl, { signal: AbortSignal.timeout(8000) });
+          if (apiRes.ok) {
+            const apiData = await apiRes.json();
+            const docs = apiData.docs || [];
+            for (const d of docs) {
+              if (!d.title || !d.startDate) continue;
+              const eventDate = new Date(d.startDate);
+              if (isNaN(eventDate.getTime())) continue;
+
+              const title = String(d.title).trim();
+              const detailUrl = d.absoluteUrl || (d.url ? `${origin}${d.url}` : url);
+              const flyerUrl = d._media?.[0]?.mediaurl || null;
+              const desc = d.description
+                ? d.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 2000)
+                : `${title} in ${fallbackCity}.`;
+              const category = categorizeEvent(title, desc);
+
+              eventsFound.push({
+                title,
+                cityName: fallbackCity,
+                stateName: fallbackState,
+                venue: d.custom?.calendarname || fallbackCity,
+                category,
+                startTime: "9:00 AM",
+                eventDate,
+                details: desc,
+                officialInfoUrl: detailUrl,
+                eventFlyerUrl: flyerUrl,
+                source: url,
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error(`[SIMPLEVIEW_CRAWL_ERROR] ${err.message}`);
+      }
+    }
+
     // 2. Discover sub-links for deeper recursive calendar crawling
     $("a[href]").each((_, el) => {
       const href = $(el).attr("href");

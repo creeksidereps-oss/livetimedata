@@ -17,6 +17,10 @@ export async function POST(req: Request) {
 
     const cityLower = cityName.toLowerCase().trim();
 
+    if (cityLower === 'kings mountain') {
+      return NextResponse.json({ ok: true, message: "Kings Mountain webcams are manually curated.", count: 0 });
+    }
+
     // City-specific landmark terms for richer discovery
     const LANDMARK_MAP: Record<string, string[]> = {
       istanbul: ["bosphorus", "taksim", "galata", "sultanahmet", "kadikoy"],

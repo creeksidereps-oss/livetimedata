@@ -9,7 +9,10 @@ export async function POST(req: Request) {
 
     // The Concentric Circle Fetching Logic
     
+    const isKingsMountain = cityName ? cityName.toLowerCase().trim() === 'kings mountain' : false;
+
     // Priority 1: Exact City Matches FIRST, then State/Region Matches for Row 1
+    let exactCityMatches: any[] = [];
     let regional: any[] = [];
     if (cityName) {
       // First, get exact city matches. Ensure we don't grab identical city names from other states/countries!
@@ -26,7 +29,7 @@ export async function POST(req: Request) {
           AND status IN ('live', 'approved')
           ORDER BY display_order DESC, view_count DESC LIMIT 12
         `;
-        regional = strictRows;
+        exactCityMatches = strictRows;
       } else if (stateName) {
         const { rows: strictRows } = await sql`
           SELECT * FROM webcams 
@@ -35,29 +38,30 @@ export async function POST(req: Request) {
           AND status IN ('live', 'approved')
           ORDER BY display_order DESC, view_count DESC LIMIT 12
         `;
-        regional = strictRows;
+        exactCityMatches = strictRows;
       } else {
         const { rows: cityRows } = await sql`
           SELECT * FROM webcams 
           WHERE city_name ILIKE ${cityName} AND status IN ('live', 'approved')
           ORDER BY display_order DESC, view_count DESC LIMIT 12
         `;
-        regional = cityRows;
+        exactCityMatches = cityRows;
       }
 
       // Safe fallback if strict combination produced 0 results
-      if (regional.length === 0) {
+      if (exactCityMatches.length === 0) {
         const { rows: fallbackCity } = await sql`
           SELECT * FROM webcams 
           WHERE city_name ILIKE ${cityName} AND status IN ('live', 'approved')
           ORDER BY display_order DESC, view_count DESC LIMIT 12
         `;
-        regional = fallbackCity;
+        exactCityMatches = fallbackCity;
       }
+      regional = [...exactCityMatches];
     }
     
-    // Then fill the remaining with state matches if needed
-    if (stateName && regional.length < 24) {
+    // Then fill the remaining with state matches if needed (disabled for Kings Mountain to remove default videos)
+    if (!isKingsMountain && stateName && regional.length < 24) {
       const needed = 24 - regional.length;
       const { rows: stateRows } = await sql`
         SELECT * FROM webcams 
@@ -72,7 +76,7 @@ export async function POST(req: Request) {
 
     // Priority 2: Country Matches for Row 2
     let countryData: any[] = [];
-    if (countryName) {
+    if (!isKingsMountain && countryName) {
       const { rows } = await sql`
         SELECT * FROM webcams 
         WHERE (country ILIKE ${countryName} AND country IS NOT NULL AND country != '')
@@ -82,11 +86,11 @@ export async function POST(req: Request) {
       countryData = rows;
     }
 
-    // Build Row 1 (State/Region Grid) - 12 Items Max
-    let row1 = [...regional].slice(0, 12);
+    // Build Row 1 (Local Webcams) - Exact matches if available
+    let row1 = exactCityMatches.length > 0 ? exactCityMatches : [...regional].slice(0, 12);
 
     // Fallback for Row 2: Popular Themed Collections if country doesn't have enough
-    if (countryData.length < 12) {
+    if (!isKingsMountain && countryData.length < 12) {
       const needed = 12 - countryData.length;
       const { rows: themedCams } = await sql`
         SELECT * FROM webcams 
@@ -99,7 +103,7 @@ export async function POST(req: Request) {
 
     // Build Row 2 (Country/Themed Grid) - 12 Items Max
     // Filter out items already in Row 1
-    let row2 = countryData.filter(r => !row1.some(l => l.id === r.id)).slice(0, 12);
+    let row2 = isKingsMountain ? [] : countryData.filter(r => !row1.some(l => l.id === r.id)).slice(0, 12);
     
     let local = row1;
     regional = row2;
@@ -109,42 +113,44 @@ export async function POST(req: Request) {
 
     let global: any[] = [];
     
-    // First: Try to get manually curated 'global-curated' cams specific to this country
-    if (countryName) {
-      const { rows: countryCurated } = await sql`
-        SELECT * FROM webcams 
-        WHERE status = 'live' AND kind = 'global-curated' AND country ILIKE ${'%' + countryName + '%'}
-        ORDER BY id DESC LIMIT 24
-      `;
-      global = countryCurated.filter((r: any) => !excludedIds.has(r.id)).slice(0, 12);
-    }
-    
-    // Fallback 1: Try to get manually curated 'global-curated' cams from anywhere
-    if (global.length < 12) {
-      const { rows: generalCurated } = await sql`
-        SELECT * FROM webcams 
-        WHERE status = 'live' AND kind = 'global-curated'
-        ORDER BY id DESC LIMIT 36
-      `;
-      const needed = 12 - global.length;
-      const additional = generalCurated
-        .filter((r: any) => !excludedIds.has(r.id) && !global.some(g => g.id === r.id))
-        .slice(0, needed);
-      global = [...global, ...additional];
-    }
+    if (!isKingsMountain) {
+      // First: Try to get manually curated 'global-curated' cams specific to this country
+      if (countryName) {
+        const { rows: countryCurated } = await sql`
+          SELECT * FROM webcams 
+          WHERE status = 'live' AND kind = 'global-curated' AND country ILIKE ${'%' + countryName + '%'}
+          ORDER BY id DESC LIMIT 24
+        `;
+        global = countryCurated.filter((r: any) => !excludedIds.has(r.id)).slice(0, 12);
+      }
+      
+      // Fallback 1: Try to get manually curated 'global-curated' cams from anywhere
+      if (global.length < 12) {
+        const { rows: generalCurated } = await sql`
+          SELECT * FROM webcams 
+          WHERE status = 'live' AND kind = 'global-curated'
+          ORDER BY id DESC LIMIT 36
+        `;
+        const needed = 12 - global.length;
+        const additional = generalCurated
+          .filter((r: any) => !excludedIds.has(r.id) && !global.some(g => g.id === r.id))
+          .slice(0, needed);
+        global = [...global, ...additional];
+      }
 
-    // Fallback 2: Fill the rest with the most popular global cams
-    if (global.length < 12) {
-      const needed = 12 - global.length;
-      const { rows: popularGlobal } = await sql`
-        SELECT * FROM webcams 
-        WHERE status = 'live'
-        ORDER BY view_count DESC LIMIT 50
-      `;
-      const additional = popularGlobal
-        .filter((r: any) => !excludedIds.has(r.id) && !global.some(g => g.id === r.id))
-        .slice(0, needed);
-      global = [...global, ...additional];
+      // Fallback 2: Fill the rest with the most popular global cams
+      if (global.length < 12) {
+        const needed = 12 - global.length;
+        const { rows: popularGlobal } = await sql`
+          SELECT * FROM webcams 
+          WHERE status = 'live'
+          ORDER BY view_count DESC LIMIT 50
+        `;
+        const additional = popularGlobal
+          .filter((r: any) => !excludedIds.has(r.id) && !global.some(g => g.id === r.id))
+          .slice(0, needed);
+        global = [...global, ...additional];
+      }
     }
 
     // Premium 360 Tour for this specific city
@@ -206,7 +212,7 @@ export async function POST(req: Request) {
     // Smart Lazy Loading Scraper:
     // If the city has fewer than 5 webcams, check when it was last scraped.
     // If never scraped OR last scrape was >= 7 days ago, trigger the live scraper automatically!
-    if (rightRailCams.length < 5 && cityName) {
+    if (!isKingsMountain && rightRailCams.length < 5 && cityName) {
       try {
         const { rows: scrapeCheck } = await sql`
           SELECT MAX(created_at) as last_scraped 
@@ -250,7 +256,7 @@ export async function POST(req: Request) {
     }
 
     // If city STILL has no webcams, fallback to state/region or country to prevent empty boxes (SEO requirement)
-    if (rightRailCams.length === 0 && (stateName || countryName)) {
+    if (!isKingsMountain && rightRailCams.length === 0 && (stateName || countryName)) {
       if (stateName) {
         const { rows: stateFallbacks } = await sql`
           SELECT * FROM webcams 
