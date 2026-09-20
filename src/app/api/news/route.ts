@@ -75,7 +75,7 @@ async function fetchGoogleNews(query: string, cityName: string): Promise<NewsIte
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
       },
-      next: { revalidate: 300 } // Cache for 5 minutes
+      next: { revalidate: 60 } // Cache for 60 seconds
     });
 
     if (!res.ok) return [];
@@ -147,7 +147,8 @@ export async function GET(req: Request) {
     const rawStories = await fetchGoogleNews(primaryQuery, cityName);
 
     const now = Date.now();
-    const maxAgeMs = 3 * 24 * 60 * 60 * 1000; // Strictly max 3 days (72 hours)
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const maxAgeMs = 3 * oneDayMs; // Strictly max 3 days (72 hours)
 
     let filtered = rawStories.filter(item => {
       if (isJunkNews(item.title, item.source, item.snippet)) return false;
@@ -156,17 +157,20 @@ export async function GET(req: Request) {
       return age <= maxAgeMs && age >= -3600000; // Within 3 days
     });
 
-    // If a smaller town doesn't have enough stories from the last 3 days,
-    // supplement with fresh regional/state-level breaking news from the past 24 hours.
-    if (filtered.length < 4 && stateName) {
-      const regionalQuery = `"${stateName}" news when:1d ${excludeQuery}`.trim();
+    const todayCount = filtered.filter(item => (now - item.timestamp) <= oneDayMs).length;
+
+    // If fewer than 3 stories from today (past 24h), or fewer than 6 stories overall,
+    // supplement with breaking regional/state-level news from today.
+    if ((todayCount < 3 || filtered.length < 6) && (stateName || countryName)) {
+      const region = stateName || countryName;
+      const regionalQuery = `"${region}" news when:1d ${excludeQuery}`.trim();
       const regionalRaw = await fetchGoogleNews(regionalQuery, cityName);
       const existingTitles = new Set(filtered.map(f => f.title.toLowerCase()));
 
       for (const reg of regionalRaw) {
         if (isJunkNews(reg.title, reg.source, reg.snippet)) continue;
         const age = now - reg.timestamp;
-        if (age <= 24 * 60 * 60 * 1000 && age >= -3600000) {
+        if (age <= oneDayMs && age >= -3600000) {
           if (!existingTitles.has(reg.title.toLowerCase())) {
             existingTitles.add(reg.title.toLowerCase());
             filtered.push(reg);
