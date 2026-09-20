@@ -8,6 +8,7 @@ interface NewsStory {
   title: string;
   source: string;
   pubDate: string;
+  timestamp?: number;
   timeAgo: string;
   snippet: string;
   link: string;
@@ -35,7 +36,12 @@ export default function CityNewsBlock({ cityName, stateName, countryName }: City
         const res = await fetch(query);
         const data = await res.json();
         if (data.ok && isMounted) {
-          setStories(data.stories || []);
+          const sorted = (data.stories || []).sort((a: NewsStory, b: NewsStory) => {
+            const tA = a.timestamp || (a.pubDate ? new Date(a.pubDate).getTime() : 0);
+            const tB = b.timestamp || (b.pubDate ? new Date(b.pubDate).getTime() : 0);
+            return tB - tA;
+          });
+          setStories(sorted);
         }
       } catch (err) {
         console.warn("City news load warning:", err);

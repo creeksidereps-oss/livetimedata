@@ -64,7 +64,7 @@ export async function GET(req: Request) {
     const xmlText = await res.text();
     const itemMatches = xmlText.match(/<item>[\s\S]*?<\/item>/g) || [];
 
-    const stories = itemMatches.slice(0, 12).map((itemXml, index) => {
+    const allStories = itemMatches.map((itemXml, index) => {
       const rawTitle = itemXml.match(/<title>([\s\S]*?)<\/title>/)?.[1] || "Local News Update";
       const link = itemXml.match(/<link>([\s\S]*?)<\/link>/)?.[1] || "";
       const pubDate = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || "";
@@ -88,16 +88,24 @@ export async function GET(req: Request) {
         .replace(/\s+/g, " ")
         .trim();
 
+      const timestamp = pubDate ? new Date(pubDate).getTime() : 0;
+
       return {
         id: `news-${index}-${Buffer.from(cleanHeadline).toString("base64").slice(0, 8)}`,
         title: cleanHeadline,
         source: source.trim(),
         pubDate,
+        timestamp: isNaN(timestamp) ? 0 : timestamp,
         timeAgo: timeAgo(pubDate),
         snippet: cleanSnippet || `Latest regional coverage and breaking headlines for ${cityName}.`,
         link: link.trim()
       };
     });
+
+    // Sort chronologically by date descending (newest first)
+    allStories.sort((a, b) => b.timestamp - a.timestamp);
+
+    const stories = allStories.slice(0, 15);
 
     return NextResponse.json({
       ok: true,
