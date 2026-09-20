@@ -154,6 +154,42 @@ export function formatTimeFromDate(isoStr?: string): string {
 }
 
 /**
+ * Parses natural human date strings (including ranges like "September 2 - 20, 2026" or single dates "Oct 2, 2026").
+ */
+export function parseHumanDateString(dateStr?: string): Date | null {
+  if (!dateStr) return null;
+  const clean = dateStr.replace(/\s+/g, " ").trim();
+
+  // Range: "September 2 - 20, 2026" or "Sep 2 - 20, 2026"
+  const rangeMatch = clean.match(/^([A-Za-z]+)\s+(\d{1,2})\s*-\s*(\d{1,2}),?\s*(\d{4})$/);
+  if (rangeMatch) {
+    const [_, monthStr, startDay, endDay, year] = rangeMatch;
+    const d = new Date(`${monthStr} ${startDay}, ${year} 12:00:00 UTC`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Multi-month range: "October 27 - November 1, 2026"
+  const multiMonthMatch = clean.match(/^([A-Za-z]+)\s+(\d{1,2})\s*-\s*([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})$/);
+  if (multiMonthMatch) {
+    const [_, m1, d1, m2, d2, year] = multiMonthMatch;
+    const d = new Date(`${m1} ${d1}, ${year} 12:00:00 UTC`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Single date: "Sep 24, 2026" or "October 2, 2026"
+  const singleMatch = clean.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/);
+  if (singleMatch) {
+    const d = new Date(`${singleMatch[1]} ${singleMatch[2]}, ${singleMatch[3]} 12:00:00 UTC`);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const fallback = new Date(clean);
+  if (!isNaN(fallback.getTime())) return fallback;
+
+  return null;
+}
+
+/**
  * Validates whether an extracted string is a clean, genuine email address.
  */
 export function isValidEmail(email: string): boolean {
@@ -429,6 +465,84 @@ export async function extractEventsFromUrl(
         processObj(data);
       } catch {}
     });
+
+    // 1b. Fallback: Standard DOM Event Card Parsing (for theater, arena, and arts pages without JSON-LD)
+    if (eventsFound.length === 0) {
+      const cardSelectors = [
+        ".eventItem",
+        ".event-item",
+        ".event_item",
+        ".event-card",
+        ".eventCard",
+        ".events-card",
+        "article.event",
+        ".show-item",
+        ".c-card--event",
+      ];
+
+      for (const sel of cardSelectors) {
+        const cards = $(sel);
+        if (cards.length > 0) {
+          cards.each((_, el) => {
+            let title = $(el)
+              .find("h2 a, h3 a, h4 a, .title a, .event-title a, h2, h3, h4, .title, .event-title")
+              .first()
+              .text()
+              .trim();
+            title = title.split("\t")[0].trim().replace(/\s+/g, " ");
+            const dateText = $(el)
+              .find(".date, .event-date, time, [class*='date']")
+              .first()
+              .text()
+              .trim();
+            if (!title || !dateText || title.length < 3 || title.length > 200) return;
+
+            const parsedDate = parseHumanDateString(dateText);
+            if (!parsedDate || isNaN(parsedDate.getTime())) return;
+
+            const tagline = $(el)
+              .find(".tagline, .sub-title, .event-sub-title, .desc, p")
+              .first()
+              .text()
+              .trim();
+            let detailUrl =
+              $(el)
+                .find("a[href*='/event'], a[href*='/show'], a[href*='/detail'], .title a, h3 a")
+                .first()
+                .attr("href") || url;
+            try {
+              detailUrl = new URL(detailUrl, url).href;
+            } catch {}
+
+            let flyerUrl = $(el).find("img").first().attr("src");
+            try {
+              if (flyerUrl) flyerUrl = new URL(flyerUrl, url).href;
+            } catch {}
+
+            const category = categorizeEvent(title, tagline);
+            const venueName = $("h1").first().text().trim() || fallbackCity;
+
+            eventsFound.push({
+              title,
+              cityName: fallbackCity,
+              stateName: fallbackState,
+              venue: venueName,
+              category,
+              startTime: "7:30 PM",
+              eventDate: parsedDate,
+              details: tagline
+                ? `${title} - ${tagline}. Live in ${fallbackCity}, ${fallbackState}.`
+                : `${title} live in ${fallbackCity}, ${fallbackState}.`,
+              officialInfoUrl: detailUrl,
+              eventFlyerUrl: flyerUrl,
+              source: url,
+            });
+          });
+
+          if (eventsFound.length > 0) break;
+        }
+      }
+    }
 
     // 2. Discover sub-links for deeper recursive calendar crawling
     $("a[href]").each((_, el) => {
