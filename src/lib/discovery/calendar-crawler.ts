@@ -538,6 +538,8 @@ export async function extractEventsFromUrl(
         ".c-card--event",
         ".eventlist-event",
         "article.hentry",
+        ".event_list .entry",
+        ".entry",
       ];
 
       for (const sel of cardSelectors) {
