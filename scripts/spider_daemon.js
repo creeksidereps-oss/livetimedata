@@ -899,7 +899,7 @@ async function runSpiderDaemon() {
             FROM sources
             WHERE status = 'active'
               AND (next_scrape_due IS NULL OR next_scrape_due <= NOW())
-            ORDER BY next_scrape_due ASC NULLS FIRST
+            ORDER BY id DESC
             LIMIT ${BATCH_SIZE};
           `;
 
