@@ -288,6 +288,80 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
       });
     }
 
+    // 3b. Bandsintown & Artist Tour Widgets
+    const bitWidget = $('.bit-widget-initializer, [data-artist-name], a[href*="bandsintown.com"]');
+    const bitScript = $('script[src*="bandsintown.com"]');
+    if (
+      events.length === 0 &&
+      (bitWidget.length > 0 || bitScript.length > 0 || html.includes('widget.bandsintown.com'))
+    ) {
+      try {
+        let artistName = bitWidget.attr('data-artist-name');
+        if (!artistName) {
+          artistName =
+            $('h1').first().text().trim() ||
+            $('title').first().text().split(/[-|]/)[0].replace(/official\s+(?:site|website)\s+of/i, '').trim();
+        }
+
+        if (artistName) {
+          const parsedUrl = new URL(url);
+          const hostname = parsedUrl.hostname;
+          const origin = parsedUrl.origin;
+          const bitApiUrl = `https://rest.bandsintown.com/V3.1/artists/${encodeURIComponent(artistName)}/events?app_id=js_${hostname}&date=upcoming`;
+
+          const bitRes = await fetch(bitApiUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              Referer: url,
+              Origin: origin,
+            },
+            signal: AbortSignal.timeout(8000),
+          });
+
+          if (bitRes.ok) {
+            const tourEvents = await bitRes.json();
+            if (Array.isArray(tourEvents)) {
+              for (const ev of tourEvents) {
+                if (!ev.datetime || !ev.venue) continue;
+                const eventDate = new Date(ev.datetime);
+                if (isNaN(eventDate.getTime())) continue;
+
+                const city = ev.venue.city || defaultCity;
+                const state = ev.venue.region || defaultState;
+                const venueName = ev.venue.name || `${artistName} Live`;
+                const title = ev.title || `${artistName} at ${venueName}`;
+                const detailUrl = ev.offers?.[0]?.url || ev.url || url;
+                const desc =
+                  ev.description ||
+                  `${artistName} live in concert at ${venueName} in ${city}, ${state}.`;
+
+                events.push({
+                  title,
+                  cityName: city,
+                  stateName: state,
+                  venue: venueName,
+                  category: 'Concerts & Live Music',
+                  startTime:
+                    eventDate.toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    }) || '7:00 PM',
+                  eventDate,
+                  details: desc,
+                  officialInfoUrl: detailUrl,
+                  eventFlyerUrl: ev.artist?.image_url || null,
+                  performerName: artistName,
+                  performerUrl: url,
+                });
+              }
+            }
+          }
+        }
+      } catch (bitErr) {
+        console.error(`[BANDSINTOWN_CRAWL_ERROR] ${bitErr.message}`);
+      }
+    }
+
     // 4. Discover sub-links for deeper recursive calendar exploration
     $('a[href]').each((_, el) => {
       const href = $(el).attr('href');
@@ -382,6 +456,31 @@ async function ingestCrawlResults(source, crawl) {
           RETURNING id;
         `;
         if (orgRes.rowCount > 0) childrenQueued++;
+      }
+
+      // Upsert performer if present
+      if (ev.performerName) {
+        const perfNorm = ev.performerName.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+        await sql`
+          INSERT INTO entities (
+            name, normalized_name, entity_type, city_name, state_name,
+            website_url, verification_status, created_at, updated_at
+          ) VALUES (
+            ${ev.performerName}, ${perfNorm}, 'performer', ${ev.cityName}, ${ev.stateName || 'NC'},
+            ${ev.performerUrl || null}, 'discovered', NOW(), NOW()
+          )
+          ON CONFLICT DO NOTHING;
+        `;
+        await sql`
+          INSERT INTO performers (
+            name, type, tour_page_url, official_site, created_at, updated_at
+          ) VALUES (
+            ${ev.performerName}, 'band', ${ev.performerUrl || null}, ${ev.performerUrl || null}, NOW(), NOW()
+          )
+          ON CONFLICT (name) DO UPDATE SET
+            tour_page_url = COALESCE(performers.tour_page_url, EXCLUDED.tour_page_url),
+            updated_at = NOW();
+        `;
       }
     } catch (err) {
       // Ignore individual event collisions
