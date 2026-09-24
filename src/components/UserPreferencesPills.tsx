@@ -159,7 +159,7 @@ export default function UserPreferencesPills({
       saveFavorites([newEntry, ...favorites]);
     }
 
-    setToast(`🏠 ${city.name} is now your default Start Page!`);
+    setToast(`🏠 ${city.name} is now your default Start Page on LiveTimeData.com!`);
     setSwitchModalOpen(false);
   };
 
@@ -196,20 +196,16 @@ export default function UserPreferencesPills({
             type="button"
             onClick={() => setDropdownOpen((prev) => !prev)}
             title="View your favorite places"
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-900 ${
-              isCurrentFavorite
-                ? "bg-rose-50 text-rose-800 hover:bg-rose-100"
-                : "bg-white hover:bg-slate-100 text-slate-900"
-            }`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-900 bg-blue-600 hover:bg-blue-700 text-white"
           >
-            <Star size={13} className={isCurrentFavorite ? "text-rose-600 fill-rose-600" : "text-amber-500"} />
+            <Star size={13} className="text-amber-300 fill-amber-300" />
             <span>MY FAVORITES</span>
             {favorites.length > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black leading-none ${isCurrentFavorite ? "bg-rose-200 text-rose-900" : "bg-slate-200 text-slate-700"}`}>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black leading-none bg-blue-900/70 text-white border border-white/20">
                 {favorites.length}
               </span>
             )}
-            <ChevronDown size={11} className={`transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
+            <ChevronDown size={11} className={`text-white transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
           </button>
 
           {/* Favorites Dropdown Menu */}
@@ -328,13 +324,9 @@ export default function UserPreferencesPills({
           type="button"
           onClick={handleStartPageClick}
           title={isCurrentStartPage ? "Current Start Page (Click to manage)" : `Save ${cityName} as your start page`}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-900 ${
-            isCurrentStartPage
-              ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
-              : "bg-white hover:bg-slate-100 text-slate-900"
-          }`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-900 bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
         >
-          <Home size={13} className={isCurrentStartPage ? "text-slate-950 fill-slate-950" : "text-amber-500"} />
+          <Home size={13} className="text-slate-950 fill-slate-950" />
           <span className="hidden sm:inline">
             {isCurrentStartPage ? "START PAGE ✓" : "SAVE AS START PAGE"}
           </span>
@@ -393,15 +385,23 @@ export default function UserPreferencesPills({
                   addCurrentToFavorites();
                   setSwitchModalOpen(false);
                 }}
-                className="w-full py-2 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition-colors cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
               >
-                ⭐ Keep {startPage?.name} & Add {cityName} to Favorites Instead
+                ⭐ Add to My Favorite Cities
               </button>
 
               <button
                 type="button"
                 onClick={() => setSwitchModalOpen(false)}
-                className="w-full py-2 px-4 rounded-xl text-slate-500 hover:text-slate-800 text-xs font-bold transition-colors cursor-pointer"
+                className="w-full py-2 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                🏠 Keep {startPage?.name} as Start Page
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSwitchModalOpen(false)}
+                className="w-full py-1 text-slate-400 hover:text-slate-700 text-xs font-bold transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -431,7 +431,7 @@ export default function UserPreferencesPills({
             </h3>
 
             <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              Whenever you visit <strong className="text-slate-900">livetimedata.com</strong>, your browser opens directly to{" "}
+              Whenever you visit <strong className="text-slate-900">LiveTimeData.com</strong>, your browser opens directly to{" "}
               <strong className="text-blue-600">{cityName}</strong> with real-time local intelligence, weather, and schedule.
             </p>
 
@@ -441,7 +441,7 @@ export default function UserPreferencesPills({
                 onClick={() => {
                   saveStartPage(null);
                   setActiveModalOpen(false);
-                  setToast("Start page cleared. livetimedata.com will open the global homepage.");
+                  setToast("Start page cleared. LiveTimeData.com will open the global homepage.");
                 }}
                 className="w-full py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-black uppercase tracking-wider transition-colors cursor-pointer"
               >
