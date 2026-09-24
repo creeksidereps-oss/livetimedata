@@ -248,6 +248,40 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
       if (isValidEmail(em)) emails.add(em.toLowerCase().trim());
     }
 
+    // 1b. Follow contact or about page if no email found on calendar page
+    if (emails.size === 0) {
+      const contactHref = $('a[href*="contact"], a[href*="blank-2"], a[href*="about"]')
+        .map((_, el) => $(el).attr('href'))
+        .get()
+        .find(h => h && !h.startsWith('#') && !h.startsWith('mailto:') && !h.startsWith('tel:'));
+
+      if (contactHref) {
+        try {
+          const contactUrl = new URL(contactHref, url).href;
+          const cRes = await fetch(contactUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            signal: AbortSignal.timeout(6000),
+          });
+          if (cRes.ok) {
+            const cHtml = await cRes.text();
+            const c$ = cheerio.load(cHtml);
+            c$('a[href^="mailto:"]').each((_, el) => {
+              const h = c$(el).attr('href');
+              if (h) {
+                const cl = h.replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
+                if (isValidEmail(cl)) emails.add(cl);
+              }
+            });
+            const cBody = c$('body').text();
+            const cMatches = cBody.match(/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g) || [];
+            for (const em of cMatches) {
+              if (isValidEmail(em)) emails.add(em.toLowerCase().trim());
+            }
+          }
+        } catch {}
+      }
+    }
+
     // 2. Scan Schema.org JSON-LD scripts
     $('script[type="application/ld+json"]').each((_, el) => {
       try {
@@ -345,6 +379,66 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
           console.error(`[AEG_FEED_ERROR] Error fetching ${jsonUrl}:`, err.message);
         }
       }
+    }
+
+    // 2a-2. Wix Events embedded JSON feed detection
+    if (events.length === 0) {
+      $('script').each((_, el) => {
+        const text = $(el).html() || '';
+        if (!text.includes('startDate') && !text.includes('scheduling')) return;
+
+        try {
+          const data = JSON.parse(text);
+          function findWixEvents(obj) {
+            if (!obj || typeof obj !== 'object') return;
+            if (obj.title && (obj.startDate || obj.scheduling)) {
+              const startDateStr = obj.scheduling?.config?.startDate || obj.startDate;
+              if (startDateStr) {
+                const eventDate = new Date(startDateStr);
+                if (!isNaN(eventDate.getTime()) && eventDate >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)) {
+                  const title = String(obj.title).trim();
+                  const desc = (obj.description || obj.about || `${title} at ${defaultCity}.`).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                  const venueName = obj.location?.name || obj.location?.address || defaultCity;
+                  const city = obj.location?.fullAddress?.city || defaultCity;
+                  const state = obj.location?.fullAddress?.subdivision || defaultState;
+                  const startTime = obj.scheduling?.startTimeFormatted || (obj.scheduling?.formatted?.match(/\b(\d{1,2}:\d{2}\s*(?:AM|PM))\b/i)?.[1]) || '7:00 PM';
+                  const flyerUrl = obj.mainImage?.url || null;
+                  const detailUrl = obj.slug ? `${new URL(url).origin}/event-details/${obj.slug}` : url;
+
+                  let performerName = undefined;
+                  if (/with\s+([A-Za-z0-9\s]+?)(?:-|\(|$)/i.test(title)) {
+                    performerName = title.match(/with\s+([A-Za-z0-9\s]+?)(?:-|\(|$)/i)[1].trim();
+                  } else if (title.includes('SappingTones')) {
+                    performerName = 'The SappingTones';
+                  }
+
+                  // Deduplicate inside page
+                  if (!events.some(e => e.title === title && e.eventDate.getTime() === eventDate.getTime())) {
+                    events.push({
+                      title,
+                      venue: venueName,
+                      cityName: city,
+                      stateName: state,
+                      category: categorizeEvent(title, desc),
+                      startTime,
+                      eventDate,
+                      details: desc,
+                      officialInfoUrl: detailUrl,
+                      eventFlyerUrl: flyerUrl,
+                      performerName,
+                      source: url
+                    });
+                  }
+                }
+              }
+            }
+            for (const k of Object.keys(obj)) {
+              findWixEvents(obj[k]);
+            }
+          }
+          findWixEvents(data);
+        } catch {}
+      });
     }
 
     // 2b. DOM Event Cards & RHP Event Wrappers

@@ -23,6 +23,72 @@ function parseFactsFromMarkdown(content: string): Array<{ title: string; descrip
   return facts;
 }
 
+function computeFactPriority(fact: { title?: string; description?: string; category?: string }): number {
+  const t = (fact.title || "").toLowerCase();
+  const d = (fact.description || "").toLowerCase();
+  const c = (fact.category || "").toLowerCase();
+
+  // Tier 0: Dry fallback facts (coordinates, elevation, climate, population numbers)
+  if (
+    t.includes("coordinate") ||
+    t.includes("elevation") ||
+    t.includes("climate") ||
+    t.includes("latitude") ||
+    t.includes("longitude") ||
+    t.includes("demographic") ||
+    t.includes("subtropical") ||
+    d.includes("above sea level") ||
+    d.includes("climate (cfa)") ||
+    d.includes("latitude and")
+  ) {
+    return 0;
+  }
+
+  // Tier 2: Top high-engagement themes (Laws, Records, Inventions, Presidents/Celebrity, Oddities/Ghosts)
+  if (
+    t.includes("law") ||
+    t.includes("illegal") ||
+    t.includes("ordinance") ||
+    t.includes("record") ||
+    t.includes("guinness") ||
+    t.includes("invent") ||
+    t.includes("president") ||
+    t.includes("ghost") ||
+    t.includes("haunt") ||
+    t.includes("weird") ||
+    t.includes("bizarre") ||
+    t.includes("first") ||
+    t.includes("largest") ||
+    t.includes("smallest") ||
+    t.includes("underwear") ||
+    t.includes("legend") ||
+    t.includes("scandal") ||
+    c.includes("oddity") ||
+    c.includes("world_record") ||
+    c.includes("discovery") ||
+    c.includes("quirk")
+  ) {
+    return 2;
+  }
+
+  // Tier 1: General local history & milestones
+  return 1;
+}
+
+const US_STATE_MAP: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+  DC: "District of Columbia"
+};
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -32,13 +98,14 @@ export async function GET(req: Request) {
 
     const cityName = clean(rawCity);
     const stateName = clean(rawState);
+    const fullStateName = (stateName.length === 2 ? US_STATE_MAP[stateName.toUpperCase()] : "") || stateName;
     const countryName = clean(rawCountry);
 
     if (!cityName) {
       return NextResponse.json({ ok: false, error: "City name required" }, { status: 400 });
     }
 
-    const cityKey = `${cityName.toLowerCase()}_${stateName.toLowerCase()}`;
+    const cityKey = `${cityName.toLowerCase()}_${(fullStateName || stateName).toLowerCase()}`;
     const normCity = cityName.toLowerCase().replace(/[^a-z0-9]/g, '');
 
     // 1. Fetch all approved facts for this city from city_fun_facts
@@ -110,7 +177,20 @@ export async function GET(req: Request) {
       if (apiKey) {
         try {
           console.log(`[FACTS_RESEARCH] Autonomously researching authentic facts for ${cityName}, ${stateName || countryName}`);
-          const prompt = `Provide 10 verified fun facts about ${cityName}, ${stateName || countryName}. You MUST use Google Search Grounding to verify every single fact. DO NOT hallucinate or invent history. If deep historical facts are scarce, you MUST provide real geographic data (exact lat/long, elevation, climate, regional geography, demographics). Use **Bold Titles** for each item and number them 1-10. CRITICAL: Do NOT include any introductory or concluding sentences (like "Here are 10 facts..."). Start immediately with "1. **[Title]**".`;
+          const prompt = `Research verified, high-interest fun facts, strange trivia, and local oddities about ${cityName}, ${stateName || countryName}.
+PRIORITIZE THESE HIGH-ENGAGEMENT THEMES FIRST (inspired by Weird America, Guinness World Records, Ripley's Believe It or Not, Reader's Digest Famous Inventions, and Secret Lives of the U.S. Presidents):
+1. Bizarre Local Laws, Quirky Ordinances & Strange Legal History
+2. Famous Inventions, Food Origins & American Firsts
+3. Guinness / World Records, Massive Objects & Quirky Feats
+4. Presidential & Famous Historical Figure Scandals, Oddities & Local Visits
+5. Roadside Curiosities, Ghost Legends, Eccentric Landmarks & Folklore
+
+CRITICAL INSTRUCTIONS:
+- Every fact MUST be historically or factually authentic and verified. DO NOT hallucinate or invent history.
+- Always lead with the most entertaining, punchy oddities first. (Only provide standard geographical/historical facts as a last resort fallback at the bottom).
+- Find as many verified facts as possible (at least 10-15).
+- Use **Bold Titles** for each item and number them. Format: "1. **[Punchy Title]**: [2-3 sentences of engaging, verified details]".
+- Do NOT include any intro or outro text. Start immediately with "1. **[Title]**".`;
 
           const aiRes = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
@@ -176,12 +256,16 @@ export async function GET(req: Request) {
     }
 
     // 4. Fallback hierarchy: If still 0 facts, check state facts
-    if (facts.length === 0 && stateName) {
+    const stateCandidate = fullStateName || stateName;
+    if (facts.length === 0 && stateCandidate) {
       const stateResult = await sql`
         SELECT id, title, description, category, scope, source_attribution, contributed_by, created_at
         FROM city_fun_facts
         WHERE city_name = 'STATE_FACTS'
-          AND LOWER(state_name) = LOWER(${stateName})
+          AND (
+            LOWER(state_name) = LOWER(${stateCandidate})
+            OR LOWER(state_name) = LOWER(${stateName})
+          )
           AND is_approved = TRUE
         ORDER BY id ASC
       `;
@@ -191,7 +275,7 @@ export async function GET(req: Request) {
       }
     }
 
-    // 5. If no facts exist and no state facts, do NOT display global oddities across city pages!
+    // 5. If no facts exist and no state facts, return empty
     if (facts.length === 0) {
       return NextResponse.json({
         ok: true,
@@ -203,7 +287,18 @@ export async function GET(req: Request) {
       });
     }
 
-    // 5. Atomic Global Turn Increment Across All Users
+    // 6. Strict Priority Sorting:
+    // Tier 2 (Juicy oddities, weird laws, inventions, records, presidents/scandals) -> AT TOP
+    // Tier 1 (General history & landmarks) -> IN MIDDLE
+    // Tier 0 (Dry fallback: coordinates, elevation, climate, population) -> CACHED AT VERY BOTTOM
+    facts.sort((a: any, b: any) => {
+      const pA = computeFactPriority(a);
+      const pB = computeFactPriority(b);
+      if (pA !== pB) return pB - pA;
+      return (a.id || 0) - (b.id || 0);
+    });
+
+    // 7. Atomic Global Turn Increment Across All Users
     let turnIndex = 0;
     try {
       const rotResult = await sql`
@@ -220,11 +315,18 @@ export async function GET(req: Request) {
       console.warn("Fact rotation counter warning:", rotErr);
     }
 
-    // 6. Select Featured Fact for this Global Turn
-    const selectedIdx = (turnIndex - 1 + facts.length) % facts.length;
+    // 8. Select Featured Fact:
+    // Biased towards Tier 2 & Tier 1 facts so dry items only appear if nothing else exists!
+    const primeFacts = facts.filter((f: any) => computeFactPriority(f) > 0);
+    const rotationPool = primeFacts.length > 0 ? primeFacts : facts;
+
+    const selectedIdx = (turnIndex - 1 + rotationPool.length) % rotationPool.length;
+    const featuredFactItem = rotationPool[selectedIdx];
+    const originalFactNumber = facts.findIndex((f: any) => f.id === featuredFactItem.id) + 1;
+
     const featuredFact = {
-      ...facts[selectedIdx],
-      factNumber: selectedIdx + 1,
+      ...featuredFactItem,
+      factNumber: originalFactNumber > 0 ? originalFactNumber : selectedIdx + 1,
       totalFacts: facts.length,
       scope: currentScope,
       cityName,

@@ -833,6 +833,16 @@ function getCuratedSaleInfo(ev: EventItem): { url: string; label: string } | nul
     return { url: "/images/curated/car_boot_sale.jpg", label: "Authentic UK & Commonwealth Car Boot Sale" };
   }
   
+  // Auctions
+  if (
+    text.includes("auction") ||
+    text.includes("estate auction") ||
+    text.includes("farm auction") ||
+    text.includes("consignment auction")
+  ) {
+    return { url: "/images/curated/estate_sale.jpg", label: "Public Auction Listing Notice" };
+  }
+
   // Estate & Moving Sale
   if (
     text.includes("estate sale") ||
@@ -886,7 +896,50 @@ function InlineEventModal({
     ev.event_flyer_url?.includes("default-placeholder");
 
   const saleInfo = getCuratedSaleInfo(ev);
-  const isUserSubmittedFlyer = (ev.source === "User Submission" || ev.source === "User Form") && !!ev.event_flyer_url && !flyerError && !isGenericPlaceholder;
+  const hasOrganizerPhoto = !!ev.event_flyer_url && !flyerError && !isGenericPlaceholder;
+
+  // Address & Geo Queries (Strategy B & C)
+  const rawVenueAddress = (ev.venue_address && ev.venue_address !== "null" && ev.venue_address !== "undefined") ? ev.venue_address : null;
+  const isVenueStreetAddress = /^\d+\s+/.test(ev.venue || "");
+  const displayAddress = rawVenueAddress || (isVenueStreetAddress ? `${ev.venue}${ev.cityName ? `, ${ev.cityName}` : ""}` : null);
+  
+  const hasDistinctVenue = !!ev.venue && ev.venue.trim().length > 1 && 
+    !ev.venue.toLowerCase().includes("tba") && 
+    !ev.venue.toLowerCase().includes("online") && 
+    !ev.venue.toLowerCase().includes("zoom") && 
+    !ev.venue.toLowerCase().includes("various") &&
+    ev.venue.toLowerCase() !== (ev.cityName || cityName || "").toLowerCase();
+
+  const hasLocationQuery = Boolean(
+    (displayAddress && !displayAddress.toLowerCase().includes("address released") && !displayAddress.toLowerCase().includes("tba")) ||
+    hasDistinctVenue
+  );
+
+  const mapQuery = displayAddress || (hasDistinctVenue ? `${ev.venue}, ${ev.cityName || cityName || ""}`.trim() : "");
+
+  // Multi-tier Media Mode Strategy:
+  // Strategy A: Real organizer uploaded flyer/photo if available ($0)
+  // Strategy B: High-res property aerial satellite view ($0)
+  // Strategy C: Interactive on-demand street view & curated fallback
+  const [mediaMode, setMediaMode] = useState<"photo" | "satellite" | "street" | "curated" | "none">(() => {
+    if (hasOrganizerPhoto) return "photo";
+    if (hasLocationQuery) return "satellite";
+    if (saleInfo) return "curated";
+    return "none";
+  });
+
+  // Switch if photo fails to load
+  useEffect(() => {
+    if (flyerError && mediaMode === "photo") {
+      if (hasLocationQuery) {
+        setMediaMode("satellite");
+      } else if (saleInfo) {
+        setMediaMode("curated");
+      } else {
+        setMediaMode("none");
+      }
+    }
+  }, [flyerError, hasLocationQuery, saleInfo, mediaMode]);
 
   // Waterfall Graphic Resolver:
   // 1. If Yard/Estate/Boot/Brocante sale:
@@ -897,8 +950,8 @@ function InlineEventModal({
   //    - If none, attempt banked entity graphic lookup via /api/entities/lookup
   //    - If none, check town/city municipal seal.
   useEffect(() => {
-    // If it's a sale and not user flyer, saleInfo handles it directly
-    if (saleInfo && !isUserSubmittedFlyer) return;
+    // If it's a sale, it is handled by the multi-tier system directly
+    if (saleInfo) return;
     if (ev.event_flyer_url && !flyerError && !isGenericPlaceholder) return;
 
     let isMounted = true;
@@ -944,7 +997,7 @@ function InlineEventModal({
     return () => {
       isMounted = false;
     };
-  }, [ev.id, ev.official_info_url, ev.social_urls, ev.registration_url, ev.hosting_entity, ev.venue, ev.event_flyer_url, flyerError, isGenericPlaceholder, saleInfo, isUserSubmittedFlyer]);
+  }, [ev.id, ev.official_info_url, ev.social_urls, ev.registration_url, ev.hosting_entity, ev.venue, ev.event_flyer_url, flyerError, isGenericPlaceholder, saleInfo]);
 
   const cityLogo = getCityLogo(ev.cityName || cityName);
 
@@ -955,8 +1008,9 @@ function InlineEventModal({
   let isCuratedArt = false;
 
   if (saleInfo) {
-    if (isUserSubmittedFlyer) {
+    if (hasOrganizerPhoto) {
       activeGraphicUrl = ev.event_flyer_url;
+      graphicBadge = "Verified Organizer Photo";
     } else {
       activeGraphicUrl = saleInfo.url;
       graphicBadge = saleInfo.label;
@@ -1073,29 +1127,27 @@ function InlineEventModal({
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
               📍 <span style={{ color: "#0f172a" }}>{ev.venue}</span>{ev.cityName ? ` · ${ev.cityName}` : ''}
             </div>
-            {(() => {
-              const displayAddress = (ev.venue_address && ev.venue_address !== "null" && ev.venue_address !== "undefined")
-                ? ev.venue_address
-                : (/^\d+\s+/.test(ev.venue || "") ? `${ev.venue}${ev.cityName ? `, ${ev.cityName}` : ""}` : null);
-              const mapQuery = displayAddress || `${ev.venue} ${ev.cityName || ""}`.trim();
-              return (
-                <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 500, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", paddingLeft: "24px" }}>
-                  {displayAddress && displayAddress !== ev.venue && <span>{displayAddress}</span>}
-                  <button
-                    type="button"
-                    onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`)}
-                    style={{ background: "none", border: "none", padding: 0, color: "#4f46e5", fontWeight: 700, textDecoration: "underline", fontSize: "12px", cursor: "pointer" }}
-                  >
-                    Map & Directions &rarr;
-                  </button>
-                </div>
-              );
-            })()}
+            <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 500, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", paddingLeft: "24px" }}>
+              {displayAddress && displayAddress !== ev.venue && <span>{displayAddress}</span>}
+              <button
+                type="button"
+                onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`)}
+                style={{ background: "none", border: "none", padding: 0, color: "#4f46e5", fontWeight: 700, textDecoration: "underline", fontSize: "12px", cursor: "pointer" }}
+              >
+                Map & Directions &rarr;
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* FLYER / GRAPHIC WATERFALL DISPLAY */}
-        {activeGraphicUrl && (
+        {/* FLYER / SATELLITE / CURATED GRAPHIC WATERFALL DISPLAY (Strategy A -> B -> C) */}
+        {Boolean(
+          (mediaMode === "photo" && activeGraphicUrl) ||
+          (mediaMode === "satellite" && hasLocationQuery) ||
+          (mediaMode === "street" && hasLocationQuery) ||
+          (mediaMode === "curated" && saleInfo) ||
+          hasLocationQuery
+        ) && (
           <div style={{
             width: "100%",
             background: isSealFallback ? "#f8fafc" : "#0f172a",
@@ -1107,38 +1159,294 @@ function InlineEventModal({
             borderBottom: "1px solid #e2e8f0",
             padding: isSealFallback ? "24px 16px" : "16px 16px 20px 16px"
           }}>
-            <img 
-              src={activeGraphicUrl} 
-              onError={() => {
-                if (activeGraphicUrl === ev.event_flyer_url) setFlyerError(true);
-                else if (activeGraphicUrl === liveScrapedUrl) setLiveScrapedError(true);
-                else if (activeGraphicUrl === bankedEntityGraphic) setBankedError(true);
-              }} 
-              alt={graphicBadge || "Event Graphic"} 
-              style={{
-                width: isCuratedArt ? "100%" : "auto",
-                maxWidth: isSealFallback ? "300px" : isCuratedArt ? "680px" : "100%",
-                maxHeight: isSealFallback ? "160px" : "75vh",
-                objectFit: isCuratedArt ? "cover" : "contain",
-                borderRadius: isSealFallback ? "8px" : "12px",
-                boxShadow: isSealFallback ? "none" : "0 8px 30px rgba(0,0,0,0.35)"
-              }} 
-            />
-            {graphicBadge && (
-              <div style={{
-                marginTop: "12px",
-                fontSize: "11px",
-                fontWeight: 800,
-                color: isSealFallback ? "#64748b" : "#94a3b8",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                background: isSealFallback ? "transparent" : "rgba(255,255,255,0.08)",
-                padding: isSealFallback ? "0" : "4px 12px",
-                borderRadius: "999px"
-              }}>
-                {graphicBadge}
+            {mediaMode === "satellite" && (
+              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ position: "relative", width: "100%", height: "340px", borderRadius: "12px", overflow: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.15)" }}>
+                  <iframe
+                    title="Satellite Aerial Property View"
+                    width="100%"
+                    height="100%"
+                    style={{ border: 0 }}
+                    loading="lazy"
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&t=k&z=18&output=embed`}
+                  />
+                </div>
+                <div style={{
+                  marginTop: "12px",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: "#94a3b8",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  background: "rgba(255,255,255,0.08)",
+                  padding: "4px 12px",
+                  borderRadius: "999px"
+                }}>
+                  🛰️ Aerial Property & Lot View · High-Resolution Satellite
+                </div>
               </div>
             )}
+
+            {mediaMode === "street" && (
+              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ position: "relative", width: "100%", height: "340px", borderRadius: "12px", overflow: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.15)" }}>
+                  <iframe
+                    title="Street View"
+                    width="100%"
+                    height="100%"
+                    style={{ border: 0 }}
+                    loading="lazy"
+                    src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&layer=c&cbll=&output=svembed`}
+                  />
+                </div>
+                <div style={{
+                  marginTop: "12px",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: "#94a3b8",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  background: "rgba(255,255,255,0.08)",
+                  padding: "4px 12px",
+                  borderRadius: "999px"
+                }}>
+                  🏠 Street View · On-Demand Property View
+                </div>
+              </div>
+            )}
+
+            {mediaMode === "curated" && saleInfo && (
+              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <img 
+                  src={saleInfo.url} 
+                  alt={saleInfo.label}
+                  style={{
+                    width: "100%",
+                    maxWidth: "680px",
+                    maxHeight: "75vh",
+                    objectFit: "cover",
+                    borderRadius: "12px",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.35)"
+                  }}
+                />
+                <div style={{
+                  marginTop: "12px",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: "#94a3b8",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  background: "rgba(255,255,255,0.08)",
+                  padding: "4px 12px",
+                  borderRadius: "999px"
+                }}>
+                  {saleInfo.label}
+                </div>
+              </div>
+            )}
+
+            {mediaMode === "photo" && activeGraphicUrl && (
+              <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <img 
+                  src={activeGraphicUrl} 
+                  onError={() => {
+                    if (activeGraphicUrl === ev.event_flyer_url) setFlyerError(true);
+                    else if (activeGraphicUrl === liveScrapedUrl) setLiveScrapedError(true);
+                    else if (activeGraphicUrl === bankedEntityGraphic) setBankedError(true);
+                  }} 
+                  alt={graphicBadge || "Event Graphic"} 
+                  style={{
+                    width: isCuratedArt ? "100%" : "auto",
+                    maxWidth: isSealFallback ? "300px" : isCuratedArt ? "680px" : "100%",
+                    maxHeight: isSealFallback ? "160px" : "75vh",
+                    objectFit: isCuratedArt ? "cover" : "contain",
+                    borderRadius: isSealFallback ? "8px" : "12px",
+                    boxShadow: isSealFallback ? "none" : "0 8px 30px rgba(0,0,0,0.35)"
+                  }} 
+                />
+                {graphicBadge && (
+                  <div style={{
+                    marginTop: "12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    color: isSealFallback ? "#64748b" : "#94a3b8",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    background: isSealFallback ? "transparent" : "rgba(255,255,255,0.08)",
+                    padding: isSealFallback ? "0" : "4px 12px",
+                    borderRadius: "999px"
+                  }}>
+                    {graphicBadge}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Fallback if photo mode was chosen but no photo found */}
+            {mediaMode === "photo" && !activeGraphicUrl && (
+              hasLocationQuery ? (
+                <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ position: "relative", width: "100%", height: "340px", borderRadius: "12px", overflow: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.15)" }}>
+                    <iframe
+                      title="Satellite Aerial Property View"
+                      width="100%"
+                      height="100%"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&t=k&z=18&output=embed`}
+                    />
+                  </div>
+                  <div style={{
+                    marginTop: "12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    color: "#94a3b8",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    background: "rgba(255,255,255,0.08)",
+                    padding: "4px 12px",
+                    borderRadius: "999px"
+                  }}>
+                    🛰️ Aerial Property & Lot View · High-Resolution Satellite
+                  </div>
+                </div>
+              ) : saleInfo ? (
+                <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <img 
+                    src={saleInfo.url} 
+                    alt={saleInfo.label}
+                    style={{
+                      width: "100%",
+                      maxWidth: "680px",
+                      maxHeight: "75vh",
+                      objectFit: "cover",
+                      borderRadius: "12px",
+                      boxShadow: "0 8px 30px rgba(0,0,0,0.35)"
+                    }}
+                  />
+                  <div style={{
+                    marginTop: "12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    color: "#94a3b8",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    background: "rgba(255,255,255,0.08)",
+                    padding: "4px 12px",
+                    borderRadius: "999px"
+                  }}>
+                    {saleInfo.label}
+                  </div>
+                </div>
+              ) : null
+            )}
+
+            {/* Quick View Mode Switcher Pills */}
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px", marginTop: "16px" }}>
+              {hasOrganizerPhoto && (
+                <button
+                  type="button"
+                  onClick={() => setMediaMode("photo")}
+                  style={{
+                    background: mediaMode === "photo" ? "#3b82f6" : "rgba(255,255,255,0.12)",
+                    color: "#fff",
+                    padding: "6px 14px",
+                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    border: "none",
+                    cursor: "pointer",
+                    letterSpacing: "0.04em",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  📸 Organizer Photo / Flyer
+                </button>
+              )}
+
+              {hasLocationQuery && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setMediaMode("satellite")}
+                    style={{
+                      background: mediaMode === "satellite" ? "#059669" : "rgba(255,255,255,0.12)",
+                      color: "#fff",
+                      padding: "6px 14px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      border: "none",
+                      cursor: "pointer",
+                      letterSpacing: "0.04em",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    🛰️ Satellite Aerial View
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMediaMode("street")}
+                    style={{
+                      background: mediaMode === "street" ? "#6366f1" : "rgba(255,255,255,0.12)",
+                      color: "#fff",
+                      padding: "6px 14px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      border: "none",
+                      cursor: "pointer",
+                      letterSpacing: "0.04em",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    🏠 Street View
+                  </button>
+                </>
+              )}
+
+              {saleInfo && (
+                <button
+                  type="button"
+                  onClick={() => setMediaMode("curated")}
+                  style={{
+                    background: mediaMode === "curated" ? "#d97706" : "rgba(255,255,255,0.12)",
+                    color: "#fff",
+                    padding: "6px 14px",
+                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    border: "none",
+                    cursor: "pointer",
+                    letterSpacing: "0.04em",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  🖼️ Category Art
+                </button>
+              )}
+
+              {hasLocationQuery && (
+                <button
+                  type="button"
+                  onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`)}
+                  style={{
+                    background: "rgba(255,255,255,0.12)",
+                    color: "#e2e8f0",
+                    padding: "6px 14px",
+                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    border: "none",
+                    cursor: "pointer",
+                    letterSpacing: "0.04em",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  📍 Full Directions &rarr;
+                </button>
+              )}
+            </div>
           </div>
         )}
 

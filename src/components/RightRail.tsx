@@ -356,11 +356,13 @@ export default function RightRail({ cityName, stateName, countryName, flagAtBott
 
   return (
     <>
-      <FeaturedFactCard 
-        cityName={cityName} 
-        stateName={stateName || currentState} 
-        countryName={countryName || currentCountry} 
-      />
+      {!flagAtBottom && (
+        <FeaturedFactCard 
+          cityName={cityName} 
+          stateName={stateName || currentState} 
+          countryName={countryName || currentCountry} 
+        />
+      )}
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-[20px]">
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>

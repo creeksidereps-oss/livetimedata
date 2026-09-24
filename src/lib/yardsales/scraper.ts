@@ -212,15 +212,20 @@ export async function scrapeEstateSalesForCity(
           const endDate = data.endDate ? data.endDate.slice(0, 10) : startDate;
           const photoUrl = Array.isArray(data.image) ? data.image[0] : data.image;
 
-          // MANDATORY ADDRESS ENFORCEMENT: Reject listings without a valid street number
-          if (!streetAddress || !streetPattern.test(streetAddress)) {
-            return;
+          // Handle EstateSales.NET practice of releasing exact street addresses on sale morning:
+          let finalStreetAddress = streetAddress;
+          if (!finalStreetAddress || !streetPattern.test(finalStreetAddress)) {
+            if (locality && region) {
+              finalStreetAddress = `${locality}, ${region} ${postalCode || ''} (Address released day of sale)`.trim();
+            } else {
+              return;
+            }
           }
 
           sales.push({
             title,
             url: saleUrl,
-            streetAddress,
+            streetAddress: finalStreetAddress,
             cityName: locality,
             stateName: region,
             postalCode,
