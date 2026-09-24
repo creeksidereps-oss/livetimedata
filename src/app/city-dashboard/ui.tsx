@@ -17,6 +17,7 @@ import { AD_SLOTS } from "@/config/adSlots";
 import CityNewsBlock from "@/components/CityNewsBlock";
 import CityReportBlock from "@/components/CityReportBlock";
 import FeaturedFactCard from "@/components/FeaturedFactCard";
+import UserPreferencesPills from "@/components/UserPreferencesPills";
 
 export default function Page(props: { 
   params: Promise<{ slug: string }>, 
@@ -128,7 +129,15 @@ export default function Page(props: {
             <div className="flex-1 w-full md:max-w-md relative z-[110]">
               <CitySearch />
             </div>
-            <div className="flex items-center justify-between md:justify-end gap-3 min-w-0">
+            <div className="flex items-center justify-between md:justify-end gap-3 min-w-0 flex-wrap sm:flex-nowrap">
+              {/* User Preferences: Start Page & Favorites (placed beside search bar, directly left of city name) */}
+              <UserPreferencesPills
+                cityName={cityName}
+                stateName={searchParams.admin1 as string}
+                countryName={searchParams.country as string}
+                countryCode={searchParams.country_code as string}
+              />
+
               <div className="flex flex-col min-w-0">
                 <h1 className="text-xl md:text-2xl font-black uppercase tracking-tighter text-slate-900 truncate">
                   {cityName}
