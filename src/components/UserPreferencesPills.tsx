@@ -190,40 +190,20 @@ export default function UserPreferencesPills({
   return (
     <>
       <div className="flex items-center gap-1.5 shrink-0 relative">
-        {/* Button 1: Start Page Button */}
-        <button
-          type="button"
-          onClick={handleStartPageClick}
-          title={isCurrentStartPage ? "Current Start Page (Click to manage)" : `Make ${cityName} your start page`}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border ${
-            isCurrentStartPage
-              ? "bg-amber-500 hover:bg-amber-600 text-slate-950 border-amber-400 shadow-amber-500/20"
-              : "bg-white hover:bg-slate-100 text-slate-800 border-slate-300 hover:border-slate-400"
-          }`}
-        >
-          <Home size={13} className={isCurrentStartPage ? "text-slate-950 fill-slate-950" : "text-amber-500"} />
-          <span className="hidden sm:inline">
-            {isCurrentStartPage ? "Start Page ✓" : "Make Start Page"}
-          </span>
-          <span className="sm:hidden">
-            {isCurrentStartPage ? "Start ✓" : "Start Page"}
-          </span>
-        </button>
-
-        {/* Button 2: Favorites Dropdown Button */}
+        {/* Button 1: My Favorites Dropdown Button */}
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
             onClick={() => setDropdownOpen((prev) => !prev)}
             title="View your favorite places"
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-900 ${
               isCurrentFavorite
-                ? "bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100"
-                : "bg-white hover:bg-slate-100 text-slate-800 border-slate-300 hover:border-slate-400"
+                ? "bg-rose-50 text-rose-800 hover:bg-rose-100"
+                : "bg-white hover:bg-slate-100 text-slate-900"
             }`}
           >
             <Star size={13} className={isCurrentFavorite ? "text-rose-600 fill-rose-600" : "text-amber-500"} />
-            <span>Favorites</span>
+            <span>MY FAVORITES</span>
             {favorites.length > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black leading-none ${isCurrentFavorite ? "bg-rose-200 text-rose-900" : "bg-slate-200 text-slate-700"}`}>
                 {favorites.length}
@@ -234,7 +214,7 @@ export default function UserPreferencesPills({
 
           {/* Favorites Dropdown Menu */}
           {dropdownOpen && (
-            <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2 z-[99999] animate-in fade-in slide-in-from-top-2 duration-150">
+            <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2 z-[99999] animate-in fade-in slide-in-from-top-2 duration-150">
               {/* Header */}
               <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100">
                 <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-slate-900">
@@ -342,6 +322,26 @@ export default function UserPreferencesPills({
             </div>
           )}
         </div>
+
+        {/* Button 2: Save As Start Page Button */}
+        <button
+          type="button"
+          onClick={handleStartPageClick}
+          title={isCurrentStartPage ? "Current Start Page (Click to manage)" : `Save ${cityName} as your start page`}
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-900 ${
+            isCurrentStartPage
+              ? "bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
+              : "bg-white hover:bg-slate-100 text-slate-900"
+          }`}
+        >
+          <Home size={13} className={isCurrentStartPage ? "text-slate-950 fill-slate-950" : "text-amber-500"} />
+          <span className="hidden sm:inline">
+            {isCurrentStartPage ? "START PAGE ✓" : "SAVE AS START PAGE"}
+          </span>
+          <span className="sm:hidden">
+            {isCurrentStartPage ? "START ✓" : "SAVE AS START"}
+          </span>
+        </button>
       </div>
 
       {/* MODAL 1: Switch Start Page Confirmation Modal */}
@@ -384,7 +384,7 @@ export default function UserPreferencesPills({
                 }
                 className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-blue-600 text-white text-xs font-black uppercase tracking-wider transition-colors shadow-sm cursor-pointer"
               >
-                ✓ Yes, Make {cityName} My Start Page
+                ✓ Yes, Save {cityName} As Start Page
               </button>
 
               <button
