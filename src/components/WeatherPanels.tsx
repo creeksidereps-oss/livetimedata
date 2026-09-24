@@ -171,6 +171,10 @@ export default function WeatherPanels({ current, daily, unitPreference, onUnitCh
               </div>
             </div>
             <div className="flex items-center gap-3 sm:gap-4 pl-3 sm:pl-4 border-l-2 border-slate-200 shrink-0">
+              <div className="text-center">
+                <p className="text-[9px] font-black text-slate-600 uppercase">Hum</p>
+                <p className="text-[12px] font-black text-black">{current?.relative_humidity_2m}%</p>
+              </div>
               <div 
                 className="text-center cursor-pointer select-none group" 
                 onClick={() => setSpeedUnit(speedUnit === "mph" ? "kmh" : "mph")} 
@@ -182,22 +186,18 @@ export default function WeatherPanels({ current, daily, unitPreference, onUnitCh
                   <span className="text-[9px] font-bold text-slate-500 group-hover:text-black">{speedUnit === "mph" ? "mph" : "km/h"}</span>
                 </p>
               </div>
-              <div className="text-center">
-                <p className="text-[9px] font-black text-slate-600 uppercase">Hum</p>
-                <p className="text-[12px] font-black text-black">{current?.relative_humidity_2m}%</p>
-              </div>
-              <div className="inline-flex border-2 border-black rounded-full overflow-hidden h-7 shrink-0">
+              <div className="inline-flex border-[1.5px] border-black rounded-full overflow-hidden h-6 shrink-0">
                 <button 
                   type="button"
                   onClick={() => setSpeedUnit("mph")} 
-                  className={`px-3 text-[11px] font-black cursor-pointer transition-colors ${speedUnit === 'mph' ? 'bg-black text-white' : 'bg-white text-black hover:bg-slate-100'}`}
+                  className={`px-2.5 text-[10px] font-black cursor-pointer transition-colors ${speedUnit === 'mph' ? 'bg-black text-white' : 'bg-white text-black hover:bg-slate-100'}`}
                 >
                   mph
                 </button>
                 <button 
                   type="button"
                   onClick={() => setSpeedUnit("kmh")} 
-                  className={`px-3 text-[11px] font-black cursor-pointer transition-colors ${speedUnit === 'kmh' ? 'bg-black text-white' : 'bg-white text-black hover:bg-slate-100'}`}
+                  className={`px-2.5 text-[10px] font-black cursor-pointer transition-colors ${speedUnit === 'kmh' ? 'bg-black text-white' : 'bg-white text-black hover:bg-slate-100'}`}
                 >
                   km/h
                 </button>
