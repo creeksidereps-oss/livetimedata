@@ -61,16 +61,16 @@ export default function SectionNavRibbon() {
   };
 
   return (
-    <nav className="w-full flex items-center justify-between gap-2 py-1 relative">
-      {/* Scrollable Navigation Pills on mobile / flex on desktop */}
-      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 min-w-0">
+    <nav className="w-full flex items-center justify-between gap-1 sm:gap-2 py-0.5 relative">
+      {/* Navigation Pills: Compact and responsive so all 4 shortcuts fit on mobile alongside Submissions */}
+      <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 overflow-x-auto no-scrollbar py-0.5 min-w-0">
         {/* Events */}
         <button
           type="button"
           onClick={() => scrollTo("events-section")}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
         >
-          <Calendar size={13} className="text-amber-400" />
+          <Calendar size={12} className="text-amber-400 shrink-0" />
           <span>Events</span>
         </button>
 
@@ -78,29 +78,30 @@ export default function SectionNavRibbon() {
         <button
           type="button"
           onClick={() => scrollTo("clock-section")}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
         >
-          <CloudSun size={13} className="text-amber-400" />
+          <CloudSun size={12} className="text-amber-400 shrink-0" />
           <span>Weather</span>
         </button>
 
-        {/* Photo Reel */}
+        {/* Photos / Photo Reel */}
         <button
           type="button"
           onClick={() => scrollTo("photo-reel-section", true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
         >
-          <Camera size={13} className="text-amber-400" />
-          <span>Photo Reel</span>
+          <Camera size={12} className="text-amber-400 shrink-0" />
+          <span className="hidden sm:inline">Photo Reel</span>
+          <span className="sm:hidden">Photos</span>
         </button>
 
         {/* Webcams */}
         <button
           type="button"
           onClick={() => scrollTo("webcams-section")}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
         >
-          <Video size={13} className="text-amber-400" />
+          <Video size={12} className="text-amber-400 shrink-0" />
           <span>Webcams</span>
         </button>
       </div>
@@ -113,11 +114,12 @@ export default function SectionNavRibbon() {
             e.stopPropagation();
             setDropdownOpen((prev) => !prev);
           }}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm whitespace-nowrap border border-blue-500"
+          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm whitespace-nowrap border border-blue-500"
         >
-          <PlusCircle size={13} className="text-white" />
-          <span>Submissions</span>
-          <ChevronDown size={12} className={`transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
+          <PlusCircle size={12} className="text-white shrink-0" />
+          <span className="hidden sm:inline">Submissions</span>
+          <span className="sm:hidden">Submit</span>
+          <ChevronDown size={11} className={`transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
         </button>
 
         {dropdownOpen && (

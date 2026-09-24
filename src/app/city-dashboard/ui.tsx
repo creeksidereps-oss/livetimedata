@@ -116,7 +116,7 @@ export default function Page(props: {
     <div className="flex flex-col min-h-screen bg-[#f8fafc] w-full max-w-[100vw] overflow-x-clip relative">
       <header className="sticky top-0 z-[120] w-full bg-white border-b border-gray-200 shadow-xs">
         {/* Sticky Top Navigation Ribbon directly above City Search */}
-        <div className="w-full bg-slate-950 text-white border-b border-slate-800 px-3 md:px-6 py-1.5 relative z-[130]">
+        <div className="w-full bg-slate-950 text-white border-b border-slate-800 px-2 sm:px-4 md:px-6 py-1 sm:py-1.5 relative z-[130]">
           <div className="max-w-[1400px] mx-auto w-full">
             <SectionNavRibbon />
           </div>
