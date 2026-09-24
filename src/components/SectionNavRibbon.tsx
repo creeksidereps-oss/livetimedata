@@ -61,65 +61,65 @@ export default function SectionNavRibbon() {
   };
 
   return (
-    <nav className="w-full flex items-center justify-between gap-1 sm:gap-2 py-0.5 relative">
-      {/* Navigation Pills: Compact and responsive so all 4 shortcuts fit on mobile alongside Submissions */}
-      <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 overflow-x-auto no-scrollbar py-0.5 min-w-0">
+    <nav className="w-full grid grid-cols-5 gap-1 sm:flex sm:items-center sm:justify-between sm:gap-2 py-0.5 relative">
+      {/* On desktop: 4 pills on left, Submissions on right. On mobile: exactly 5 equal columns across the entire screen! */}
+      <div className="contents sm:flex sm:items-center sm:gap-2 sm:flex-1 sm:min-w-0">
         {/* Events */}
         <button
           type="button"
           onClick={() => scrollTo("events-section")}
-          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 w-full sm:w-auto"
         >
           <Calendar size={12} className="text-amber-400 shrink-0" />
-          <span>Events</span>
+          <span className="truncate">Events</span>
         </button>
 
         {/* Weather */}
         <button
           type="button"
           onClick={() => scrollTo("clock-section")}
-          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 w-full sm:w-auto"
         >
           <CloudSun size={12} className="text-amber-400 shrink-0" />
-          <span>Weather</span>
+          <span className="truncate">Weather</span>
         </button>
 
         {/* Photos / Photo Reel */}
         <button
           type="button"
           onClick={() => scrollTo("photo-reel-section", true)}
-          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 w-full sm:w-auto"
         >
           <Camera size={12} className="text-amber-400 shrink-0" />
           <span className="hidden sm:inline">Photo Reel</span>
-          <span className="sm:hidden">Photos</span>
+          <span className="sm:hidden truncate">Photos</span>
         </button>
 
         {/* Webcams */}
         <button
           type="button"
           onClick={() => scrollTo("webcams-section")}
-          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 shrink-0"
+          className="inline-flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-1.5 rounded-full bg-slate-900 hover:bg-blue-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-700/60 w-full sm:w-auto"
         >
           <Video size={12} className="text-amber-400 shrink-0" />
-          <span>Webcams</span>
+          <span className="truncate">Webcams</span>
         </button>
       </div>
 
-      {/* Submissions Dropdown - Positioned OUTSIDE overflow-x-auto so dropdown is NEVER clipped */}
-      <div className="relative shrink-0" ref={dropdownRef}>
+      {/* Submissions Dropdown */}
+      <div className="relative w-full sm:w-auto sm:shrink-0" ref={dropdownRef}>
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             setDropdownOpen((prev) => !prev);
           }}
-          className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm whitespace-nowrap border border-blue-500"
+          className="inline-flex items-center justify-center gap-0.5 sm:gap-1.5 px-1 sm:px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-sm whitespace-nowrap border border-blue-500 w-full sm:w-auto"
         >
           <PlusCircle size={12} className="text-white shrink-0" />
           <span className="hidden sm:inline">Submissions</span>
-          <span className="sm:hidden">Submit</span>
-          <ChevronDown size={11} className={`transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
+          <span className="sm:hidden truncate">Submit</span>
+          <ChevronDown size={10} className={`shrink-0 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
         </button>
 
         {dropdownOpen && (
