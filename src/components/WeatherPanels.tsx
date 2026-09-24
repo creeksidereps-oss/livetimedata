@@ -17,9 +17,20 @@ type WeatherPanelsProps = {
   } | null;
   unitPreference?: "f" | "c";
   onUnitChange?: (unit: "f" | "c") => void;
+  speedUnitPreference?: "mph" | "kmh";
+  onSpeedUnitChange?: (unit: "mph" | "kmh") => void;
 };
 
 function cToF(c: number) { return (c * 9) / 5 + 32; }
+
+function fmtWindSpeed(speedKmH: number | undefined | null, unit: "mph" | "kmh"): string {
+  if (speedKmH === undefined || speedKmH === null || isNaN(speedKmH)) return "--";
+  if (unit === "mph") {
+    const mph = speedKmH * 0.621371;
+    return (Math.round(mph * 10) / 10).toFixed(1);
+  }
+  return Number(speedKmH).toFixed(1);
+}
 
 function weatherLabel(code: number | undefined) {
   if (code === undefined || code === null) return "Unknown";
@@ -88,8 +99,9 @@ function filterForecastFromToday(daily: WeatherPanelsProps["daily"]) {
   };
 }
 
-export default function WeatherPanels({ current, daily, unitPreference, onUnitChange }: WeatherPanelsProps) {
+export default function WeatherPanels({ current, daily, unitPreference, onUnitChange, speedUnitPreference, onSpeedUnitChange }: WeatherPanelsProps) {
   const [internalUnit, setInternalUnit] = useState<"c" | "f">("c");
+  const [internalSpeedUnit, setInternalSpeedUnit] = useState<"mph" | "kmh">("mph");
   const [forecastOpen, setForecastOpen] = useState(false);
 
   useEffect(() => {
@@ -100,11 +112,26 @@ export default function WeatherPanels({ current, daily, unitPreference, onUnitCh
     }
   }, [onUnitChange]);
 
+  useEffect(() => {
+    const savedSpeed = window.localStorage.getItem("ltd-speed-unit");
+    if (savedSpeed === "mph" || savedSpeed === "kmh") {
+      setInternalSpeedUnit(savedSpeed);
+      if (onSpeedUnitChange) onSpeedUnitChange(savedSpeed);
+    }
+  }, [onSpeedUnitChange]);
+
   const unit = unitPreference || internalUnit;
   const setUnit = (u: "c" | "f") => {
     setInternalUnit(u);
     if (onUnitChange) onUnitChange(u);
     window.localStorage.setItem("ltd-temp-unit", u);
+  };
+
+  const speedUnit = speedUnitPreference || internalSpeedUnit;
+  const setSpeedUnit = (s: "mph" | "kmh") => {
+    setInternalSpeedUnit(s);
+    if (onSpeedUnitChange) onSpeedUnitChange(s);
+    window.localStorage.setItem("ltd-speed-unit", s);
   };
 
   const filteredDaily = useMemo(() => filterForecastFromToday(daily), [daily]);
@@ -133,24 +160,47 @@ export default function WeatherPanels({ current, daily, unitPreference, onUnitCh
         </section>
 
         <section style={panelStyle}>
-          <div className="flex justify-between items-center gap-4">
-            <div className="flex items-center gap-3">
-              <span style={{ fontSize: '32px', color: getIconColor(current?.weather_code), fontWeight: 'bold' }}>
+          <div className="flex justify-between items-center gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <span style={{ fontSize: '32px', color: getIconColor(current?.weather_code), fontWeight: 'bold' }} className="shrink-0">
                 {weatherSymbol(current?.weather_code)}
               </span>
-              <div>
+              <div className="min-w-0">
                 <h2 className="text-[10px] font-black text-slate-900 uppercase tracking-wider">Conditions</h2>
-                <span className="text-sm font-black text-gray-800 tabular-nums tracking-tighter">{weatherLabel(current?.weather_code)}</span>
+                <span className="text-sm font-black text-gray-800 tabular-nums tracking-tighter truncate block">{weatherLabel(current?.weather_code)}</span>
               </div>
             </div>
-            <div className="flex gap-4 sm:gap-5 pl-4 sm:pl-5 border-l-2 border-slate-200 shrink-0">
-              <div className="text-center">
-                <p className="text-[9px] font-black text-slate-600 uppercase">Wind</p>
-                <p className="text-[12px] font-black text-black">{current?.wind_speed_10m} <span className="text-[9px]">km/h</span></p>
+            <div className="flex items-center gap-3 sm:gap-4 pl-3 sm:pl-4 border-l-2 border-slate-200 shrink-0">
+              <div 
+                className="text-center cursor-pointer select-none group" 
+                onClick={() => setSpeedUnit(speedUnit === "mph" ? "kmh" : "mph")} 
+                title="Click to toggle mph / km/h"
+              >
+                <p className="text-[9px] font-black text-slate-600 uppercase group-hover:text-black">Wind</p>
+                <p className="text-[12px] font-black text-black">
+                  {fmtWindSpeed(current?.wind_speed_10m, speedUnit)}{" "}
+                  <span className="text-[9px] font-bold text-slate-500 group-hover:text-black">{speedUnit === "mph" ? "mph" : "km/h"}</span>
+                </p>
               </div>
               <div className="text-center">
                 <p className="text-[9px] font-black text-slate-600 uppercase">Hum</p>
                 <p className="text-[12px] font-black text-black">{current?.relative_humidity_2m}%</p>
+              </div>
+              <div className="inline-flex border-2 border-black rounded-full overflow-hidden h-7 shrink-0">
+                <button 
+                  type="button"
+                  onClick={() => setSpeedUnit("mph")} 
+                  className={`px-3 text-[11px] font-black cursor-pointer transition-colors ${speedUnit === 'mph' ? 'bg-black text-white' : 'bg-white text-black hover:bg-slate-100'}`}
+                >
+                  mph
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setSpeedUnit("kmh")} 
+                  className={`px-3 text-[11px] font-black cursor-pointer transition-colors ${speedUnit === 'kmh' ? 'bg-black text-white' : 'bg-white text-black hover:bg-slate-100'}`}
+                >
+                  km/h
+                </button>
               </div>
             </div>
           </div>
