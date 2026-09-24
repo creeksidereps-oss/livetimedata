@@ -432,7 +432,7 @@ export default function UserPreferencesPills({
 
             <p className="text-xs text-slate-600 leading-relaxed mb-4">
               Whenever you visit <strong className="text-slate-900">LiveTimeData.com</strong>, your browser opens directly to{" "}
-              <strong className="text-blue-600">{cityName}</strong> with real-time local intelligence, weather, and schedule.
+              <strong className="text-blue-600">{cityName}</strong> with real-time local intelligence, weather, and events.
             </p>
 
             <div className="flex flex-col gap-2 pt-2">

@@ -18,7 +18,7 @@ export async function generateMetadata(
   const countryName = sp?.country ? `, ${sp.country}` : (resolved.country ? `, ${resolved.country}` : "");
 
   const title = `Local Time, Weather & Live Webcams in ${cityName}${stateName}${countryName} | LiveTimeData`;
-  const description = `Current local time, 14-day weather forecast, live webcams, and upcoming events for ${cityName}${countryName}. Real-time municipal intelligence and city schedule.`;
+  const description = `Current local time, 14-day weather forecast, live webcams, and upcoming events for ${cityName}${countryName}. Real-time municipal intelligence and city events.`;
 
   return {
     title,
