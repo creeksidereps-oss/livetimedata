@@ -327,11 +327,8 @@ export default function UserPreferencesPills({
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs whitespace-nowrap border border-slate-900 bg-amber-400 hover:bg-amber-500 text-slate-950 shadow-amber-500/20"
         >
           <Home size={13} className="text-slate-950 fill-slate-950" />
-          <span className="hidden sm:inline">
+          <span>
             {isCurrentStartPage ? "START PAGE ✓" : "SAVE AS START PAGE"}
-          </span>
-          <span className="sm:hidden">
-            {isCurrentStartPage ? "START ✓" : "SAVE AS START"}
           </span>
         </button>
       </div>
