@@ -61,8 +61,13 @@ export async function POST(request: Request) {
           const data = await res.json();
           const events = data._embedded?.events || [];
           for (const ev of events) {
-            const venueName = ev._embedded?.venues?.[0]?.name || "Unknown Venue";
-            const actualCity = ev._embedded?.venues?.[0]?.city?.name || cityName;
+            const vObj = ev._embedded?.venues?.[0];
+            const venueName = vObj?.name || "Unknown Venue";
+            const actualCity = vObj?.city?.name || cityName;
+            const stateCode = vObj?.state?.stateCode || stateName;
+            const street1 = vObj?.address?.line1 || "";
+            const zipCode = vObj?.postalCode || "";
+            const venueAddress = street1 ? `${street1}, ${actualCity}, ${stateCode}${zipCode ? ` ${zipCode}` : ""}`.trim() : null;
             const titleLower = ev.name.toLowerCase();
             const venueLower = venueName.toLowerCase();
             
@@ -90,6 +95,7 @@ export async function POST(request: Request) {
               event_date: ev.dates?.start?.localDate,
               start_time: start_time,
               venue: venueName,
+              venue_address: venueAddress,
               actual_city: actualCity,
               official_info_url: ev.url || "",
               event_flyer_url
@@ -110,6 +116,12 @@ export async function POST(request: Request) {
           for (const ev of events) {
             const venueName = ev.venue?.name || "Unknown Venue";
             const actualCity = ev.venue?.city || cityName;
+            const street1 = ev.venue?.address || "";
+            const street2 = ev.venue?.extended_address || "";
+            const fullStreet = [street1, street2].filter(Boolean).join(", ");
+            const stateCode = ev.venue?.state || stateName;
+            const zipCode = ev.venue?.postal_code || "";
+            const venueAddress = fullStreet ? `${fullStreet}, ${actualCity}, ${stateCode}${zipCode ? ` ${zipCode}` : ""}`.trim() : null;
             const titleLower = ev.title.toLowerCase();
             const venueLower = venueName.toLowerCase();
             
@@ -139,6 +151,7 @@ export async function POST(request: Request) {
               event_date: event_date,
               start_time: start_time,
               venue: venueName,
+              venue_address: venueAddress,
               actual_city: actualCity,
               official_info_url: ev.url || "",
               event_flyer_url
@@ -148,30 +161,34 @@ export async function POST(request: Request) {
       } catch(e) { console.error("SeatGeek fetch failed", e); }
     }
 
-    // 4. Fetch Eventbrite via Google Search Scraper (Gemini)
+    // 4. Fetch Eventbrite via Search Scraper (Gemini)
     try {
       const ebPrompt = `
-        Search Google for "site:eventbrite.com upcoming events in ${cityName} ${stateName}"
-        Extract the top 5 events you find. Exclude any events that are "Virtual", "Online", or "Webinars".
-        Return ONLY a raw JSON array of objects. Do NOT use markdown backticks.
+        List 5 real upcoming public events, concerts, demos, expos, and festivals in ${cityName} ${stateName}.
+        Exclude any events that are "Virtual", "Online", or "Webinars".
+        Return ONLY a raw JSON array of objects with this schema:
         [
           {
-            "title": "Event Name",
+            "title": "Clean Event Title",
             "event_date": "YYYY-MM-DD",
-            "start_time": "7:00 PM",
-            "venue": "Venue Name",
-            "official_info_url": "Eventbrite URL"
+            "start_time": "e.g. 11:00 AM or 7:00 PM",
+            "venue": "Specific venue or facility name (not just city/state)",
+            "venue_address": "Street address if known (e.g. 123 Main St, City, State Zip) or null",
+            "official_info_url": "Direct ticket or event URL if known, or Eventbrite URL",
+            "event_flyer_url": "Direct image/flyer URL if known, or null",
+            "hosting_entity": "Host/Organizer/Presenter name or null"
           }
         ]
       `;
       const ebRes = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: ebPrompt,
-        config: { tools: [{ googleSearch: {} }] }
+        config: {
+          responseMimeType: 'application/json'
+        }
       });
       if (ebRes.text) {
-        const rawText = ebRes.text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(rawText);
+        const parsed = JSON.parse(ebRes.text);
         if (Array.isArray(parsed)) {
           parsed.forEach(p => {
              if (p.title && p.event_date && p.venue) {
@@ -180,9 +197,11 @@ export async function POST(request: Request) {
                  event_date: p.event_date,
                  start_time: p.start_time || "TBA",
                  venue: p.venue,
+                 venue_address: p.venue_address || null,
+                 hosting_entity: p.hosting_entity || null,
                  actual_city: cityName,
                  official_info_url: p.official_info_url || "",
-                 event_flyer_url: ""
+                 event_flyer_url: p.event_flyer_url || ""
                });
              }
           });
@@ -212,60 +231,114 @@ export async function POST(request: Request) {
       if (existing.rows.length > 0) return null;
 
       const prompt = `
-        You are an expert event data curator. I am providing you with hard, verified facts about an upcoming event.
-        Your job is to provide two things:
-        1. A strict, factual description (details) of what this event is and what to expect. You MUST use Google Search Grounding to find verified information about the event. IMPORTANT RULES FOR THE DESCRIPTION:
-           - NEVER generate generic, hallucinated, or filler commentary.
-           - ONLY state facts you can verify about THIS specific event.
-           - If you cannot find verified information, write exactly: "Join us at ${ev.venue} for ${ev.title}!" Do NOT hallucinate anything else.
-        2. The best matching category for our UI. Choose exactly ONE from this list: Festivals, Concerts, Sports, Venues, Tours, Lectures, Local, Clubs / Groups, Conventions, Holiday, Arts, Kids, Seniors, Parades, Auditions, Comedy, Nightlife, Other.
-        
+        You are an expert event data curator for LiveTimeData.com.
+        Analyze this upcoming event and provide accurate, structured event intelligence.
+
         Event Data:
         Title: ${ev.title}
         Venue: ${ev.venue}
+        Known Address: ${ev.venue_address || "None"}
         Date: ${ev.event_date}
+        Time: ${ev.start_time}
         City Context: ${ev.actual_city || cityName}, ${stateName}
 
-        You MUST return ONLY a raw JSON object with exactly two keys: "details" and "category". 
-        Do NOT wrap it in markdown backticks. Do NOT add any conversational text.
-        {"details": "...", "category": "..."}
+        TASK:
+        Extract and return a strict JSON object with these exact keys:
+        1. "details": A clear, engaging 1-3 sentence summary of what this event is and what attendees will experience. Include key performers, organizers, and activities.
+        2. "category": Choose exactly ONE from: Festivals, Concerts, Sports, Venues, Tours, Lectures, Local, Clubs / Groups, Conventions, Holiday, Arts, Kids, Seniors, Parades, Auditions, Comedy, Nightlife, Other.
+        3. "venue_name": Clean name of the facility/venue (e.g. "George M. Holmes Convocation Center" or "527 S Upper St"). Do NOT return just the city/state.
+        4. "venue_address": Complete street address (e.g. "318 NW 23rd Street, Miami, FL 33127"). If no street address can be determined, return null.
+        5. "hosting_entity": Presenter, organizer, team, or headlining artist (e.g. "Appalachian State Mountaineers" or "Jacob H Khan") or null.
+
+        Return ONLY raw JSON.
       `;
 
       let aiResponseText = `Join us at ${ev.venue} for ${ev.title}!`;
       let category = "Other";
+      let venueName = ev.venue;
+      let venueAddress = ev.venue_address || null;
+      let hostingEntity = ev.hosting_entity || null;
 
       try {
         const aiResponse = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: prompt,
-          config: { tools: [{ googleSearch: {} }] }
+          config: {
+            responseMimeType: 'application/json'
+          }
         });
         if (aiResponse.text) {
-          const rawText = aiResponse.text.replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(rawText);
+          const parsed = JSON.parse(aiResponse.text);
           aiResponseText = parsed.details || aiResponseText;
           category = parsed.category || "Other";
+          if (parsed.venue_name && parsed.venue_name.toLowerCase() !== (cityName || '').toLowerCase()) {
+            venueName = parsed.venue_name;
+          }
+          if (parsed.venue_address && parsed.venue_address.length > 5) {
+            venueAddress = parsed.venue_address;
+          }
+          if (parsed.hosting_entity && parsed.hosting_entity.length > 1) {
+            hostingEntity = parsed.hosting_entity;
+          }
         }
       } catch (aiErr) {
         console.error("AI Generation failed for", ev.title);
       }
 
+      if (!venueAddress && venueName) {
+        const addrMatch = venueName.match(/\(([^)]*\d+[^)]*)\)/);
+        if (addrMatch) {
+          venueAddress = `${addrMatch[1].trim()}, ${ev.actual_city || cityName}, ${stateName || ''}`;
+        } else {
+          try {
+            const known = await sql`
+              SELECT venue_address FROM events
+              WHERE LOWER(TRIM(city_name)) = ${(ev.actual_city || cityName).trim().toLowerCase()}
+                AND (LOWER(TRIM(venue)) = ${venueName.trim().toLowerCase()} OR LOWER(TRIM(venue)) LIKE ${'%' + venueName.trim().toLowerCase() + '%'})
+                AND venue_address IS NOT NULL AND LENGTH(TRIM(venue_address)) > 5
+              ORDER BY id DESC LIMIT 1
+            `;
+            if (known.rows && known.rows.length > 0) {
+              venueAddress = known.rows[0].venue_address;
+            }
+          } catch {}
+        }
+      }
+
+      let flyerUrl = ev.event_flyer_url || null;
+      if (!flyerUrl && (venueName || hostingEntity)) {
+        try {
+          const target = (hostingEntity || venueName).toLowerCase().trim();
+          const banked = await sql`
+            SELECT image_url, logo_url FROM entities
+            WHERE (LOWER(name) = ${target} OR LOWER(normalized_name) = ${target} OR LOWER(name) LIKE ${'%' + target + '%'})
+              AND (image_url IS NOT NULL OR logo_url IS NOT NULL)
+            LIMIT 1
+          `;
+          if (banked.rows && banked.rows.length > 0) {
+            flyerUrl = banked.rows[0].image_url || banked.rows[0].logo_url;
+          }
+        } catch {}
+      }
+
       await sql`
         INSERT INTO events (
-          title, city_name, state_name, category, venue, source,
+          title, city_name, state_name, category, venue, venue_address, hosting_entity, source,
           start_time, event_date, details, official_info_url, event_flyer_url, status, view_count
         ) VALUES (
           ${ev.title},
           ${ev.actual_city || cityName},
           ${stateName || ''},
           ${category},
-          ${ev.venue},
+          ${venueName},
+          ${venueAddress},
+          ${hostingEntity},
           'API Ingestion Engine - Auto-Approved',
           ${ev.start_time},
           ${ev.event_date}::timestamp,
           ${aiResponseText},
           ${ev.official_info_url},
-          ${ev.event_flyer_url},
+          ${flyerUrl},
           'live',
           0
         )

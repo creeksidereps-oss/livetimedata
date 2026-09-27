@@ -11,6 +11,8 @@ export interface ExtractedEvent {
   cityName: string;
   stateName?: string;
   venue: string;
+  venueAddress?: string;
+  hostingEntity?: string;
   category: string;
   startTime: string;
   eventDate: Date;
@@ -350,6 +352,19 @@ export async function extractEventsFromUrl(
             type === "Event" || (Array.isArray(type) && type.includes("Event"));
 
           if (isEvent && obj.name && obj.startDate) {
+            // Strict Guard: Exclude online/virtual events
+            const attendanceMode = String(obj.eventAttendanceMode || '');
+            const isVirtual =
+              attendanceMode.includes('OnlineEventAttendanceMode') ||
+              obj.location?.['@type'] === 'VirtualLocation' ||
+              String(obj.location?.name || '').toLowerCase().includes('online') ||
+              String(obj.location || '').toLowerCase().includes('online') ||
+              /\b(online event|virtual event|livestream|webinar|zoom meeting)\b/i.test(
+                `${obj.name || ''} ${obj.description || ''} ${obj.url || ''}`
+              );
+            if (isVirtual) {
+              return;
+            }
             const title = String(obj.name).trim();
             const desc = String(obj.description || "")
               .replace(/<[^>]+>/g, "")
@@ -360,6 +375,7 @@ export async function extractEventsFromUrl(
             if (isNaN(eventDate.getTime())) return;
 
             let venueName = "Local Venue";
+            let venueAddress: string | undefined;
             let cityName = fallbackCity;
             let stateName = fallbackState;
             let venueUrl: string | undefined;
@@ -377,6 +393,7 @@ export async function extractEventsFromUrl(
                 const addr = obj.location.address;
                 if (addr) {
                   if (typeof addr === "string") {
+                    venueAddress = addr.trim();
                     const parts = addr.split(",").map((s: string) => s.trim());
                     if (parts.length >= 2) {
                       cityName = parts[parts.length - 2] || cityName;
@@ -388,6 +405,8 @@ export async function extractEventsFromUrl(
                       cityName = String(addr.addressLocality).trim();
                     if (addr.addressRegion)
                       stateName = String(addr.addressRegion).trim();
+                    const parts = [addr.streetAddress, addr.addressLocality, addr.addressRegion, addr.postalCode].filter(Boolean);
+                    if (parts.length > 0) venueAddress = parts.join(", ");
                   }
                 }
                 if (obj.location.geo) {
@@ -452,6 +471,8 @@ export async function extractEventsFromUrl(
               cityName,
               stateName,
               venue: venueName,
+              venueAddress,
+              hostingEntity: organizerName || undefined,
               category,
               startTime,
               eventDate,
@@ -1116,6 +1137,8 @@ export async function ingestDiscoveredEvents(
           stateName: ev.stateName || "NC",
           category: ev.category,
           venue: ev.venue,
+          venueAddress: ev.venueAddress || null,
+          hostingEntity: ev.hostingEntity || ev.organizerName || null,
           startTime: ev.startTime,
           eventDate: ev.eventDate,
           details: ev.details,

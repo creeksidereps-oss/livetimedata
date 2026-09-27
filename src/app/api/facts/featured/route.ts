@@ -198,8 +198,7 @@ CRITICAL INSTRUCTIONS:
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
-                contents: [{ parts: [{ text: prompt }] }],
-                tools: [{ googleSearch: {} }] 
+                contents: [{ parts: [{ text: prompt }] }]
               })
             }
           );

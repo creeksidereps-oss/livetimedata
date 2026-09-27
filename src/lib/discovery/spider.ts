@@ -29,7 +29,8 @@ export async function resolveEntityWebsiteAndCalendar(
   stateName?: string | null
 ): Promise<{ officialWebsite?: string; calendarUrl?: string } | null> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+  // Guard: Protect Gemini spend cap from autonomous loops. Only fire Google Search Grounding if explicitly enabled.
+  if (!apiKey || process.env.ENABLE_GEMINI_SEARCH_GROUNDING !== "true") return null;
 
   try {
     const ai = new GoogleGenAI({ apiKey });

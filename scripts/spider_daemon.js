@@ -43,7 +43,8 @@ const { GoogleGenAI } = require('@google/genai');
  */
 async function resolveEntityWebsiteAndCalendar(name, entityType, city, state) {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+  // Guard: Protect Gemini spend cap from autonomous loops. Only fire Google Search Grounding if explicitly enabled.
+  if (!apiKey || process.env.ENABLE_GEMINI_SEARCH_GROUNDING !== 'true') return null;
 
   try {
     const ai = new GoogleGenAI({ apiKey });
@@ -210,6 +211,14 @@ function parseHumanDateString(dateStr) {
   return null;
 }
 
+const BLOCKED_DOMAINS = [
+  'wikipedia.org', 'wikimedia.org', 'minorplanetcenter.net', 'iopscience.iop.org',
+  'amazon.com', 'apple.com', 'google.com', 'youtube.com', 'twitter.com', 'x.com',
+  'instagram.com', 'linkedin.com', 'pinterest.com', 'tiktok.com', 'reddit.com',
+  'github.com', 'facebook.com/policies', 'w3.org', 'archive.org', 'arxiv.org',
+  'nih.gov', 'cdc.gov', 'ncbi.nlm.nih.gov', 'myspace.com', 'sina.com.cn'
+];
+
 /**
  * Universal HTML and table event crawler
  */
@@ -217,6 +226,11 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
   const events = [];
   const childUrls = new Set();
   const emails = new Set();
+
+  const lowUrl = (url || '').toLowerCase();
+  if (BLOCKED_DOMAINS.some(b => lowUrl.includes(b))) {
+    return { events, childUrls: [], emails: [] };
+  }
 
   try {
     const res = await fetch(url, {
@@ -299,23 +313,60 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
           const isEvent = Array.isArray(type) ? type.some(t => /Event$/i.test(t)) : (typeof type === 'string' && /Event$/i.test(type));
 
           if (isEvent && obj.name && (obj.startDate || obj.doorTime)) {
+            // Strict Guard: Exclude online/virtual events
+            const attendanceMode = String(obj.eventAttendanceMode || '');
+            const isVirtual = attendanceMode.includes('OnlineEventAttendanceMode') ||
+                              obj.location?.['@type'] === 'VirtualLocation' ||
+                              String(obj.location?.name || '').toLowerCase().includes('online') ||
+                              String(obj.location || '').toLowerCase().includes('online') ||
+                              /\b(online event|virtual event|livestream|webinar|zoom meeting)\b/i.test(`${obj.name || ''} ${obj.description || ''} ${obj.url || ''}`);
+            if (isVirtual) return;
+
+            // Guard: Event MUST have a physical location / address
+            const hasPhysicalLoc = !!(obj.location?.address?.addressLocality || obj.location?.address || obj.location?.name);
+            if (!hasPhysicalLoc) return;
+
             const startDateStr = obj.startDate || obj.doorTime;
             const eventDate = new Date(startDateStr);
             if (!isNaN(eventDate.getTime()) && eventDate >= new Date(Date.now() - 24 * 60 * 60 * 1000)) {
               let venueName = defaultCity;
+              let venueAddress = null;
               if (obj.location) {
                 venueName = obj.location.name || (obj.location.address ? (obj.location.address.streetAddress || defaultCity) : defaultCity);
+                const a = obj.location.address;
+                if (a) {
+                  if (typeof a === 'string') {
+                    venueAddress = a.trim();
+                  } else if (typeof a === 'object') {
+                    const parts = [a.streetAddress, a.addressLocality, a.addressRegion, a.postalCode].filter(Boolean);
+                    if (parts.length > 0) venueAddress = parts.join(', ');
+                  }
+                }
               }
               const title = String(obj.name).trim();
               const desc = String(obj.description || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
+              let startTime = '7:00 PM';
+              if (startDateStr && startDateStr.includes('T')) {
+                const dt = new Date(startDateStr);
+                if (!isNaN(dt.getTime())) {
+                  const h = dt.getHours();
+                  const m = dt.getMinutes().toString().padStart(2, '0');
+                  const ampm = h >= 12 ? 'PM' : 'AM';
+                  const h12 = h % 12 || 12;
+                  startTime = `${h12}:${m} ${ampm}`;
+                }
+              }
+
               events.push({
                 title,
                 venue: venueName,
+                venueAddress,
+                hostingEntity: obj.organizer?.name || undefined,
                 cityName: obj.location?.address?.addressLocality || defaultCity,
                 stateName: obj.location?.address?.addressRegion || defaultState,
                 category: categorizeEvent(title, desc),
-                startTime: '7:00 PM',
+                startTime,
                 eventDate,
                 details: desc || `${title} at ${venueName}.`,
                 officialInfoUrl: obj.url || url,
@@ -742,8 +793,9 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
             parsed.searchParams.has('offset');
 
           const isSameExactPage = parsed.origin + parsed.pathname === new URL(url).origin + new URL(url).pathname;
+          const isBlockedDomain = BLOCKED_DOMAINS.some(b => parsed.hostname.toLowerCase().includes(b));
 
-          if (!isSingleOrPagination && !isSameExactPage && parsed.protocol.startsWith('http') && parsed.href !== url) {
+          if (!isSingleOrPagination && !isSameExactPage && !isBlockedDomain && parsed.protocol.startsWith('http') && parsed.href !== url) {
             childUrls.add(parsed.href);
           }
         } catch {}
@@ -773,15 +825,79 @@ async function ingestCrawlResults(source, crawl) {
   for (const ev of crawl.events) {
     try {
       const dateIso = ev.eventDate.toISOString().slice(0, 10);
+
+      // Pre-check deduplication: skip if matching URL+date or title+city+date exists
+      if (ev.officialInfoUrl) {
+        const existUrl = await sql`
+          SELECT id FROM events 
+          WHERE official_info_url = ${ev.officialInfoUrl} 
+            AND DATE(event_date) = ${dateIso}::date 
+          LIMIT 1;
+        `;
+        if (existUrl.rowCount > 0) continue;
+      }
+      const existTitle = await sql`
+        SELECT id FROM events 
+        WHERE LOWER(TRIM(title)) = ${ev.title.toLowerCase().trim()} 
+          AND LOWER(TRIM(city_name)) = ${ev.cityName.toLowerCase().trim()} 
+          AND DATE(event_date) = ${dateIso}::date 
+        LIMIT 1;
+      `;
+      if (existTitle.rowCount > 0) continue;
+
+      // Smart Ingestion: Inherit known address and flyer for existing venues/hosts
+      let resolvedAddress = ev.venueAddress || null;
+      let resolvedFlyer = ev.eventFlyerUrl || null;
+
+      // 1. Check if venue string contains an address in parentheses (e.g. "Red Buffalo Brewing (108 N Center St)")
+      if (!resolvedAddress && ev.venue) {
+        const addrMatch = ev.venue.match(/\(([^)]*\d+[^)]*)\)/);
+        if (addrMatch) {
+          resolvedAddress = `${addrMatch[1].trim()}, ${ev.cityName}, ${ev.stateName || 'NC'}`;
+        }
+      }
+
+      // 2. If still missing address, look up from existing known events in database
+      if (!resolvedAddress && ev.venue) {
+        try {
+          const knownAddr = await sql`
+            SELECT venue_address FROM events 
+            WHERE LOWER(TRIM(city_name)) = ${ev.cityName.toLowerCase().trim()}
+              AND (LOWER(TRIM(venue)) = ${ev.venue.toLowerCase().trim()} OR LOWER(TRIM(venue)) LIKE ${'%' + ev.venue.toLowerCase().trim() + '%'})
+              AND venue_address IS NOT NULL AND LENGTH(TRIM(venue_address)) > 5
+            ORDER BY id DESC LIMIT 1;
+          `;
+          if (knownAddr.rows && knownAddr.rows.length > 0) {
+            resolvedAddress = knownAddr.rows[0].venue_address;
+          }
+        } catch {}
+      }
+
+      // 3. If flyer is missing, look up banked entity graphic in entities table
+      if (!resolvedFlyer && (ev.venue || ev.hostingEntity)) {
+        try {
+          const target = (ev.hostingEntity || ev.venue).toLowerCase().trim();
+          const banked = await sql`
+            SELECT image_url, logo_url FROM entities
+            WHERE (LOWER(name) = ${target} OR LOWER(normalized_name) = ${target} OR LOWER(name) LIKE ${'%' + target + '%'})
+              AND (image_url IS NOT NULL OR logo_url IS NOT NULL)
+            LIMIT 1;
+          `;
+          if (banked.rows && banked.rows.length > 0) {
+            resolvedFlyer = banked.rows[0].image_url || banked.rows[0].logo_url;
+          }
+        } catch {}
+      }
+
       const res = await sql`
         INSERT INTO events (
-          title, city_name, state_name, venue, category,
+          title, city_name, state_name, venue, venue_address, hosting_entity, category,
           start_time, event_date, details, official_info_url,
           event_flyer_url, source, status, created_at, updated_at
         ) VALUES (
-          ${ev.title}, ${ev.cityName}, ${ev.stateName || 'NC'}, ${ev.venue}, ${ev.category},
+          ${ev.title}, ${ev.cityName}, ${ev.stateName || 'NC'}, ${ev.venue}, ${resolvedAddress}, ${ev.hostingEntity || ev.organizerName || null}, ${ev.category},
           ${ev.startTime || '7:00 PM'}, ${dateIso}, ${ev.details}, ${ev.officialInfoUrl || null},
-          ${ev.eventFlyerUrl || null}, ${source.url}, 'published', NOW(), NOW()
+          ${resolvedFlyer}, ${source.url}, 'published', NOW(), NOW()
         )
         ON CONFLICT DO NOTHING
         RETURNING id;

@@ -74,7 +74,6 @@ Respond with ONLY a valid JSON object matching this schema:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          tools: [{ googleSearch: {} }],
           generationConfig: {
             temperature: 0.1 // Ultra-low temperature for strict factual accuracy
           }
@@ -159,7 +158,6 @@ Output ONLY a JSON array of objects:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          tools: [{ googleSearch: {} }],
           generationConfig: {
             temperature: 0.2
           }

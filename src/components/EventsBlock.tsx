@@ -80,6 +80,7 @@ export type EventItem = {
   event_flyer_url?: string;
   eventDate?: string;
   cityName?: string;
+  stateName?: string;
 };
 
 type DayBucket = {
@@ -888,6 +889,8 @@ function InlineEventModal({
   const [bankedEntityGraphic, setBankedEntityGraphic] = useState<string | null>(null);
   const [bankedError, setBankedError] = useState(false);
 
+  const [bankedVenueAddress, setBankedVenueAddress] = useState<string | null>(null);
+
   const displayDate = new Date(ev.eventDate || Date.now()).toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const isGenericPlaceholder =
@@ -899,7 +902,12 @@ function InlineEventModal({
   const hasOrganizerPhoto = !!ev.event_flyer_url && !flyerError && !isGenericPlaceholder;
 
   // Address & Geo Queries (Strategy B & C)
-  const rawVenueAddress = (ev.venue_address && ev.venue_address !== "null" && ev.venue_address !== "undefined") ? ev.venue_address : null;
+  const venueAddressMatch = ev.venue?.match(/\(([^)]*\d+[^)]*)\)/);
+  const embeddedAddress = venueAddressMatch ? venueAddressMatch[1] : null;
+
+  const rawVenueAddress = (ev.venue_address && ev.venue_address !== "null" && ev.venue_address !== "undefined" && ev.venue_address.trim().length > 0)
+    ? ev.venue_address 
+    : (bankedVenueAddress || (embeddedAddress ? `${embeddedAddress}${ev.cityName ? `, ${ev.cityName}` : ""}` : null));
   const isVenueStreetAddress = /^\d+\s+/.test(ev.venue || "");
   const displayAddress = rawVenueAddress || (isVenueStreetAddress ? `${ev.venue}${ev.cityName ? `, ${ev.cityName}` : ""}` : null);
   
@@ -966,6 +974,7 @@ function InlineEventModal({
             const data = await res.json();
             if (isMounted && data.ok && data.imageUrl) {
               setLiveScrapedUrl(data.imageUrl);
+              setMediaMode("photo");
               return;
             }
           }
@@ -974,16 +983,23 @@ function InlineEventModal({
         }
       }
 
-      // Step B: Look for banked/saved graphic in entity graph (venue or hosting entity)
+      // Step B: Look for banked/saved graphic & address in entity graph (venue or hosting entity)
       const lookupTarget = ev.hosting_entity || ev.venue;
       if (lookupTarget && lookupTarget.trim().length > 1) {
         try {
-          const res = await fetch(`/api/entities/lookup?name=${encodeURIComponent(lookupTarget.trim())}`);
+          const targetCity = ev.cityName || cityName || '';
+          const res = await fetch(`/api/entities/lookup?name=${encodeURIComponent(lookupTarget.trim())}&city=${encodeURIComponent(targetCity)}`);
           if (res.ok) {
             const data = await res.json();
-            if (isMounted && data.ok && data.entity?.imageUrl) {
-              setBankedEntityGraphic(data.entity.imageUrl);
-              return;
+            if (isMounted && data.ok) {
+              if (data.entity?.address && !rawVenueAddress) {
+                setBankedVenueAddress(data.entity.address);
+              }
+              if (data.entity?.imageUrl) {
+                setBankedEntityGraphic(data.entity.imageUrl);
+                setMediaMode("photo");
+                return;
+              }
             }
           }
         } catch {
@@ -997,7 +1013,7 @@ function InlineEventModal({
     return () => {
       isMounted = false;
     };
-  }, [ev.id, ev.official_info_url, ev.social_urls, ev.registration_url, ev.hosting_entity, ev.venue, ev.event_flyer_url, flyerError, isGenericPlaceholder, saleInfo]);
+  }, [ev.id, ev.official_info_url, ev.social_urls, ev.registration_url, ev.hosting_entity, ev.venue, ev.event_flyer_url, flyerError, isGenericPlaceholder, saleInfo, rawVenueAddress, cityName]);
 
   const cityLogo = getCityLogo(ev.cityName || cityName);
 
@@ -1030,37 +1046,31 @@ function InlineEventModal({
     isSealFallback = true;
   }
 
+  const effectiveCity = (ev.cityName || cityName || "").trim();
+  const titleLower = (ev.title || "").toLowerCase();
+  const cityLower = effectiveCity.toLowerCase();
+  const modalTitle = (effectiveCity && titleLower.startsWith(cityLower))
+    ? ev.title
+    : (effectiveCity ? `${effectiveCity} - ${ev.title}` : ev.title);
+
+  const venueStr = (ev.venue || "").trim();
+  const venueLower = venueStr.toLowerCase();
+  const venueIsCity = !!effectiveCity && (
+    venueLower === cityLower ||
+    venueLower.startsWith(cityLower + ",") ||
+    venueLower === `${cityLower}, ${(ev.stateName || "").toLowerCase()}`
+  );
+  const venueDisplay = (venueIsCity && displayAddress) ? displayAddress : (venueStr || effectiveCity);
+  const showCitySuffix = !venueIsCity && !!effectiveCity && !venueLower.includes(cityLower);
+
   return (
     <OverlayModal
-      title={`${ev.cityName || cityName} - ${ev.title}`}
+      title={modalTitle}
       onClose={onClose}
       zIndexBase={zIndexBase}
       footerActions={
         <>
-          {(ev.registration_url || ev.affiliateUrl) && (
-            <button 
-              type="button"
-              onClick={() => setIframeUrl(ev.registration_url || ev.affiliateUrl!)}
-              style={{
-                background: "#059669",
-                color: "white",
-                padding: "11px 22px",
-                borderRadius: "999px",
-                fontWeight: 900,
-                fontSize: "11px",
-                letterSpacing: "0.05em",
-                border: "none",
-                cursor: "pointer",
-                textTransform: "uppercase",
-                display: "inline-flex",
-                alignItems: "center",
-                boxShadow: "0 4px 12px rgba(5,150,105,0.25)"
-              }}
-            >
-              {ev.affiliateUrl && !ev.registration_url ? "🎟️ Get Tickets" : "Register"}
-            </button>
-          )}
-
+          {/* Ticket/Registration Action Buttons - Hidden pending affiliate contract rollout */}
           <ShareButton 
             className=""
             style={{
@@ -1125,10 +1135,10 @@ function InlineEventModal({
           </div>
           <div style={{ fontSize: "15px", fontWeight: 700, display: "flex", flexDirection: "column", gap: "4px", color: "#475569", marginTop: "4px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              📍 <span style={{ color: "#0f172a" }}>{ev.venue}</span>{ev.cityName ? ` · ${ev.cityName}` : ''}
+              📍 <span style={{ color: "#0f172a" }}>{venueDisplay}</span>{showCitySuffix ? ` · ${effectiveCity}` : ''}
             </div>
             <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 500, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", paddingLeft: "24px" }}>
-              {displayAddress && displayAddress !== ev.venue && <span>{displayAddress}</span>}
+              {displayAddress && displayAddress !== venueDisplay && <span>{displayAddress}</span>}
               <button
                 type="button"
                 onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`)}
@@ -1282,9 +1292,9 @@ function InlineEventModal({
               </div>
             )}
 
-            {/* Fallback if photo mode was chosen but no photo found */}
+            {/* Fallback if photo mode was chosen but no photo found - ONLY for yard/estate sales and auctions */}
             {mediaMode === "photo" && !activeGraphicUrl && (
-              hasLocationQuery ? (
+              saleInfo && hasLocationQuery ? (
                 <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ position: "relative", width: "100%", height: "340px", borderRadius: "12px", overflow: "hidden", boxShadow: "0 8px 30px rgba(0,0,0,0.35)", border: "1px solid rgba(255,255,255,0.15)" }}>
                     <iframe
@@ -1338,12 +1348,35 @@ function InlineEventModal({
                     {saleInfo.label}
                   </div>
                 </div>
+              ) : cityLogo ? (
+                <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <img 
+                    src={cityLogo} 
+                    alt={`${ev.cityName || cityName} Municipal Notice`}
+                    style={{
+                      width: "auto",
+                      maxWidth: "280px",
+                      maxHeight: "150px",
+                      objectFit: "contain"
+                    }}
+                  />
+                  <div style={{
+                    marginTop: "12px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    color: "#64748b",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em"
+                  }}>
+                    Official {ev.cityName || cityName} Municipal & Community Notice
+                  </div>
+                </div>
               ) : null
             )}
 
             {/* Quick View Mode Switcher Pills */}
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "8px", marginTop: "16px" }}>
-              {hasOrganizerPhoto && (
+              {(hasOrganizerPhoto || !!activeGraphicUrl) && (
                 <button
                   type="button"
                   onClick={() => setMediaMode("photo")}
@@ -1360,7 +1393,7 @@ function InlineEventModal({
                     transition: "all 0.2s"
                   }}
                 >
-                  📸 Organizer Photo / Flyer
+                  📸 {hasOrganizerPhoto ? "Organizer Photo / Flyer" : (bankedEntityGraphic ? "Venue / Host Photo" : "Photo / Flyer")}
                 </button>
               )}
 
@@ -3377,31 +3410,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           }
           const eventFooterActions = ev ? (
             <>
-              {ev.affiliateUrl && iframeUrl !== ev.affiliateUrl ? (
-                <button
-                  type="button"
-                  onClick={() => setIframeUrl(ev.affiliateUrl!)}
-                  style={{ background: "#4f46e5", color: "white", padding: "9px 12px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", cursor: "pointer", textTransform: "uppercase" }}
-                >
-                  Tickets
-                </button>
-              ) : ev.affiliateUrl ? (
-                <button type="button" disabled style={{ background: "#e5e7eb", color: "#9ca3af", padding: "9px 12px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", textTransform: "uppercase" }}>Tickets</button>
-              ) : null}
-
-              {ev.registration_url && iframeUrl !== ev.registration_url ? (
-                <button
-                  type="button"
-                  onClick={() => setIframeUrl(ev.registration_url!)}
-                  style={{ background: "#059669", color: "white", padding: "9px 16px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", cursor: "pointer", textTransform: "uppercase" }}
-                >
-                  Register
-                </button>
-              ) : ev.registration_url ? (
-                <button type="button" disabled style={{ background: "#e5e7eb", color: "#9ca3af", padding: "9px 16px", borderRadius: "999px", fontWeight: 700, fontSize: "11px", border: "none", textTransform: "uppercase" }}>Register</button>
-              ) : null}
-
-
+              {/* Ticket/Registration Action Buttons - Hidden pending affiliate contract rollout */}
               <ShareButton 
                 title={ev.title} 
                 text={`Check out ${ev.title} in ${cityName}!`} 
