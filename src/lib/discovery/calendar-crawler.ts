@@ -1150,11 +1150,11 @@ export async function ingestDiscoveredEvents(
           .values({
             name: ev.cityName,
             slug: citySlug,
-            admin1: ev.stateName || "NC",
+            admin1: ev.stateName || null,
             countryCode: "US",
             countryName: "United States",
-            latitude: ev.latitude || 35.78,
-            longitude: ev.longitude || -80.88,
+            latitude: ev.latitude || null,
+            longitude: ev.longitude || null,
             timezone: "America/New_York",
             population: 10000,
           })

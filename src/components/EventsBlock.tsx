@@ -2764,72 +2764,134 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       {/* Pop-up Overlay Container 3: Vertical Category Filter List */}
       {categoryModalKey ? (
         <OverlayModal
-          title={`${cityName} - ${getLocalizedCategoryLabel(categoryModalKey, countryCode)}`}
+          title={`${cityName}${showNearby ? " (Nearby)" : ""} - ${getLocalizedCategoryLabel(categoryModalKey, countryCode)}`}
           onClose={closeAllModals}
+          headerAction={
+            <div style={{ display: "flex", border: "1px solid #111827", borderRadius: "999px", overflow: "hidden" }}>
+              <button 
+                type="button"
+                onClick={() => { setShowNearby(false); setSelectedNearbyCity(null); }}
+                style={{
+                  background: !showNearby ? "#111827" : "#fff",
+                  color: !showNearby ? "#fff" : "#111827",
+                  padding: "4px 12px", fontSize: "9px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >Local</button>
+              <button 
+                type="button"
+                onClick={() => { setShowNearby(true); setSelectedNearbyCity(null); }}
+                style={{
+                  background: showNearby ? "#111827" : "#fff",
+                  color: showNearby ? "#fff" : "#111827",
+                  padding: "4px 12px", fontSize: "9px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >Nearby</button>
+            </div>
+          }
         >
-          {showNearby && nearbyCities.length > 1 && (
-            <div
-              style={{
-                display: "flex",
-                gap: "6px",
-                overflowX: "auto",
-                WebkitOverflowScrolling: "touch",
-                paddingBottom: "8px",
-                marginBottom: "12px",
-                borderBottom: "1px solid #f1f5f9",
-                flexShrink: 0,
-                scrollbarWidth: "thin",
-              }}
-            >
+          {/* Quick Switch Pill Bar: Local vs Nearby + Nearby City Tabs */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              overflowX: "auto",
+              WebkitOverflowScrolling: "touch",
+              paddingBottom: "8px",
+              marginBottom: "12px",
+              borderBottom: "1px solid #f1f5f9",
+              flexShrink: 0,
+              scrollbarWidth: "thin",
+            }}
+          >
+            <div style={{ display: "flex", border: "1px solid #cbd5e1", borderRadius: "999px", overflow: "hidden", flexShrink: 0 }}>
               <button
                 type="button"
-                onClick={() => setSelectedNearbyCity(null)}
+                onClick={() => { setShowNearby(false); setSelectedNearbyCity(null); }}
                 style={{
                   padding: "4px 10px",
-                  borderRadius: "999px",
                   fontSize: "11px",
-                  fontWeight: selectedNearbyCity === null ? 800 : 600,
-                  background: selectedNearbyCity === null ? "#1e293b" : "#f1f5f9",
-                  color: selectedNearbyCity === null ? "#fff" : "#475569",
+                  fontWeight: !showNearby ? 800 : 600,
+                  background: !showNearby ? "#1e293b" : "#ffffff",
+                  color: !showNearby ? "#ffffff" : "#475569",
                   border: "none",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
-                  flexShrink: 0,
                 }}
               >
-                All Nearby ({dbEvents.filter(e => normalizeCategories(e.category, e.title).includes(categoryModalKey)).length})
+                Local
               </button>
-              {nearbyCities.map(({ name }) => {
-                const count = dbEvents.filter(
-                  e => ((e.cityName || (e as any).city_name) || "").trim().toLowerCase() === name.trim().toLowerCase() && 
-                       normalizeCategories(e.category, e.title).includes(categoryModalKey)
-                ).length;
-                if (count === 0) return null;
-                const isSelected = selectedNearbyCity && selectedNearbyCity.trim().toLowerCase() === name.trim().toLowerCase();
-                return (
-                  <button
-                    key={name}
-                    type="button"
-                    onClick={() => setSelectedNearbyCity(isSelected ? null : name)}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: "999px",
-                      fontSize: "11px",
-                      fontWeight: isSelected ? 800 : 600,
-                      background: isSelected ? "#2563eb" : "#f1f5f9",
-                      color: isSelected ? "#fff" : "#475569",
-                      border: "none",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {name} ({count})
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                onClick={() => { setShowNearby(true); setSelectedNearbyCity(null); }}
+                style={{
+                  padding: "4px 10px",
+                  fontSize: "11px",
+                  fontWeight: showNearby ? 800 : 600,
+                  background: showNearby ? "#2563eb" : "#ffffff",
+                  color: showNearby ? "#ffffff" : "#475569",
+                  border: "none",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Nearby
+              </button>
             </div>
-          )}
+
+            {showNearby && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedNearbyCity(null)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: selectedNearbyCity === null ? 800 : 600,
+                    background: selectedNearbyCity === null ? "#1e293b" : "#f1f5f9",
+                    color: selectedNearbyCity === null ? "#fff" : "#475569",
+                    border: "none",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  All Nearby ({dbEvents.filter(e => normalizeCategories(e.category, e.title).includes(categoryModalKey)).length})
+                </button>
+                {nearbyCities.map(({ name }) => {
+                  const count = dbEvents.filter(
+                    e => ((e.cityName || (e as any).city_name) || "").trim().toLowerCase() === name.trim().toLowerCase() && 
+                         normalizeCategories(e.category, e.title).includes(categoryModalKey)
+                  ).length;
+                  if (count === 0) return null;
+                  const isSelected = selectedNearbyCity && selectedNearbyCity.trim().toLowerCase() === name.trim().toLowerCase();
+                  return (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setSelectedNearbyCity(isSelected ? null : name)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        fontSize: "11px",
+                        fontWeight: isSelected ? 800 : 600,
+                        background: isSelected ? "#2563eb" : "#f1f5f9",
+                        color: isSelected ? "#fff" : "#475569",
+                        border: "none",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {name} ({count})
+                    </button>
+                  );
+                })}
+              </>
+            )}
+          </div>
+
           {categoryEvents.length ? (
             <div style={{ display: "grid", gap: "8px" }}>
               {categoryEvents.map((event) => (
@@ -2844,9 +2906,37 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
               ))}
             </div>
           ) : (
-            <div style={{ border: "1px dashed #d1d5db", borderRadius: "12px", padding: "12px", fontSize: "12px", color: "#4b5563", background: "#fafafa", fontWeight: 500 }}>
-              No upcoming listings located in this category right now.
-            </div>
+            !showNearby ? (
+              <div style={{ border: "1px dashed #cbd5e1", borderRadius: "12px", padding: "24px 16px", textAlign: "center", background: "#f8fafc" }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                  No local listings in this category right now in {cityName}.
+                </div>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "14px" }}>
+                  Switch to Nearby to view listings within 30 miles.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowNearby(true); setSelectedNearbyCity(null); }}
+                  style={{
+                    background: "#2563eb",
+                    color: "#ffffff",
+                    padding: "8px 18px",
+                    borderRadius: "999px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 2px 6px rgba(37,99,235,0.25)"
+                  }}
+                >
+                  🔎 Switch to Nearby (30 Miles)
+                </button>
+              </div>
+            ) : (
+              <div style={{ border: "1px dashed #cbd5e1", borderRadius: "12px", padding: "20px 16px", textAlign: "center", background: "#f8fafc", fontSize: "12px", color: "#64748b" }}>
+                No upcoming listings located in this category within 30 miles of {cityName}.
+              </div>
+            )
           )}
         </OverlayModal>
       ) : null}

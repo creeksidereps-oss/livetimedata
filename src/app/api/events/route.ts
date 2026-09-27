@@ -62,11 +62,12 @@ export async function GET(request: Request) {
       try {
         if (hasCoords) {
           const result = await sql`
-            SELECT e.* 
+            SELECT DISTINCT e.* 
             FROM events e
             JOIN cities c ON LOWER(e.city_name) = LOWER(c.name)
             WHERE e.status NOT IN ('pending', 'pending_review', 'legal_hold')
               AND (e.event_date >= CURRENT_DATE - INTERVAL '1 day' OR e.event_date IS NULL)
+              AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
               AND (
                 e.state_name IS NULL 
                 OR c.admin1 IS NULL 
@@ -89,15 +90,18 @@ export async function GET(request: Request) {
             WITH target_city AS (
               SELECT latitude, longitude FROM cities 
               WHERE LOWER(name) = LOWER(${city})
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
               ORDER BY CASE WHEN LOWER(admin1) = LOWER(${state}::text) THEN 0 ELSE 1 END ASC
               LIMIT 1
             )
-            SELECT e.* 
+            SELECT DISTINCT e.* 
             FROM events e
             JOIN cities c ON LOWER(e.city_name) = LOWER(c.name)
             CROSS JOIN target_city tc
             WHERE e.status NOT IN ('pending', 'pending_review', 'legal_hold')
               AND (e.event_date >= CURRENT_DATE - INTERVAL '1 day' OR e.event_date IS NULL)
+              AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+              AND tc.latitude IS NOT NULL AND tc.longitude IS NOT NULL
               AND (
                 e.state_name IS NULL 
                 OR c.admin1 IS NULL 
