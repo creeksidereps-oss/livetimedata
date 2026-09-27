@@ -359,10 +359,18 @@ export async function extractEventsFromUrl(
               obj.location?.['@type'] === 'VirtualLocation' ||
               String(obj.location?.name || '').toLowerCase().includes('online') ||
               String(obj.location || '').toLowerCase().includes('online') ||
-              /\b(online event|virtual event|livestream|webinar|zoom meeting)\b/i.test(
+              /\b(online event|virtual event|virtual book fair|virtual book club|livestream|webinar|zoom meeting)\b/i.test(
                 `${obj.name || ''} ${obj.description || ''} ${obj.url || ''}`
               );
             if (isVirtual) {
+              return;
+            }
+
+            // Strict Guard: Exclude adult / NSFW events
+            const isAdult = /\b(x-rated|erotic|onlyfans|porn|fetish|swinger|nsfw|strip club)\b/i.test(
+              `${obj.name || ''} ${obj.description || ''} ${obj.url || ''}`
+            );
+            if (isAdult) {
               return;
             }
             const title = String(obj.name).trim();
@@ -1074,6 +1082,16 @@ export async function ingestDiscoveredEvents(
 
   for (const ev of allEventsToIngest) {
     try {
+      const fullText = `${ev.title} ${ev.details || ''} ${ev.source || ''} ${ev.officialInfoUrl || ''}`.toLowerCase();
+      if (/\b(x-rated|erotic|onlyfans|porn|fetish|swinger|nsfw|strip club)\b/i.test(fullText)) {
+        stats.skipped++;
+        continue;
+      }
+      if (/\b(online event|virtual event|virtual book fair|virtual book club|livestream|webinar|zoom meeting)\b/i.test(fullText)) {
+        stats.skipped++;
+        continue;
+      }
+
       const normTitle = ev.title.toLowerCase().trim();
       const normCity = ev.cityName.toLowerCase().trim();
 

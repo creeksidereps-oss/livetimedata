@@ -319,8 +319,12 @@ async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
                               obj.location?.['@type'] === 'VirtualLocation' ||
                               String(obj.location?.name || '').toLowerCase().includes('online') ||
                               String(obj.location || '').toLowerCase().includes('online') ||
-                              /\b(online event|virtual event|livestream|webinar|zoom meeting)\b/i.test(`${obj.name || ''} ${obj.description || ''} ${obj.url || ''}`);
+                              /\b(online event|virtual event|virtual book fair|virtual book club|livestream|webinar|zoom meeting)\b/i.test(`${obj.name || ''} ${obj.description || ''} ${obj.url || ''}`);
             if (isVirtual) return;
+
+            // Strict Guard: Exclude adult / NSFW events
+            const isAdult = /\b(x-rated|erotic|onlyfans|porn|fetish|swinger|nsfw|strip club)\b/i.test(`${obj.name || ''} ${obj.description || ''} ${obj.url || ''}`);
+            if (isAdult) return;
 
             // Guard: Event MUST have a physical location / address
             const hasPhysicalLoc = !!(obj.location?.address?.addressLocality || obj.location?.address || obj.location?.name);
