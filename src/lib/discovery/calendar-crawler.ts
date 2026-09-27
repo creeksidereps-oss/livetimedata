@@ -257,8 +257,8 @@ export function isValidEmail(email: string): boolean {
  */
 export async function extractEventsFromUrl(
   url: string,
-  fallbackCity: string = "Statesville",
-  fallbackState: string = "NC"
+  fallbackCity: string = "",
+  fallbackState: string = ""
 ): Promise<CrawlResult> {
   const eventsFound: ExtractedEvent[] = [];
   const subUrls: string[] = [];
@@ -1088,6 +1088,22 @@ export async function ingestDiscoveredEvents(
         continue;
       }
       if (/\b(online event|virtual event|virtual book fair|virtual book club|livestream|webinar|zoom meeting)\b/i.test(fullText)) {
+        stats.skipped++;
+        continue;
+      }
+
+      // Guard: Require valid city name
+      if (!ev.cityName || ev.cityName.trim().length === 0) {
+        stats.skipped++;
+        continue;
+      }
+
+      // Guard: Reject empty non-events with no venue address, no flyer, no details, and no info URL
+      const hasDetails = !!(ev.details && ev.details.trim().length > 15 && ev.details.trim() !== ev.title.trim());
+      const hasAddress = !!(ev.venueAddress && ev.venueAddress.trim().length > 0);
+      const hasFlyer = !!(ev.eventFlyerUrl && ev.eventFlyerUrl.trim().length > 0);
+      const hasInfo = !!(ev.officialInfoUrl && ev.officialInfoUrl.trim().length > 0);
+      if (!hasAddress && !hasFlyer && !hasDetails && !hasInfo) {
         stats.skipped++;
         continue;
       }

@@ -48,8 +48,8 @@ export async function GET(request: Request) {
         try {
           const crawl = await extractEventsFromUrl(
             src.url,
-            src.cityName || 'Statesville',
-            src.stateName || 'NC'
+            src.cityName || '',
+            src.stateName || ''
           );
 
           if (crawl.events.length > 0 || crawl.extractedEmails.length > 0) {

@@ -222,7 +222,7 @@ const BLOCKED_DOMAINS = [
 /**
  * Universal HTML and table event crawler
  */
-async function crawlUrl(url, defaultCity = 'Statesville', defaultState = 'NC') {
+async function crawlUrl(url, defaultCity = '', defaultState = '') {
   const events = [];
   const childUrls = new Set();
   const emails = new Set();
@@ -1159,7 +1159,7 @@ async function runSpiderDaemon() {
         console.log(`--> [SPIDER] Crawling: ${src.name || 'Unnamed'} (${src.url})`);
         console.log(`    Location: ${src.city_name || 'N/A'}, ${src.state_name || 'NC'} | Interval: Every ${intervalDays} days`);
 
-        const crawl = await crawlUrl(src.url, src.city_name || 'Raleigh', src.state_name || 'NC');
+        const crawl = await crawlUrl(src.url, src.city_name || '', src.state_name || '');
         const stats = await ingestCrawlResults(src, crawl);
 
         // Advance schedule for next lifecycle interval
