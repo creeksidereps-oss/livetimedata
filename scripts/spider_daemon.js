@@ -898,7 +898,7 @@ async function ingestCrawlResults(source, crawl) {
         } catch {}
       }
 
-      // Quality Guard: Reject garbled text, replacement characters, or past events
+      // Quality Guard: Reject garbled text or replacement characters
       if (
         ev.title.includes('\uFFFD') ||
         (ev.venue && ev.venue.includes('\uFFFD')) ||
@@ -906,26 +906,31 @@ async function ingestCrawlResults(source, crawl) {
       ) {
         continue;
       }
-      if (ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000)) {
-        continue; // Discard past events from historical archives
+
+      // Check if event date is in the past
+      const isPastEvent = ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000);
+
+      // 1. Only insert into public events table if CURRENT or UPCOMING
+      if (!isPastEvent) {
+        const finalState = ev.stateName || source.state_name || null;
+
+        const res = await sql`
+          INSERT INTO events (
+            title, city_name, state_name, venue, venue_address, hosting_entity, category,
+            start_time, event_date, details, official_info_url,
+            event_flyer_url, source, status, created_at, updated_at
+          ) VALUES (
+            ${ev.title}, ${ev.cityName}, ${finalState}, ${ev.venue}, ${resolvedAddress}, ${ev.hostingEntity || ev.organizerName || null}, ${ev.category},
+            ${ev.startTime || '7:00 PM'}, ${dateIso}, ${ev.details}, ${ev.officialInfoUrl || null},
+            ${resolvedFlyer}, ${source.url}, 'published', NOW(), NOW()
+          )
+          ON CONFLICT DO NOTHING
+          RETURNING id;
+        `;
+        if (res.rowCount > 0) eventsInserted++;
       }
 
-      const finalState = ev.stateName || source.state_name || null;
-
-      const res = await sql`
-        INSERT INTO events (
-          title, city_name, state_name, venue, venue_address, hosting_entity, category,
-          start_time, event_date, details, official_info_url,
-          event_flyer_url, source, status, created_at, updated_at
-        ) VALUES (
-          ${ev.title}, ${ev.cityName}, ${finalState}, ${ev.venue}, ${resolvedAddress}, ${ev.hostingEntity || ev.organizerName || null}, ${ev.category},
-          ${ev.startTime || '7:00 PM'}, ${dateIso}, ${ev.details}, ${ev.officialInfoUrl || null},
-          ${resolvedFlyer}, ${source.url}, 'published', NOW(), NOW()
-        )
-        ON CONFLICT DO NOTHING
-        RETURNING id;
-      `;
-      if (res.rowCount > 0) eventsInserted++;
+      // 2. ALWAYS mine venues, organizers, and entities (even from past events / annual festival archives!)
 
       // Guard: If venue is a legitimate commercial entity (not a street address), ensure it exists in entities
       const isStreetAddr = /^\d+\s+[A-Za-z]/.test(ev.venue) || /^#\d+/.test(ev.venue);

@@ -1171,28 +1171,34 @@ export async function ingestDiscoveredEvents(
         stats.birthedCities++;
       }
 
-      // 2. Insert new event into events table
-      const [insertedEvent] = await db
-        .insert(events)
-        .values({
-          title: ev.title,
-          cityName: ev.cityName,
-          stateName: ev.stateName || "NC",
-          category: ev.category,
-          venue: ev.venue,
-          venueAddress: ev.venueAddress || null,
-          hostingEntity: ev.hostingEntity || ev.organizerName || null,
-          startTime: ev.startTime,
-          eventDate: ev.eventDate,
-          details: ev.details,
-          officialInfoUrl: ev.officialInfoUrl,
-          eventFlyerUrl: ev.eventFlyerUrl,
-          status: "live",
-          source: ev.source || "Automated Calendar Crawler",
-        })
-        .returning({ id: events.id });
+      // 2. Only insert new event into events table if CURRENT or UPCOMING
+      const isPastEvent = ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000);
+      let insertedEvent: { id: string } | undefined;
 
-      stats.ingested++;
+      if (!isPastEvent) {
+        const [res] = await db
+          .insert(events)
+          .values({
+            title: ev.title,
+            cityName: ev.cityName,
+            stateName: ev.stateName || "NC",
+            category: ev.category,
+            venue: ev.venue,
+            venueAddress: ev.venueAddress || null,
+            hostingEntity: ev.hostingEntity || ev.organizerName || null,
+            startTime: ev.startTime,
+            eventDate: ev.eventDate,
+            details: ev.details,
+            officialInfoUrl: ev.officialInfoUrl,
+            eventFlyerUrl: ev.eventFlyerUrl,
+            status: "live",
+            source: ev.source || "Automated Calendar Crawler",
+          })
+          .returning({ id: events.id });
+
+        insertedEvent = res;
+        stats.ingested++;
+      }
 
       // 3. Upsert Venue Entity into graph
       let venueEntityId: number | undefined;
