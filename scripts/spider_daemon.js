@@ -218,7 +218,8 @@ const BLOCKED_DOMAINS = [
   'instagram.com', 'linkedin.com', 'pinterest.com', 'tiktok.com', 'reddit.com',
   'github.com', 'facebook.com/policies', 'w3.org', 'archive.org', 'arxiv.org',
   'nih.gov', 'cdc.gov', 'ncbi.nlm.nih.gov', 'myspace.com', 'sina.com.cn',
-  'arcgis.com', 'blue-marble.de', 'acme.com', 'openstreetmap.org', 'maps.google.com'
+  'arcgis.com', 'blue-marble.de', 'acme.com', 'openstreetmap.org', 'maps.google.com',
+  'mapy.com', 'mapy.cz', '.ru/', 'bbok.ru', 'viewtopic.php', 'showthread.php'
 ];
 
 /**
@@ -895,13 +896,27 @@ async function ingestCrawlResults(source, crawl) {
         } catch {}
       }
 
+      // Quality Guard: Reject garbled text, replacement characters, or past events
+      if (
+        ev.title.includes('\uFFFD') ||
+        (ev.venue && ev.venue.includes('\uFFFD')) ||
+        (ev.details && ev.details.includes('\uFFFD'))
+      ) {
+        continue;
+      }
+      if (ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000)) {
+        continue; // Discard past events from historical archives
+      }
+
+      const finalState = ev.stateName || source.state_name || null;
+
       const res = await sql`
         INSERT INTO events (
           title, city_name, state_name, venue, venue_address, hosting_entity, category,
           start_time, event_date, details, official_info_url,
           event_flyer_url, source, status, created_at, updated_at
         ) VALUES (
-          ${ev.title}, ${ev.cityName}, ${ev.stateName || 'NC'}, ${ev.venue}, ${resolvedAddress}, ${ev.hostingEntity || ev.organizerName || null}, ${ev.category},
+          ${ev.title}, ${ev.cityName}, ${finalState}, ${ev.venue}, ${resolvedAddress}, ${ev.hostingEntity || ev.organizerName || null}, ${ev.category},
           ${ev.startTime || '7:00 PM'}, ${dateIso}, ${ev.details}, ${ev.officialInfoUrl || null},
           ${resolvedFlyer}, ${source.url}, 'published', NOW(), NOW()
         )
