@@ -217,7 +217,8 @@ const BLOCKED_DOMAINS = [
   'amazon.com', 'apple.com', 'google.com', 'youtube.com', 'twitter.com', 'x.com',
   'instagram.com', 'linkedin.com', 'pinterest.com', 'tiktok.com', 'reddit.com',
   'github.com', 'facebook.com/policies', 'w3.org', 'archive.org', 'arxiv.org',
-  'nih.gov', 'cdc.gov', 'ncbi.nlm.nih.gov', 'myspace.com', 'sina.com.cn'
+  'nih.gov', 'cdc.gov', 'ncbi.nlm.nih.gov', 'myspace.com', 'sina.com.cn',
+  'arcgis.com', 'blue-marble.de', 'acme.com', 'openstreetmap.org', 'maps.google.com'
 ];
 
 /**
