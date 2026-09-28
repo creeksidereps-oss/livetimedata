@@ -1173,7 +1173,7 @@ export async function ingestDiscoveredEvents(
 
       // 2. Only insert new event into events table if CURRENT or UPCOMING
       const isPastEvent = ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000);
-      let insertedEvent: { id: string } | undefined;
+      let insertedEvent: { id: number } | undefined;
 
       if (!isPastEvent) {
         const [res] = await db

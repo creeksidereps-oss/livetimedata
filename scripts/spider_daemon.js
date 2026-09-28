@@ -220,6 +220,7 @@ const BLOCKED_DOMAINS = [
   'github.com', 'facebook.com/policies', 'w3.org', 'archive.org', 'arxiv.org',
   'nih.gov', 'cdc.gov', 'ncbi.nlm.nih.gov', 'myspace.com', 'sina.com.cn',
   'fussball.de', 'pitchero.com', 'clubwebsite.co.uk',
+  'railforum.com', 'trainweb.us', 'trainweb.org', 'trainweb.com', 'ultimatebb.cgi',
   'arcgis.com', 'blue-marble.de', 'acme.com', 'openstreetmap.org', 'maps.google.com',
   'mapy.com', 'mapy.cz', '.ru/', 'bbok.ru', 'viewtopic.php', 'showthread.php'
 ];

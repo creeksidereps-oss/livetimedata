@@ -20,10 +20,11 @@ import FeaturedFactCard from "@/components/FeaturedFactCard";
 import UserPreferencesPills from "@/components/UserPreferencesPills";
 
 export default function Page(props: { 
-  params: Promise<{ slug: string }>, 
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }> 
+  params?: Promise<{ slug: string }>, 
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>,
+  initialData?: any,
 }) {
-  const [searchParams, setSearchParams] = useState<any>(null);
+  const [searchParams, setSearchParams] = useState<any>(props.initialData || null);
   const [weather, setWeather] = useState<any>(null);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [improveOpen, setImproveOpen] = useState(false);
@@ -42,71 +43,79 @@ export default function Page(props: {
 
   useEffect(() => {
     async function init() {
-      const sp = await props.searchParams;
-      const p = await props.params;
-      const resolved = resolveCityFromSlug(p?.slug);
-      const cityName = (sp?.name as string) || resolved.name;
-      const stateName = sp?.admin1 !== undefined ? (sp.admin1 as string) : resolved.admin1;
-      const country = (sp?.country as string) || resolved.country;
-      const country_code = (sp?.country_code as string) || resolved.country_code;
-      const lat = parseFloat(sp?.lat as string) || resolved.lat;
-      const lon = parseFloat(sp?.lon as string) || resolved.lon;
-      const timezone = (sp?.timezone as string) || resolved.timezone || "auto";
+      let sp: any = props.initialData;
+      if (!sp) {
+        const rawSp = props.searchParams ? await props.searchParams : {};
+        const p = props.params ? await props.params : undefined;
+        const resolved = resolveCityFromSlug(p?.slug);
+        const cName = (rawSp?.name as string) || resolved.name;
+        const sName = rawSp?.admin1 !== undefined ? (rawSp.admin1 as string) : resolved.admin1;
+        const cCountry = (rawSp?.country as string) || resolved.country;
+        const cCountryCode = (rawSp?.country_code as string) || resolved.country_code;
+        const cLat = parseFloat(rawSp?.lat as string) || resolved.lat;
+        const cLon = parseFloat(rawSp?.lon as string) || resolved.lon;
+        const cTimezone = (rawSp?.timezone as string) || resolved.timezone || "auto";
 
-      setSearchParams({ 
-        ...sp, 
-        name: cityName, 
-        admin1: stateName, 
-        country, 
-        country_code, 
-        lat, 
-        lon, 
-        timezone 
-      });
+        sp = { 
+          ...rawSp, 
+          name: cName, 
+          admin1: sName, 
+          country: cCountry, 
+          country_code: cCountryCode, 
+          lat: cLat, 
+          lon: cLon, 
+          timezone: cTimezone 
+        };
+        setSearchParams(sp);
+      }
+
+      const currentLat = parseFloat(sp.lat) || 35.7826;
+      const currentLon = parseFloat(sp.lon) || -80.8873;
+      const currentCity = sp.name || "Statesville";
+      const currentState = sp.admin1 || "";
 
       // 1. Fetch Current Weather Forecast
-      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`);
+      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${currentLat}&longitude=${currentLon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`);
       if (res.ok) setWeather(await res.json());
 
       // 2. Immediate Library Pre-Caching Runner
-      // This silently warms up the Neon database cache or triggers the AI generation immediately upon search
       try {
         fetch('/api/admin/scraper', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName, lat, lng: lon }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon }),
         }).catch(() => {});
         fetch('/api/admin/scraper/webcams', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState }),
         }).catch(() => {});
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName, lat, lng: lon, type: 'about' }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'about' }),
         }).catch(() => {});
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName, lat, lng: lon, type: 'facts' }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'facts' }),
         }).catch(() => {});
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName, lat, lng: lon, type: 'on_this_day', timezone: (sp.timezone as string) }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'on_this_day', timezone: (sp.timezone as string) }),
         }).catch(() => {});
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName, stateName, countryName: (sp.country as string) || "United States", lat, lng: lon, type: 'holidays' }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: (sp.country as string) || "United States", lat: currentLat, lng: currentLon, type: 'holidays' }),
         }).catch(() => {});
       } catch (e) {
         console.error("Background pre-cache loop paused:", e);
       }
     }
     init();
-  }, [props.searchParams]);
+  }, [props.searchParams, props.initialData]);
 
   if (!searchParams) return null;
   const cityName = (searchParams.name as string) || "Statesville";
