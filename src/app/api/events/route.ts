@@ -51,6 +51,7 @@ export async function GET(request: Request) {
     }
 
     const stateVars = getStateVariations(state);
+    const stateMapJson = JSON.stringify(US_STATE_ABBREVIATIONS);
     const latParam = searchParams.get("lat") ? parseFloat(searchParams.get("lat")!) : null;
     const lonParam = searchParams.get("lon") ? parseFloat(searchParams.get("lon")!) : null;
     const hasCoords = latParam !== null && !isNaN(latParam) && lonParam !== null && !isNaN(lonParam);
@@ -74,6 +75,14 @@ export async function GET(request: Request) {
                 OR LOWER(e.state_name) = LOWER(c.admin1)
                 OR LOWER(c.admin1) LIKE LOWER('%' || e.state_name || '%')
                 OR LOWER(e.state_name) LIKE LOWER('%' || c.admin1 || '%')
+                OR EXISTS (
+                  SELECT 1 FROM jsonb_each_text(${stateMapJson}::jsonb) AS states(abbr, full_name)
+                  WHERE (
+                    (LOWER(e.state_name) = LOWER(states.abbr) OR LOWER(e.state_name) = LOWER(states.full_name))
+                    AND
+                    (LOWER(c.admin1) = LOWER(states.abbr) OR LOWER(c.admin1) = LOWER(states.full_name))
+                  )
+                )
               )
               AND 3959 * acos(
                     LEAST(1.0, GREATEST(-1.0,
@@ -108,6 +117,14 @@ export async function GET(request: Request) {
                 OR LOWER(e.state_name) = LOWER(c.admin1)
                 OR LOWER(c.admin1) LIKE LOWER('%' || e.state_name || '%')
                 OR LOWER(e.state_name) LIKE LOWER('%' || c.admin1 || '%')
+                OR EXISTS (
+                  SELECT 1 FROM jsonb_each_text(${stateMapJson}::jsonb) AS states(abbr, full_name)
+                  WHERE (
+                    (LOWER(e.state_name) = LOWER(states.abbr) OR LOWER(e.state_name) = LOWER(states.full_name))
+                    AND
+                    (LOWER(c.admin1) = LOWER(states.abbr) OR LOWER(c.admin1) = LOWER(states.full_name))
+                  )
+                )
               )
               AND 3959 * acos(
                     LEAST(1.0, GREATEST(-1.0,
