@@ -168,20 +168,23 @@ export async function POST(request: Request) {
             finalStatus = "legal_hold";
             console.log(`[AI SECURITY HUB] Event FLAGGED: ${title}`);
           } else if (aiText.includes("CLEAN")) {
-            // Auto-publish clean yard sales, garage sales, estate sales, auctions, community sales
+            // Auto-publish clean yard sales, garage sales, estate sales, auctions, auditions, community sales
             const catLower = (category + " " + title).toLowerCase();
-            const isSaleOrCommunity = 
+            const isAutoApprovedCategory = 
               catLower.includes("yard") || 
               catLower.includes("garage") || 
               catLower.includes("estate") || 
               catLower.includes("auction") || 
+              catLower.includes("audition") || 
+              catLower.includes("casting") || 
+              catLower.includes("tryout") || 
               catLower.includes("market") || 
               catLower.includes("community") || 
               catLower.includes("civic");
 
-            if (isSaleOrCommunity) {
+            if (isAutoApprovedCategory) {
               finalStatus = "approved";
-              console.log(`[AI AUTO-PUBLISH] Clean yard/estate/auction event auto-approved: ${title}`);
+              console.log(`[AI AUTO-PUBLISH] Clean event auto-approved: ${title}`);
             }
           }
         }

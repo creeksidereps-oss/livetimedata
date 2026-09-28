@@ -168,6 +168,7 @@ function categorizeEvent(title, desc = '') {
   if (/\b(music|concert|band|live music|acoustic|orchestra|choir|singer|jazz|blues|rock|country music|symphony)\b/i.test(text)) return 'Concerts & Live Music';
   if (/\b(festival|fest|carnival|parade|fair|fall fest|octoberfest|oktoberfest|spring fest)\b/i.test(text)) return 'Festivals & Fairs';
   if (/\b(class|workshop|pottery|painting|cooking class|seminar|lesson|learn to|fitness class|yoga)\b/i.test(text)) return 'Classes';
+  if (/\b(audition|auditions|casting call|open call|call for actors|call for performers|call for dancers|call for singers|actor tryouts|dance tryouts|audition notice)\b/i.test(text)) return 'Auditions';
   if (/\b(theater|theatre|comedy|stand-up|musical|play|improv|ballet|dance performance|opera|drama)\b/i.test(text)) return 'Theatre & Performing Arts';
   if (/\b(art|gallery|exhibition|craft fair|art crawl|museum|sculpture|pottery show)\b/i.test(text)) return 'Arts & Culture';
   if (/\b(market|farmers market|flea market|pop-up market|artisan market|vendor market)\b/i.test(text)) return 'Farmers Markets';

@@ -92,6 +92,15 @@ export const MULTILINGUAL_SEARCH_TAXONOMY: Record<string, string[]> = {
     "kunst", "malerei", "ausstellung",
     "mostra",
     "artes plásticas"
+  ],
+  Auditions: [
+    "audition", "auditions", "casting", "casting call", "open call", "tryout", "tryouts",
+    "theatre audition", "theater audition", "acting audition", "dance audition", "choir audition", "orchestra audition",
+    "audicion", "audición", "audiciones", "prueba de actuacion", "prueba de casting",
+    "concurrence", "audition de danse", "audition de theatre",
+    "vorsprechen", "vortanzen", "vorsingen", "castings",
+    "audizione", "audizioni", "provino",
+    "audição", "audições", "seleção de elenco"
   ]
 };
 

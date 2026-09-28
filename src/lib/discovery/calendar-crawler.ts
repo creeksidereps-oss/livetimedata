@@ -86,6 +86,15 @@ export function categorizeEvent(title: string, description: string): string {
     return "Classes";
   }
 
+  // Auditions & Casting Calls
+  if (
+    /\b(audition|auditions|casting call|open call|call for actors|call for performers|call for dancers|call for singers|actor tryouts|dance tryouts|audition notice)\b/i.test(
+      text
+    )
+  ) {
+    return "Auditions";
+  }
+
   // Theatre & Performing Arts
   if (
     /\b(theater|theatre|comedy|stand-up|musical|play|improv|ballet|dance performance|opera|drama)\b/i.test(

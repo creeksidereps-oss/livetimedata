@@ -22,6 +22,7 @@ const CATEGORY_ORDER = [
   "Family / Kids",
   "School / Education",
   "Yard Sale / Market",
+  "Auditions",
   "Community / Civic",
   "Nightlife / Social",
   "Other"

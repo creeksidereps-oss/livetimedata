@@ -19,6 +19,7 @@ const CATEGORIES = [
   "Comedy",
   "Lectures",
   "Tours",
+  "Auditions",
   "Clubs / Groups",
   "Other"
 ];

@@ -348,6 +348,18 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       if (!matched.includes("Tours")) matched.push("Tours");
     }
 
+    // Auditions & Casting Calls
+    if (
+      pLow.includes("audition") ||
+      pLow.includes("casting") ||
+      pLow.includes("tryout") ||
+      pLow.includes("call for actors") ||
+      pLow.includes("call for performers") ||
+      pLow.includes("open call")
+    ) {
+      if (!matched.includes("Auditions")) matched.push("Auditions");
+    }
+
     // Fallback exact match with CATEGORY_ORDER
     const found = CATEGORY_ORDER.find((c) => c.toLowerCase() === pLow);
     if (found && !matched.includes(found)) matched.push(found);
@@ -373,6 +385,12 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       /\b(food truck|food trucks|food trailer|street food)\b/i.test(tLow)
     ) {
       if (!matched.includes("Food Trucks")) matched.push("Food Trucks");
+    }
+    // Auditions
+    if (
+      /\b(audition|auditions|casting call|open call|actor tryouts|dance tryouts|call for actors|call for performers|call for dancers|call for singers)\b/i.test(tLow)
+    ) {
+      if (!matched.includes("Auditions")) matched.push("Auditions");
     }
   }
 
@@ -417,6 +435,8 @@ function categoryAccent(category: CategoryKey) {
       return "#84cc16";
     case "Parades":
       return "#f43f5e";
+    case "Auditions":
+      return "#7c3aed"; // vibrant spotlight violet/purple
     case "Comedy":
       return "#eab308";
     case "Nightlife":
