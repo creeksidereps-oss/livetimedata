@@ -917,7 +917,7 @@ async function ingestCrawlResults(source, crawl) {
             name, normalized_name, entity_type, city_name, state_name,
             verification_status, created_at, updated_at
           ) VALUES (
-            ${ev.venue}, ${norm}, 'venue', ${ev.cityName}, ${ev.stateName || 'NC'},
+            ${ev.venue}, ${norm}, 'venue', ${ev.cityName}, ${ev.stateName || src.state_name || null},
             'discovered', NOW(), NOW()
           )
           ON CONFLICT DO NOTHING;
@@ -942,7 +942,7 @@ async function ingestCrawlResults(source, crawl) {
                 scrape_interval_days, scrape_horizon_months, status,
                 next_scrape_due, created_at, updated_at
               ) VALUES (
-                ${venueCalUrl}, ${ev.venue}, 'venue', ${ev.cityName}, ${ev.stateName || 'NC'},
+                ${venueCalUrl}, ${ev.venue}, 'venue', ${ev.cityName}, ${ev.stateName || src.state_name || null},
                 14, 6, 'active', NOW(), NOW(), NOW()
               )
               ON CONFLICT (url) DO UPDATE SET next_scrape_due = NOW()
@@ -964,7 +964,7 @@ async function ingestCrawlResults(source, crawl) {
             scrape_interval_days, scrape_horizon_months, status,
             next_scrape_due, created_at, updated_at
           ) VALUES (
-            ${ev.organizerUrl}, ${ev.organizerName}, 'organizer', ${ev.cityName}, ${ev.stateName || 'NC'},
+            ${ev.organizerUrl}, ${ev.organizerName}, 'organizer', ${ev.cityName}, ${ev.stateName || src.state_name || null},
             30, 6, 'active', NOW(), NOW(), NOW()
           )
           ON CONFLICT DO NOTHING
@@ -981,7 +981,7 @@ async function ingestCrawlResults(source, crawl) {
             name, normalized_name, entity_type, city_name, state_name,
             website_url, verification_status, created_at, updated_at
           ) VALUES (
-            ${ev.performerName}, ${perfNorm}, 'performer', ${ev.cityName}, ${ev.stateName || 'NC'},
+            ${ev.performerName}, ${perfNorm}, 'performer', ${ev.cityName}, ${ev.stateName || src.state_name || null},
             ${ev.performerUrl || null}, 'discovered', NOW(), NOW()
           )
           ON CONFLICT DO NOTHING;
@@ -1157,7 +1157,7 @@ async function runSpiderDaemon() {
 
         const intervalDays = src.scrape_interval_days || 30;
         console.log(`--> [SPIDER] Crawling: ${src.name || 'Unnamed'} (${src.url})`);
-        console.log(`    Location: ${src.city_name || 'N/A'}, ${src.state_name || 'NC'} | Interval: Every ${intervalDays} days`);
+        console.log(`    Location: ${src.city_name || 'N/A'}, ${src.state_name || 'N/A'} | Interval: Every ${intervalDays} days`);
 
         const crawl = await crawlUrl(src.url, src.city_name || '', src.state_name || '');
         const stats = await ingestCrawlResults(src, crawl);

@@ -61,7 +61,8 @@ export async function POST(request: Request) {
     } 
 
     // Mandatory structural parameters baseline check
-    if (!title || !cityName || !venueName || eventDates.length === 0 || !userEmail || !userName) {
+    const effectiveVenue = venueName || venueAddress || "Residential / Local Site";
+    if (!title || !cityName || eventDates.length === 0 || !userEmail || !userName) {
       return NextResponse.json(
         { ok: false, error: "Required fields missing from placement application matrix parameters" },
         { status: 400 }
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
 
     // Auto-Geocode and Register City (Nearby Engine Fix)
     try {
-      const cityCheck = await sql`SELECT id FROM cities WHERE LOWER(name) = LOWER(${cityName}) LIMIT 1`;
+      const cityCheck = await sql`SELECT slug FROM cities WHERE LOWER(name) = LOWER(${cityName}) LIMIT 1`;
       if (cityCheck.rows.length === 0) {
         console.log(`[GEOCODER] City '${cityName}' not found in database. Geocoding via Nominatim...`);
         const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cityName)}&state=${encodeURIComponent(stateName)}&country=USA&format=json&limit=1`, {
@@ -80,7 +81,12 @@ export async function POST(request: Request) {
         if (geoData && geoData.length > 0) {
           const lat = parseFloat(geoData[0].lat);
           const lon = parseFloat(geoData[0].lon);
-          await sql`INSERT INTO cities (name, admin1, latitude, longitude) VALUES (${cityName}, ${stateName}, ${lat}, ${lon})`;
+          const citySlug = `${cityName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${(stateName || 'us').toLowerCase()}`;
+          await sql`
+            INSERT INTO cities (slug, name, admin1, country_code, country_name, latitude, longitude, timezone)
+            VALUES (${citySlug}, ${cityName}, ${stateName}, 'US', 'United States', ${lat}, ${lon}, 'America/New_York')
+            ON CONFLICT (slug) DO UPDATE SET latitude = ${lat}, longitude = ${lon};
+          `;
           console.log(`[GEOCODER] Successfully registered ${cityName} at Lat: ${lat}, Lon: ${lon}`);
         }
       }
@@ -161,6 +167,22 @@ export async function POST(request: Request) {
           } else if (aiText.includes("FLAG")) {
             finalStatus = "legal_hold";
             console.log(`[AI SECURITY HUB] Event FLAGGED: ${title}`);
+          } else if (aiText.includes("CLEAN")) {
+            // Auto-publish clean yard sales, garage sales, estate sales, auctions, community sales
+            const catLower = (category + " " + title).toLowerCase();
+            const isSaleOrCommunity = 
+              catLower.includes("yard") || 
+              catLower.includes("garage") || 
+              catLower.includes("estate") || 
+              catLower.includes("auction") || 
+              catLower.includes("market") || 
+              catLower.includes("community") || 
+              catLower.includes("civic");
+
+            if (isSaleOrCommunity) {
+              finalStatus = "approved";
+              console.log(`[AI AUTO-PUBLISH] Clean yard/estate/auction event auto-approved: ${title}`);
+            }
           }
         }
       }
@@ -198,7 +220,7 @@ export async function POST(request: Request) {
           contact_phone, official_info_url, social_urls, event_flyer_url, view_count, status
         ) VALUES (
           ${title}, ${cityName}, ${stateName}, ${matchedFranchiseId}, ${category},
-          ${venueName}, ${venueAddress}, ${hostingEntity}, 'Public Event Submission',
+          ${effectiveVenue}, ${venueAddress}, ${hostingEntity}, 'Public Event Submission',
           ${startTime}, ${eventDateStr}::timestamp, ${details}, ${affiliateUrl || null},
           ${registrationUrl || null}, ${userName}, ${userEmail}, ${userPhone || null},
           ${contactEmail || null}, ${contactPhone || null}, ${officialInfoUrl || null},
