@@ -29,7 +29,7 @@ type CategoryKey =
   | "Local"
   | "Clubs / Groups"
   | "Fundraisers"
-  | "Conventions"
+  | "Halloween"
   | "Holiday"
   | "Arts"
   | "Kids"
@@ -38,7 +38,29 @@ type CategoryKey =
   | "Auditions"
   | "Comedy"
   | "Nightlife"
-  | "Other";
+  | "Other"
+  | "Conventions";
+
+type HalloweenSubdivision = "all" | "trick_or_treat" | "haunted" | "themed";
+
+function matchesHalloweenSubdivision(subTab: HalloweenSubdivision, title: string, details?: string): boolean {
+  if (subTab === "all") return true;
+  const text = `${title} ${details || ""}`.toLowerCase();
+
+  const isTrickOrTreat = /\b(trick[ -]*or[ -]*treat|trunk[ -]*(or|&|\/)[ -]*treat|trick[ -]*or[ -]*treating|trail[s]?[ -]*(of|&)[ -]*treat[s]?|candy crawl|treats?|hallofest)\b/i.test(text);
+  const isHaunted = /\b(haunt|haunted|ghost[ -]*(tour|walk|hunt|stories|bus)?|paranormal|panic point|spookywoods|dark trail|fright|carnival of horrors|sinister springs)\b/i.test(text);
+
+  if (subTab === "trick_or_treat") {
+    return isTrickOrTreat;
+  }
+  if (subTab === "haunted") {
+    return isHaunted;
+  }
+  if (subTab === "themed") {
+    return (!isTrickOrTreat && !isHaunted) || /\b(costume|party|contest|trivia|movie|film|hocus pocus|rocky horror|samhain|zombie|witch|carve|pumpkin|carnaval|goth|havoc|dance)\b/i.test(text);
+  }
+  return true;
+}
 
 type DBEventItem = {
   id: string;
@@ -106,7 +128,7 @@ const CATEGORY_ORDER: CategoryKey[] = [
   "Local",
   "Clubs / Groups",
   "Fundraisers",
-  "Conventions",
+  "Halloween",
   "Holiday",
   "Arts",
   "Kids",
@@ -116,6 +138,7 @@ const CATEGORY_ORDER: CategoryKey[] = [
   "Comedy",
   "Nightlife",
   "Other",
+  "Conventions",
 ];
 
 function formatMonthDay(date: Date) {
@@ -360,6 +383,18 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       if (!matched.includes("Auditions")) matched.push("Auditions");
     }
 
+    // Halloween
+    if (
+      pLow.includes("halloween") ||
+      pLow.includes("trick or treat") ||
+      pLow.includes("trunk or treat") ||
+      pLow.includes("haunted") ||
+      pLow.includes("quallaween") ||
+      pLow.includes("spooky")
+    ) {
+      if (!matched.includes("Halloween")) matched.push("Halloween");
+    }
+
     // Fallback exact match with CATEGORY_ORDER
     const found = CATEGORY_ORDER.find((c) => c.toLowerCase() === pLow);
     if (found && !matched.includes(found)) matched.push(found);
@@ -392,6 +427,12 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
     ) {
       if (!matched.includes("Auditions")) matched.push("Auditions");
     }
+    // Halloween
+    if (
+      /\b(halloween|trick[ -]*or[ -]*treat|trunk[ -]*(or|&)[ -]*treat|haunted|ghost (tour|walk|hunt|stories|bus)|quallaween|spooky|spookywoods|panic point|trail[s]? (of|&)[ ]*treat[s]?|candy crawl|festival of frights|fright night|hallofest)\b/i.test(tLow)
+    ) {
+      if (!matched.includes("Halloween")) matched.push("Halloween");
+    }
   }
 
   return matched.length > 0 ? matched : ["Other"];
@@ -423,6 +464,8 @@ function categoryAccent(category: CategoryKey) {
       return "#ec4899";
     case "Fundraisers":
       return "#e11d48"; // vibrant rose / heart crimson
+    case "Halloween":
+      return "#ea580c"; // festive pumpkin orange
     case "Conventions":
       return "#3b82f6";
     case "Holiday":
@@ -1737,6 +1780,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
   const [dayModalIso, setDayModalIso] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [categoryModalKey, setCategoryModalKey] = useState<CategoryKey | null>(null);
+  const [halloweenSubTab, setHalloweenSubTab] = useState<HalloweenSubdivision>("all");
   const [activeDayCategory, setActiveDayCategory] = useState<CategoryKey | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
   const [selectedModalEvent, setSelectedModalEvent] = useState<EventItem | null>(null);
@@ -1978,7 +2022,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     selectedDay?.categories.find((group) => group.key === effectiveActiveCategory)
       ?.items ?? [];
 
-  const categoryEvents = useMemo(() => {
+  const baseCategoryEvents = useMemo(() => {
     if (!categoryModalKey) return [];
     
     // We must use dbEvents instead of allEvents to capture events beyond the initial 10-day timeline
@@ -2017,10 +2061,30 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       .sort((a, b) => new Date(a.eventDate!).getTime() - new Date(b.eventDate!).getTime());
   }, [effectiveDbEvents, categoryModalKey]);
 
+  const halloweenCounts = useMemo(() => {
+    if (categoryModalKey !== "Halloween") return { all: 0, trick_or_treat: 0, haunted: 0, themed: 0 };
+    return {
+      all: baseCategoryEvents.length,
+      trick_or_treat: baseCategoryEvents.filter((e) => matchesHalloweenSubdivision("trick_or_treat", e.title, e.details)).length,
+      haunted: baseCategoryEvents.filter((e) => matchesHalloweenSubdivision("haunted", e.title, e.details)).length,
+      themed: baseCategoryEvents.filter((e) => matchesHalloweenSubdivision("themed", e.title, e.details)).length,
+    };
+  }, [baseCategoryEvents, categoryModalKey]);
+
+  const categoryEvents = useMemo(() => {
+    if (categoryModalKey !== "Halloween" || halloweenSubTab === "all") {
+      return baseCategoryEvents;
+    }
+    return baseCategoryEvents.filter((event) =>
+      matchesHalloweenSubdivision(halloweenSubTab, event.title, event.details)
+    );
+  }, [baseCategoryEvents, categoryModalKey, halloweenSubTab]);
+
   function openDayModal(iso: string, category?: CategoryKey | null) {
     const day = days.find((d) => d.iso === iso) ?? null;
     setCalendarOpen(false);
     setCategoryModalKey(null);
+    setHalloweenSubTab("all");
     setSubmitOpen(false);
     setIsSearchOpen(false);
     setDayModalIso(iso);
@@ -2033,6 +2097,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     setDayModalIso(null);
     setCalendarOpen(false);
     setCategoryModalKey(null);
+    setHalloweenSubTab("all");
     setActiveDayCategory(null);
     setOpenEventId(null);
     setSelectedModalEvent(null);
@@ -2535,32 +2600,38 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
             alignItems: "center",
           }}
         >
-          {CATEGORY_ORDER.map((category) => (
-            <button
-              key={category}
-              type="button"
-              onClick={() => {
-                closeAllModals();
-                setCategoryModalKey(category);
-              }}
-              style={{
-                border: "1px solid #d1d5db",
-                background: "#fff",
-                color: "#111827",
-                borderRadius: "999px",
-                padding: "6px 12px",
-                fontSize: "11px",
-                fontWeight: 700,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {getLocalizedCategoryLabel(category, countryCode)}
-            </button>
-          ))}
+          {CATEGORY_ORDER.map((category) => {
+            const isHalloween = category === "Halloween";
+            return (
+              <button
+                key={category}
+                type="button"
+                onClick={() => {
+                  closeAllModals();
+                  setHalloweenSubTab("all");
+                  setCategoryModalKey(category);
+                }}
+                style={{
+                  border: isHalloween ? "1.5px solid #ea580c" : "1px solid #d1d5db",
+                  background: isHalloween ? "#fff7ed" : "#fff",
+                  color: isHalloween ? "#c2410c" : "#111827",
+                  borderRadius: "999px",
+                  padding: "6px 12px",
+                  fontSize: "11px",
+                  fontWeight: isHalloween ? 800 : 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  justifyContent: "center",
+                  boxShadow: isHalloween ? "0 1px 4px rgba(234, 88, 12, 0.15)" : "none",
+                }}
+              >
+                {isHalloween ? "🎃 Halloween" : getLocalizedCategoryLabel(category, countryCode)}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -2784,7 +2855,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       {/* Pop-up Overlay Container 3: Vertical Category Filter List */}
       {categoryModalKey ? (
         <OverlayModal
-          title={`${cityName}${showNearby ? " (Nearby)" : ""} - ${getLocalizedCategoryLabel(categoryModalKey, countryCode)}`}
+          title={`${cityName}${showNearby ? " (Nearby)" : ""} - ${categoryModalKey === "Halloween" ? "🎃 Halloween" : getLocalizedCategoryLabel(categoryModalKey, countryCode)}`}
           onClose={closeAllModals}
           headerAction={
             <div style={{ display: "flex", border: "1px solid #111827", borderRadius: "999px", overflow: "hidden" }}>
@@ -2911,6 +2982,97 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
               </>
             )}
           </div>
+
+          {/* Halloween Subdivisions: Trick-or-Treat, Haunted, Themed */}
+          {categoryModalKey === "Halloween" && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch",
+                paddingBottom: "8px",
+                marginBottom: "12px",
+                borderBottom: "1px solid #fed7aa",
+                flexShrink: 0,
+                scrollbarWidth: "none",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setHalloweenSubTab("all")}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: halloweenSubTab === "all" ? 800 : 600,
+                  background: halloweenSubTab === "all" ? "#ea580c" : "#fff7ed",
+                  color: halloweenSubTab === "all" ? "#fff" : "#9a3412",
+                  border: halloweenSubTab === "all" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                🎃 All Halloween ({halloweenCounts.all})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHalloweenSubTab("trick_or_treat")}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: halloweenSubTab === "trick_or_treat" ? 800 : 600,
+                  background: halloweenSubTab === "trick_or_treat" ? "#ea580c" : "#fff7ed",
+                  color: halloweenSubTab === "trick_or_treat" ? "#fff" : "#9a3412",
+                  border: halloweenSubTab === "trick_or_treat" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                🍬 Trick-or-Treat ({halloweenCounts.trick_or_treat})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHalloweenSubTab("haunted")}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: halloweenSubTab === "haunted" ? 800 : 600,
+                  background: halloweenSubTab === "haunted" ? "#ea580c" : "#fff7ed",
+                  color: halloweenSubTab === "haunted" ? "#fff" : "#9a3412",
+                  border: halloweenSubTab === "haunted" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                👻 Haunted ({halloweenCounts.haunted})
+              </button>
+              <button
+                type="button"
+                onClick={() => setHalloweenSubTab("themed")}
+                style={{
+                  padding: "4px 12px",
+                  borderRadius: "999px",
+                  fontSize: "11px",
+                  fontWeight: halloweenSubTab === "themed" ? 800 : 600,
+                  background: halloweenSubTab === "themed" ? "#ea580c" : "#fff7ed",
+                  color: halloweenSubTab === "themed" ? "#fff" : "#9a3412",
+                  border: halloweenSubTab === "themed" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                🎭 Themed ({halloweenCounts.themed})
+              </button>
+            </div>
+          )}
 
           {categoryEvents.length ? (
             <div style={{ display: "grid", gap: "8px" }}>
