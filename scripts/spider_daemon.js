@@ -214,6 +214,7 @@ function parseHumanDateString(dateStr) {
 
 const BLOCKED_DOMAINS = [
   'wikipedia.org', 'wikimedia.org', 'wmflabs.org', 'toolforge.org', 'geohack', 'minorplanetcenter.net', 'iopscience.iop.org',
+  'geneontology.org', 'bgee.org', 'rcsb.org', 'uniprot.org', 'ebi.ac.uk', 'ensembl.org',
   'amazon.com', 'apple.com', 'google.com', 'youtube.com', 'twitter.com', 'x.com',
   'instagram.com', 'linkedin.com', 'pinterest.com', 'tiktok.com', 'reddit.com',
   'github.com', 'facebook.com/policies', 'w3.org', 'archive.org', 'arxiv.org',
