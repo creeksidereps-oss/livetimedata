@@ -714,7 +714,7 @@ async function crawlUrl(url, defaultCity = '', defaultState = '') {
     ) {
       try {
         let artistName = bitWidget.attr('data-artist-name');
-        if (!artistName) {
+        if (!artistName || artistName.startsWith('id_')) {
           artistName =
             $('h1').first().text().trim() ||
             $('title').first().text().split(/[-|]/)[0].replace(/official\s+(?:site|website)\s+of/i, '').trim();
