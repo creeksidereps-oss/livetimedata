@@ -90,6 +90,26 @@ export default function Page(props: {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cityName: currentCity, stateName: currentState }),
         }).catch(() => {});
+        fetch('/api/generate-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'about' }),
+        }).catch(() => {});
+        fetch('/api/generate-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'facts' }),
+        }).catch(() => {});
+        fetch('/api/generate-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'on_this_day', timezone: (sp.timezone as string) }),
+        }).catch(() => {});
+        fetch('/api/generate-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: (sp.country as string) || "United States", lat: currentLat, lng: currentLon, type: 'holidays' }),
+        }).catch(() => {});
       } catch (e) {
         console.error("Background pre-cache loop paused:", e);
       }
