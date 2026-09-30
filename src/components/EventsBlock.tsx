@@ -248,16 +248,14 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
     // Sports
     if (
       pLow.includes("sport") ||
-      pLow.includes("game") ||
+      /\bgames?\b/i.test(pLow) ||
       pLow.includes("soccer") ||
       pLow.includes("football") ||
       pLow.includes("baseball") ||
       pLow.includes("basketball") ||
       pLow.includes("nascar") ||
       pLow.includes("racing") ||
-      pLow.includes("run") ||
-      pLow.includes("5k") ||
-      pLow.includes("marathon")
+      /\b(run|runs|running|runner|runners|5k|10k|marathon)\b/i.test(pLow)
     ) {
       if (!matched.includes("Sports")) matched.push("Sports");
     }
