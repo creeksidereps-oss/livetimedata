@@ -42,9 +42,8 @@ const { GoogleGenAI } = require('@google/genai');
  * Autonomous Web Search: Resolve official calendar URL for entity using Google Search grounding
  */
 async function resolveEntityWebsiteAndCalendar(name, entityType, city, state) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  // Guard: Protect Gemini spend cap from autonomous loops. Only fire Google Search Grounding if explicitly enabled.
-  if (!apiKey || process.env.ENABLE_GEMINI_SEARCH_GROUNDING !== 'true') return null;
+  // Hard zero-cost guard: Google Search Grounding completely frozen to guarantee $0.00 spend.
+  return null;
 
   try {
     const ai = new GoogleGenAI({ apiKey });
@@ -219,10 +218,17 @@ const BLOCKED_DOMAINS = [
   'instagram.com', 'linkedin.com', 'pinterest.com', 'tiktok.com', 'reddit.com',
   'github.com', 'facebook.com/policies', 'w3.org', 'archive.org', 'arxiv.org',
   'nih.gov', 'cdc.gov', 'ncbi.nlm.nih.gov', 'myspace.com', 'sina.com.cn',
-  'fussball.de', 'pitchero.com', 'clubwebsite.co.uk',
+  // SPORTS SPIDER FREEZE (pending structured sports pipeline)
+  'baseball-reference.com', 'sports-reference.com', 'basketball-reference.com', 'pro-football-reference.com',
+  'hockey-reference.com', 'fibalivestats', 'geniussports.com', 'flashscore', 'sofascore', 'livescore',
+  'maxpreps.com', 'fussball.de', 'pitchero.com', 'clubwebsite.co.uk', 'wda-swiecie.pl', 'bhufc.com.au',
+  'web.fcschoenberg95.de', 'stneotstownfc.co.uk', 'scbuempliz78.ch', 'albionroversfc.com',
+  // FOREIGN & NON-EVENT ARCHIVES
   'railforum.com', 'trainweb.us', 'trainweb.org', 'trainweb.com', 'ultimatebb.cgi',
   'arcgis.com', 'blue-marble.de', 'acme.com', 'openstreetmap.org', 'maps.google.com',
-  'mapy.com', 'mapy.cz', '.ru/', 'bbok.ru', 'viewtopic.php', 'showthread.php'
+  'mapy.com', 'mapy.cz', '.ru/', 'bbok.ru', 'viewtopic.php', 'showthread.php',
+  'ptsem.edu', 'iwm.org.uk', 'army.mod.uk', 'iau.org', 'tiendschuur.net', 'likme.tv',
+  '.pl/', '.ch/', '.de/', '.cz/', '.hu/', '.nl/', '.fr/', '.lt/', '.is/', '.au/'
 ];
 
 /**
@@ -238,6 +244,11 @@ async function crawlUrl(url, defaultCity = '', defaultState = '') {
     return { events, childUrls: [], emails: [] };
   }
 
+  // Reject non-HTML file extensions (audio, video, documents, archives)
+  if (/\.(wav|mp3|mp4|m4a|avi|mov|mkv|flac|ogg|zip|tar|gz|7z|rar|pdf|dmg|exe|iso|bin|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|svg|ico)(\?.*)?$/i.test(lowUrl)) {
+    return { events, childUrls: [], emails: [] };
+  }
+
   try {
     const res = await fetch(url, {
       headers: {
@@ -247,6 +258,16 @@ async function crawlUrl(url, defaultCity = '', defaultState = '') {
       },
       signal: AbortSignal.timeout(12000),
     });
+
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+      return { events, childUrls: [], emails: [] };
+    }
+
+    const contentLength = parseInt(res.headers.get('content-length') || '0', 10);
+    if (contentLength > 3 * 1024 * 1024) {
+      return { events, childUrls: [], emails: [] };
+    }
 
     const html = await res.text();
     if (!html || typeof html !== 'string') return { events, childUrls: [], emails: [] };
@@ -804,8 +825,9 @@ async function crawlUrl(url, defaultCity = '', defaultState = '') {
 
           const isSameExactPage = parsed.origin + parsed.pathname === new URL(url).origin + new URL(url).pathname;
           const isBlockedDomain = BLOCKED_DOMAINS.some(b => parsed.hostname.toLowerCase().includes(b));
+          const isNonHtml = /\.(wav|mp3|mp4|m4a|avi|mov|mkv|flac|ogg|zip|tar|gz|7z|rar|pdf|dmg|exe|iso|bin|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|svg|ico)(\?.*)?$/i.test(parsed.pathname);
 
-          if (!isSingleOrPagination && !isSameExactPage && !isBlockedDomain && parsed.protocol.startsWith('http') && parsed.href !== url) {
+          if (!isSingleOrPagination && !isSameExactPage && !isBlockedDomain && !isNonHtml && parsed.protocol.startsWith('http') && parsed.href !== url) {
             childUrls.add(parsed.href);
           }
         } catch {}
@@ -910,6 +932,17 @@ async function ingestCrawlResults(source, crawl) {
 
       // Check if event date is in the past
       const isPastEvent = ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000);
+
+      // MANDATORY ADDRESS ENFORCEMENT: Yard, garage, and estate sales MUST have a valid physical street address with a street number
+      const isYardSaleOrAuction = ev.category === 'Yard / Garage Sales' || /\b(yard sale|garage sale|estate sale|estate auction)\b/i.test(ev.title);
+      if (isYardSaleOrAuction) {
+        const addrToCheck = resolvedAddress || ev.venueAddress || ev.venue || '';
+        const hasStreetNum = /^\d+\s+[A-Za-z0-9]/.test(addrToCheck.trim());
+        if (!hasStreetNum) {
+          // Drop: Cannot publish yard sale or auction without a verified physical house/street number
+          continue;
+        }
+      }
 
       // 1. Only insert into public events table if CURRENT or UPCOMING
       if (!isPastEvent) {
@@ -1149,7 +1182,10 @@ async function runSpiderDaemon() {
             FROM sources
             WHERE status = 'active'
               AND (next_scrape_due IS NULL OR next_scrape_due <= NOW())
-            ORDER BY id DESC
+              AND url !~* '\\.(wav|mp3|mp4|avi|mov|zip|pdf|exe|iso)(\\?.*)?$'
+            ORDER BY 
+              CASE WHEN city_name IS NOT NULL AND city_name != '' THEN 0 ELSE 1 END ASC,
+              id DESC
             LIMIT ${BATCH_SIZE};
           `;
 

@@ -1026,12 +1026,23 @@ export default function SnapPage() {
       )}
 
       {/* Sticky Bottom Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/95 to-transparent backdrop-blur-sm z-50 max-w-lg mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/95 to-transparent backdrop-blur-sm z-50 max-w-lg mx-auto flex gap-2">
+        <button
+          type="button"
+          onClick={handleReset}
+          disabled={isPublishing}
+          className="py-4 px-4 rounded-2xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 font-bold text-sm flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40 shrink-0"
+          title="Reject extracted details and clear"
+        >
+          <Trash2 className="w-4 h-4 text-red-400" />
+          <span>Reject / Discard</span>
+        </button>
+
         <button
           type="button"
           onClick={handlePublish}
           disabled={isPublishing || selectedCount === 0}
-          className="w-full py-4 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-base flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.4)] disabled:opacity-40 disabled:cursor-not-allowed transition-all transform active:scale-95"
+          className="flex-1 py-4 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-base flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(16,185,129,0.4)] disabled:opacity-40 disabled:cursor-not-allowed transition-all transform active:scale-95"
         >
           {isPublishing ? (
             <>
