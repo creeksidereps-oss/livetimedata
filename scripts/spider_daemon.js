@@ -223,12 +223,10 @@ const BLOCKED_DOMAINS = [
   'hockey-reference.com', 'fibalivestats', 'geniussports.com', 'flashscore', 'sofascore', 'livescore',
   'maxpreps.com', 'fussball.de', 'pitchero.com', 'clubwebsite.co.uk', 'wda-swiecie.pl', 'bhufc.com.au',
   'web.fcschoenberg95.de', 'stneotstownfc.co.uk', 'scbuempliz78.ch', 'albionroversfc.com',
-  // FOREIGN & NON-EVENT ARCHIVES
+  // NON-EVENT ARCHIVES & FORUMS
   'railforum.com', 'trainweb.us', 'trainweb.org', 'trainweb.com', 'ultimatebb.cgi',
   'arcgis.com', 'blue-marble.de', 'acme.com', 'openstreetmap.org', 'maps.google.com',
-  'mapy.com', 'mapy.cz', '.ru/', 'bbok.ru', 'viewtopic.php', 'showthread.php',
-  'ptsem.edu', 'iwm.org.uk', 'army.mod.uk', 'iau.org', 'tiendschuur.net', 'likme.tv',
-  '.pl/', '.ch/', '.de/', '.cz/', '.hu/', '.nl/', '.fr/', '.lt/', '.is/', '.au/'
+  'mapy.com', 'mapy.cz', 'viewtopic.php', 'showthread.php', 'ptsem.edu'
 ];
 
 /**
