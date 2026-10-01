@@ -1,5 +1,5 @@
 import CityDashboardClient from "./ui";
-import CityEditorialGuide from "@/components/CityEditorialGuide";
+import CityJsonLd from "@/components/CityJsonLd";
 import { resolveCityFromSlug } from "@/lib/cityResolver";
 
 export const dynamic = "force-dynamic";
@@ -39,13 +39,12 @@ export default async function CityDashboardPage(props: {
         searchParams={props.searchParams} 
         initialData={initialData} 
       />
-      <CityEditorialGuide 
+      <CityJsonLd 
         cityName={cityName} 
         stateName={stateName} 
         countryName={country} 
         lat={lat} 
         lon={lon} 
-        timezone={timezone} 
         pageType="dashboard" 
       />
     </div>

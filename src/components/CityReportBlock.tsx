@@ -12,6 +12,7 @@ interface CityReportBlockProps {
   lat?: number;
   lng?: number;
   timezone?: string;
+  initialReport?: string | null;
   onOpenInsights?: () => void;
 }
 
@@ -27,10 +28,11 @@ export default function CityReportBlock({
   lat,
   lng,
   timezone,
+  initialReport,
   onOpenInsights,
 }: CityReportBlockProps) {
-  const [report, setReport] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(true);
+  const [report, setReport] = useState<string>(initialReport || "");
+  const [loading, setLoading] = useState<boolean>(!initialReport);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export default function CityReportBlock({
       }
     }
 
-    if (cityName) {
+    if (cityName && !report) {
       loadReport();
     }
 

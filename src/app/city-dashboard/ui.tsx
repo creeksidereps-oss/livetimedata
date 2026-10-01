@@ -23,9 +23,15 @@ export default function Page(props: {
   params?: Promise<{ slug: string }>, 
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>,
   initialData?: any,
+  initialWeather?: any,
+  initialFact?: any,
+  initialAllFacts?: any[],
+  initialReport?: string | null,
+  initialTimestamp?: number,
+  defaultForecastOpen?: boolean,
 }) {
   const [searchParams, setSearchParams] = useState<any>(props.initialData || null);
-  const [weather, setWeather] = useState<any>(null);
+  const [weather, setWeather] = useState<any>(props.initialWeather || null);
   const [activeModal, setActiveModal] = useState<string | null>(null);
   const [improveOpen, setImproveOpen] = useState(false);
   const [tempUnit, setTempUnit] = useState<"f" | "c">("c");
@@ -74,9 +80,11 @@ export default function Page(props: {
       const currentCity = sp.name || "Statesville";
       const currentState = sp.admin1 || "";
 
-      // 1. Fetch Current Weather Forecast
-      const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${currentLat}&longitude=${currentLon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`);
-      if (res.ok) setWeather(await res.json());
+      // 1. Fetch Current Weather Forecast (if not provided via SSR)
+      if (!props.initialWeather) {
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${currentLat}&longitude=${currentLon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=10`);
+        if (res.ok) setWeather(await res.json());
+      }
 
       // 2. Immediate Library Pre-Caching Runner
       try {
@@ -188,13 +196,14 @@ export default function Page(props: {
                 cityName={cityName} 
                 timezone={searchParams.timezone as string} 
                 countryCode={searchParams.country_code as string || "US"} 
+                initialTimestamp={props.initialTimestamp}
                 onOpenOnThisDay={() => setActiveModal("on_this_day")}
                 onOpenHoliday={() => setActiveModal("holidays")}
               />
             </div>
             
             <div id="weather-section">
-              <WeatherPanels key={tempUnit} current={weather?.current} daily={weather?.daily} unitPreference={tempUnit} onUnitChange={(u) => setTempUnit(u)} />
+              <WeatherPanels key={tempUnit} current={weather?.current} daily={weather?.daily} defaultForecastOpen={props.defaultForecastOpen} unitPreference={tempUnit} onUnitChange={(u) => setTempUnit(u)} />
             </div>
             <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_WEATHER} />
             
@@ -220,6 +229,8 @@ export default function Page(props: {
                 cityName={cityName} 
                 stateName={searchParams?.admin1} 
                 countryName={searchParams?.country} 
+                initialFact={props.initialFact}
+                initialAllFacts={props.initialAllFacts}
               />
             </div>
 
@@ -235,6 +246,7 @@ export default function Page(props: {
               lat={lat} 
               lng={lon} 
               timezone={searchParams?.timezone as string}
+              initialReport={props.initialReport}
               onOpenInsights={() => setImproveOpen(true)}
             />
 
@@ -265,11 +277,11 @@ export default function Page(props: {
                 </button>
               </div>
 
-              <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} flagAtBottom={true} />
+              <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} flagAtBottom={true} initialFact={props.initialFact} initialAllFacts={props.initialAllFacts} />
             </div>
           </div>
           <aside id="webcams-desktop" className="hidden lg:block min-w-0">
-            <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} />
+            <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} initialFact={props.initialFact} initialAllFacts={props.initialAllFacts} />
           </aside>
         </div>
       </main>

@@ -6,13 +6,25 @@ type CityClockProps = {
   cityName: string;
   timezone: string;
   countryCode?: string;
+  initialTimestamp?: number;
   onOpenOnThisDay?: () => void;
   onOpenHoliday?: () => void;
 };
 
+function getSafeTimezone(tz?: string): string {
+  if (!tz || tz === "auto") return "UTC";
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return tz;
+  } catch {
+    return "UTC";
+  }
+}
+
 function formatDateParts(date: Date, timezone: string, hour12: boolean) {
+  const safeTz = getSafeTimezone(timezone);
   const timeFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
+    timeZone: safeTz,
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
@@ -20,7 +32,7 @@ function formatDateParts(date: Date, timezone: string, hour12: boolean) {
   });
 
   const dateFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
+    timeZone: safeTz,
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -42,8 +54,9 @@ function formatDateParts(date: Date, timezone: string, hour12: boolean) {
 }
 
 function getAnalogAngles(date: Date, timezone: string) {
+  const safeTz = getSafeTimezone(timezone);
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
+    timeZone: safeTz,
     hour: "numeric",
     minute: "numeric",
     second: "numeric",
@@ -61,9 +74,9 @@ function getAnalogAngles(date: Date, timezone: string) {
   return { hourAngle, minuteAngle, secondAngle };
 }
 
-export default function CityClock({ cityName, timezone, countryCode = "US", onOpenOnThisDay, onOpenHoliday }: CityClockProps) {
+export default function CityClock({ cityName, timezone, countryCode = "US", initialTimestamp, onOpenOnThisDay, onOpenHoliday }: CityClockProps) {
   const [mounted, setMounted] = useState(false);
-  const [now, setNow] = useState<Date | null>(null);
+  const [now, setNow] = useState<Date | null>(() => (initialTimestamp ? new Date(initialTimestamp) : null));
   const [hour12, setHour12] = useState(true);
   const [holiday, setHoliday] = useState<string | null>(null);
 
@@ -151,7 +164,8 @@ export default function CityClock({ cityName, timezone, countryCode = "US", onOp
 
   const dayName = useMemo(() => {
     if (!now) return "---";
-    return new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "long" }).format(now);
+    const safeTz = getSafeTimezone(timezone);
+    return new Intl.DateTimeFormat("en-US", { timeZone: safeTz, weekday: "long" }).format(now);
   }, [now, timezone]);
 
   return (
@@ -195,9 +209,9 @@ export default function CityClock({ cityName, timezone, countryCode = "US", onOp
         </div>
 
         <div className="text-[40px] md:text-[62px] font-bold leading-[0.9] md:leading-[0.8] tracking-[-0.04em] text-white flex items-end justify-center md:justify-start">
-          <span>{display.hour}:{display.minute}</span>
-          <span className="text-[16px] md:text-[22px] text-white ml-2 md:ml-2.5 font-medium mb-0.5 md:mb-0">{display.second}</span>
-          {hour12 && <span className="text-[14px] md:text-[20px] ml-2 font-medium text-white mb-0.5 md:mb-0">{display.dayPeriod}</span>}
+          <span suppressHydrationWarning>{display.hour}:{display.minute}</span>
+          <span suppressHydrationWarning className="text-[16px] md:text-[22px] text-white ml-2 md:ml-2.5 font-medium mb-0.5 md:mb-0">{display.second}</span>
+          {hour12 && <span suppressHydrationWarning className="text-[14px] md:text-[20px] ml-2 font-medium text-white mb-0.5 md:mb-0">{display.dayPeriod}</span>}
         </div>
 
         {holiday && (
@@ -218,8 +232,8 @@ export default function CityClock({ cityName, timezone, countryCode = "US", onOp
       </div>
 
       <div className="flex flex-col items-center gap-0.5 md:gap-1 mt-1 md:mt-0">
-        <div className="text-[14px] md:text-[18px] font-normal text-white uppercase tracking-[0.2em]">{dayName}</div>
-        <div className="text-[11px] md:text-[14px] font-bold text-white uppercase tracking-[0.1em] mb-1.5 md:mb-2">{display.fullDate}</div>
+        <div suppressHydrationWarning className="text-[14px] md:text-[18px] font-normal text-white uppercase tracking-[0.2em]">{dayName}</div>
+        <div suppressHydrationWarning className="text-[11px] md:text-[14px] font-bold text-white uppercase tracking-[0.1em] mb-1.5 md:mb-2">{display.fullDate}</div>
         <button
           onClick={() => {
             if (onOpenOnThisDay) onOpenOnThisDay();
@@ -263,9 +277,9 @@ export default function CityClock({ cityName, timezone, countryCode = "US", onOp
             />
           ))}
 
-          <div style={{ position: "absolute", left: "50%", top: "50%", width: "5px", height: "30px", background: "#ffffff", borderRadius: "999px", transform: `translate(-50%, -100%) rotate(${analog.hourAngle}deg)`, transformOrigin: "bottom center" }} />
-          <div style={{ position: "absolute", left: "50%", top: "50%", width: "3px", height: "45px", background: "#cbd5e1", borderRadius: "999px", transform: `translate(-50%, -100%) rotate(${analog.minuteAngle}deg)`, transformOrigin: "bottom center" }} />
-          <div style={{ position: "absolute", left: "50%", top: "50%", width: "2px", height: "48px", background: "#38bdf8", borderRadius: "999px", transform: `translate(-50%, -100%) rotate(${analog.secondAngle}deg)`, transformOrigin: "bottom center" }} />
+          <div suppressHydrationWarning style={{ position: "absolute", left: "50%", top: "50%", width: "5px", height: "30px", background: "#ffffff", borderRadius: "999px", transform: `translate(-50%, -100%) rotate(${analog.hourAngle}deg)`, transformOrigin: "bottom center" }} />
+          <div suppressHydrationWarning style={{ position: "absolute", left: "50%", top: "50%", width: "3px", height: "45px", background: "#cbd5e1", borderRadius: "999px", transform: `translate(-50%, -100%) rotate(${analog.minuteAngle}deg)`, transformOrigin: "bottom center" }} />
+          <div suppressHydrationWarning style={{ position: "absolute", left: "50%", top: "50%", width: "2px", height: "48px", background: "#38bdf8", borderRadius: "999px", transform: `translate(-50%, -100%) rotate(${analog.secondAngle}deg)`, transformOrigin: "bottom center" }} />
           
           <div style={{ position: "absolute", left: "50%", top: "50%", width: "12px", height: "12px", background: "#ffffff", borderRadius: "50%", transform: "translate(-50%, -50%)", border: "2px solid #000" }} />
         </div>

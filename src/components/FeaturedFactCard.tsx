@@ -19,14 +19,16 @@ interface FeaturedFactCardProps {
   cityName: string;
   stateName?: string;
   countryName?: string;
+  initialFact?: FactItem | null;
+  initialAllFacts?: FactItem[];
 }
 
-export default function FeaturedFactCard({ cityName, stateName, countryName }: FeaturedFactCardProps) {
-  const [featuredFact, setFeaturedFact] = useState<FactItem | null>(null);
-  const [allFacts, setAllFacts] = useState<FactItem[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function FeaturedFactCard({ cityName, stateName, countryName, initialFact, initialAllFacts }: FeaturedFactCardProps) {
+  const [featuredFact, setFeaturedFact] = useState<FactItem | null>(initialFact || null);
+  const [allFacts, setAllFacts] = useState<FactItem[]>(initialAllFacts || (initialFact ? [initialFact] : []));
+  const [loading, setLoading] = useState(!initialFact);
   const [modalOpen, setModalOpen] = useState(false);
-  const [currentIdx, setCurrentIdx] = useState(0);
+  const [currentIdx, setCurrentIdx] = useState(initialFact && typeof initialFact.factNumber === "number" ? initialFact.factNumber - 1 : 0);
 
   useEffect(() => {
     let isMounted = true;

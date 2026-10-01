@@ -15,6 +15,7 @@ type WeatherPanelsProps = {
     temperature_2m_max?: number[];
     temperature_2m_min?: number[];
   } | null;
+  defaultForecastOpen?: boolean;
   unitPreference?: "f" | "c";
   onUnitChange?: (unit: "f" | "c") => void;
   speedUnitPreference?: "mph" | "kmh";
@@ -99,10 +100,10 @@ function filterForecastFromToday(daily: WeatherPanelsProps["daily"]) {
   };
 }
 
-export default function WeatherPanels({ current, daily, unitPreference, onUnitChange, speedUnitPreference, onSpeedUnitChange }: WeatherPanelsProps) {
+export default function WeatherPanels({ current, daily, defaultForecastOpen = false, unitPreference, onUnitChange, speedUnitPreference, onSpeedUnitChange }: WeatherPanelsProps) {
   const [internalUnit, setInternalUnit] = useState<"c" | "f">("c");
   const [internalSpeedUnit, setInternalSpeedUnit] = useState<"mph" | "kmh">("mph");
-  const [forecastOpen, setForecastOpen] = useState(false);
+  const [forecastOpen, setForecastOpen] = useState(defaultForecastOpen);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("ltd-temp-unit");
