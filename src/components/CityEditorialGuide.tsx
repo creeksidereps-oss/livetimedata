@@ -1,6 +1,7 @@
 // src/components/CityEditorialGuide.tsx
 import React from "react";
 import { Globe2, Clock, CloudSun, Calendar, MapPin, Compass, ShieldCheck } from "lucide-react";
+import { isValidRegionName } from "@/lib/cityResolver";
 
 interface CityEditorialGuideProps {
   cityName: string;
@@ -21,8 +22,15 @@ export default function CityEditorialGuide({
   timezone = "America/New_York",
   pageType = "dashboard",
 }: CityEditorialGuideProps) {
-  const locationLabel = [cityName, stateName, countryName].filter(Boolean).join(", ");
-  const shortLocation = [cityName, stateName || countryName].filter(Boolean).join(", ");
+  const validAdmin = isValidRegionName(stateName) ? stateName : undefined;
+  const locationLabel = [cityName, validAdmin, countryName].filter(Boolean).join(", ");
+  const shortLocation = [cityName, validAdmin || countryName].filter(Boolean).join(", ");
+
+  const latFormatted = `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? "N" : "S"}`;
+  const lonFormatted = `${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? "E" : "W"}`;
+
+  const cleanSlug = cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const pageUrl = `https://www.livetimedata.com/${pageType === "weather" ? "weather" : "time"}/${cleanSlug}`;
 
   // Schema.org structured data for Search Engines & AdSense Quality Bots
   const schemaData = {
@@ -30,11 +38,14 @@ export default function CityEditorialGuide({
     "@graph": [
       {
         "@type": "City",
-        "@id": `https://livetimedata.com/city-dashboard?name=${encodeURIComponent(cityName)}#city`,
+        "@id": `${pageUrl}#city`,
         "name": cityName,
-        "containedInPlace": {
+        "containedInPlace": validAdmin ? {
           "@type": "AdministrativeArea",
-          "name": stateName || countryName,
+          "name": validAdmin,
+        } : {
+          "@type": "Country",
+          "name": countryName,
         },
         "geo": {
           "@type": "GeoCoordinates",
@@ -42,7 +53,7 @@ export default function CityEditorialGuide({
           "longitude": lon,
         },
         "description": `Comprehensive municipal guide, current atomic time, real-time weather forecasting, live visual feeds, and verified local events for ${locationLabel}.`,
-        "url": `https://livetimedata.com/time/${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        "url": pageUrl,
       },
       {
         "@type": "BreadcrumbList",
@@ -51,19 +62,19 @@ export default function CityEditorialGuide({
             "@type": "ListItem",
             "position": 1,
             "name": "LiveTimeData",
-            "item": "https://livetimedata.com",
+            "item": "https://www.livetimedata.com",
           },
           {
             "@type": "ListItem",
             "position": 2,
-            "name": stateName || countryName,
-            "item": `https://livetimedata.com/?search=${encodeURIComponent(stateName || countryName)}`,
+            "name": validAdmin || countryName,
+            "item": `https://www.livetimedata.com/?search=${encodeURIComponent(validAdmin || countryName)}`,
           },
           {
             "@type": "ListItem",
             "position": 3,
             "name": cityName,
-            "item": `https://livetimedata.com/time/${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+            "item": pageUrl,
           },
         ],
       },
@@ -119,7 +130,7 @@ export default function CityEditorialGuide({
             </div>
             <div className="mt-4 pt-3 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-500 font-medium">
               <span>Timezone ID: <code className="text-slate-700 font-mono">{timezone}</code></span>
-              <span>Coordinates: {lat.toFixed(4)}° N, {lon.toFixed(4)}° W</span>
+              <span>Coordinates: {latFormatted}, {lonFormatted}</span>
             </div>
           </div>
 
@@ -131,7 +142,7 @@ export default function CityEditorialGuide({
                 <h3>Meteorological Profile & 10-Day Outlook</h3>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Positioned at geographic coordinates <span className="font-semibold text-slate-900">{lat.toFixed(4)}° latitude, {lon.toFixed(4)}° longitude</span>, 
+                Positioned at geographic coordinates <span className="font-semibold text-slate-900">{latFormatted}, {lonFormatted}</span>, 
                 {cityName} experiences distinct seasonal meteorological dynamics. Our atmospheric panels compute hourly temperature forecasts, 
                 barometric pressure trends, surface wind velocity, and relative humidity. Planning outdoor recreation, athletic meets, or weekend excursions 
                 relies on our continuous radar integration to anticipate frontal boundaries and precipitable moisture.

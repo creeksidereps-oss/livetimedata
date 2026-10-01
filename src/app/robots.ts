@@ -10,6 +10,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ["/api/"],
       },
     ],
-    sitemap: "https://livetimedata.com/sitemap.xml",
+    sitemap: "https://www.livetimedata.com/sitemap.xml",
   };
 }

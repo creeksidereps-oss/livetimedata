@@ -1,7 +1,8 @@
 import CityDashboardClient from "../../city-dashboard/ui";
 import CityEditorialGuide from "@/components/CityEditorialGuide";
 import type { Metadata, ResolvingMetadata } from "next";
-import { resolveCityFromSlug } from "@/lib/cityResolver";
+import { notFound } from "next/navigation";
+import { resolveCityFromSlug, isValidRegionName } from "@/lib/cityResolver";
 
 export async function generateMetadata(
   { params, searchParams }: { 
@@ -12,21 +13,32 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const p = await params;
   const sp = await searchParams;
-  const resolved = resolveCityFromSlug(p?.slug);
+  const resolved = resolveCityFromSlug(p?.slug, false);
+  if (!resolved) {
+    return {};
+  }
+
+  const rawAdmin = (sp?.admin1 as string) ?? resolved.admin1;
+  const validAdmin = isValidRegionName(rawAdmin) ? rawAdmin : undefined;
 
   const cityName = (sp?.name as string) || resolved.name;
-  const stateName = sp?.admin1 ? `, ${sp.admin1}` : (resolved.admin1 ? `, ${resolved.admin1}` : "");
+  const stateName = validAdmin ? `, ${validAdmin}` : "";
   const countryName = sp?.country ? `, ${sp.country}` : (resolved.country ? `, ${resolved.country}` : "");
 
-  const title = `Local Weather Forecast & Live Conditions in ${cityName}${stateName}${countryName} | LiveTimeData`;
+  const title = `Local Weather Forecast & Live Conditions in ${cityName}${stateName}${countryName}`;
   const description = `14-day weather forecast, current temperatures, wind, humidity, and atmospheric conditions for ${cityName}${countryName}. Real-time municipal intelligence.`;
+  const canonicalUrl = `https://www.livetimedata.com/weather/${resolved.slug}`;
 
   return {
     title,
     description,
+    alternates: {
+      canonical: canonicalUrl,
+    },
     openGraph: {
       title,
       description,
+      url: canonicalUrl,
       type: "website",
     },
     twitter: {
@@ -43,10 +55,16 @@ export default async function WeatherSlugPage(props: {
 }) {
   const p = await props.params;
   const sp = await props.searchParams;
-  const resolved = resolveCityFromSlug(p?.slug);
+  const resolved = resolveCityFromSlug(p?.slug, false);
+  if (!resolved) {
+    notFound();
+  }
+
+  const rawAdmin = sp?.admin1 !== undefined ? (sp.admin1 as string) : resolved.admin1;
+  const validAdmin = isValidRegionName(rawAdmin) ? rawAdmin : undefined;
 
   const cityName = (sp?.name as string) || resolved.name;
-  const stateName = sp?.admin1 !== undefined ? (sp.admin1 as string) : resolved.admin1;
+  const stateName = validAdmin;
   const country = (sp?.country as string) || resolved.country;
   const country_code = (sp?.country_code as string) || resolved.country_code;
   const lat = parseFloat(sp?.lat as string) || resolved.lat;

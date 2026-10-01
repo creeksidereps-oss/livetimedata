@@ -84,12 +84,27 @@ slugMap.set("statesville-nc", STATESVILLE_ENTRY);
 nameMap.set("statesville", STATESVILLE_ENTRY);
 
 /**
- * Resolves a city from a URL slug or query parameters.
- * Guarantees that EVERY city slug returns an authentic city name, country, and coordinates,
- * completely eliminating "Unknown City" across all pages and sitemaps.
+ * Checks whether an admin1/region string is a valid human-readable region name
+ * and filters out raw numeric FIPS/postal codes (e.g. "23", "06", "40").
  */
-export function resolveCityFromSlug(slug?: string): ResolvedCity {
-  if (!slug) return DEFAULT_PRIME_MERIDIAN_CITY;
+export function isValidRegionName(admin1?: string | null): boolean {
+  if (!admin1) return false;
+  const trimmed = admin1.trim();
+  if (!trimmed) return false;
+  if (/^\d+$/.test(trimmed)) return false;
+  return true;
+}
+
+/**
+ * Resolves a city from a URL slug or query parameters.
+ * When allowDefault is false, returns null if no valid city could be resolved,
+ * allowing routes to emit a genuine HTTP 404 rather than silently defaulting to Greenwich.
+ */
+export function resolveCityFromSlug(slug?: string): ResolvedCity;
+export function resolveCityFromSlug(slug: string | undefined, allowDefault: false): ResolvedCity | null;
+export function resolveCityFromSlug(slug: string | undefined, allowDefault: true): ResolvedCity;
+export function resolveCityFromSlug(slug?: string, allowDefault = true): ResolvedCity | null {
+  if (!slug) return allowDefault ? DEFAULT_PRIME_MERIDIAN_CITY : null;
 
   const clean = decodeURIComponent(slug).toLowerCase().trim();
 
@@ -119,6 +134,6 @@ export function resolveCityFromSlug(slug?: string): ResolvedCity {
     }
   }
 
-  // Fallback to Prime Meridian (Greenwich) instead of defaulting to any arbitrary town
-  return DEFAULT_PRIME_MERIDIAN_CITY;
+  // Fallback to Prime Meridian (Greenwich) only when explicitly allowed
+  return allowDefault ? DEFAULT_PRIME_MERIDIAN_CITY : null;
 }

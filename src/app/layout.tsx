@@ -16,7 +16,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://livetimedata.com"),
+  metadataBase: new URL("https://www.livetimedata.com"),
+  alternates: {
+    canonical: "/",
+  },
   title: {
     default: "LiveTimeData | Live City Time, Weather, Webcams & Community Events",
     template: "%s | LiveTimeData",
@@ -25,7 +28,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "LiveTimeData | Live City Time, Weather, Webcams & Community Events",
     description: "Real-time municipal intelligence, local time, weather forecast, live webcams, community events, photos, and historical city insights.",
-    url: "https://livetimedata.com",
+    url: "https://www.livetimedata.com",
     siteName: "LiveTimeData",
     locale: "en_US",
     type: "website",

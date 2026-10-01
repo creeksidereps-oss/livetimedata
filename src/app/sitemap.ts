@@ -3,7 +3,7 @@ import { MetadataRoute } from "next";
 import { TOP_CITIES } from "@/lib/topCities";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = "https://livetimedata.com";
+  const base = "https://www.livetimedata.com";
 
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: "daily", priority: 1 },
