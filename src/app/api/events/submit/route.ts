@@ -73,18 +73,20 @@ export async function POST(request: Request) {
     try {
       const cityCheck = await sql`SELECT slug FROM cities WHERE LOWER(name) = LOWER(${cityName}) LIMIT 1`;
       if (cityCheck.rows.length === 0) {
-        console.log(`[GEOCODER] City '${cityName}' not found in database. Geocoding via Nominatim...`);
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cityName)}&state=${encodeURIComponent(stateName)}&country=USA&format=json&limit=1`, {
+        const countryParam = body.countryCode ? `&countrycodes=${encodeURIComponent(body.countryCode.toLowerCase())}` : '';
+        const stateQuery = stateName ? `&state=${encodeURIComponent(stateName)}` : '';
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cityName)}${stateQuery}${countryParam}&format=json&limit=1`, {
           headers: { "User-Agent": "LiveTimeData-Auto-Geocoder/1.0" }
         });
         const geoData = await geoRes.json();
         if (geoData && geoData.length > 0) {
           const lat = parseFloat(geoData[0].lat);
           const lon = parseFloat(geoData[0].lon);
-          const citySlug = `${cityName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${(stateName || 'us').toLowerCase()}`;
+          const cCode = (body.countryCode || 'US').toUpperCase();
+          const citySlug = `${cityName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${(stateName || cCode).toLowerCase()}`;
           await sql`
-            INSERT INTO cities (slug, name, admin1, country_code, country_name, latitude, longitude, timezone)
-            VALUES (${citySlug}, ${cityName}, ${stateName}, 'US', 'United States', ${lat}, ${lon}, 'America/New_York')
+            INSERT INTO cities (slug, name, admin1, country_code, latitude, longitude)
+            VALUES (${citySlug}, ${cityName}, ${stateName || null}, ${cCode}, ${lat}, ${lon})
             ON CONFLICT (slug) DO UPDATE SET latitude = ${lat}, longitude = ${lon};
           `;
           console.log(`[GEOCODER] Successfully registered ${cityName} at Lat: ${lat}, Lon: ${lon}`);

@@ -35,10 +35,21 @@ export async function validateYardSaleSubmission(input: YardSaleInput): Promise<
   const issues: string[] = [];
   const token = crypto.randomBytes(16).toString('hex');
 
-  // Check 1: Street Address & City
-  const streetPattern = /\d+\s+([a-zA-Z0-9#.\s]+)/;
-  if (!input.address || input.address.trim().length < 5 || !streetPattern.test(input.address)) {
-    issues.push("Missing or incomplete street number and street name (e.g. '123 Main St').");
+  // Check 1: Location Existence (Street Address, Crossroads/Intersection, Community/Neighborhood, or Business/Venue)
+  const trimmedAddr = (input.address || "").trim();
+  const hasNumberedStreet = /\d+\s+([a-zA-Z0-9#.\s]+)/.test(trimmedAddr) || /([a-zA-Z0-9#.\s]+)\s+\d+/.test(trimmedAddr);
+  const hasCrossroads = /\b(and|&|\/|at|corner of|intersection of|crossroads)\b/i.test(trimmedAddr) && trimmedAddr.length >= 5;
+  const hasCommunity = /\b(subdivision|neighborhood|community|village|valley|ridge|hills|estates|park|station|crossing|commons)\b/i.test(trimmedAddr) && trimmedAddr.length >= 4;
+  const hasNamedVenue = trimmedAddr.length >= 5 && !/^(none|tba|tbd|online|various|unknown)$/i.test(trimmedAddr);
+
+  const isValidLocation = Boolean(
+    trimmedAddr.length >= 4 &&
+    (hasNumberedStreet || hasCrossroads || hasCommunity || hasNamedVenue) &&
+    !/^(none|tba|tbd|online|released day of sale|virtual)$/i.test(trimmedAddr)
+  );
+
+  if (!isValidLocation) {
+    issues.push("A specific location is required (street address, crossroads/intersection, neighborhood/community, or venue/business).");
   }
   if (!input.city || input.city.trim().length < 2) {
     issues.push("Valid city or town name is required.");

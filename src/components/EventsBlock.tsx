@@ -658,13 +658,19 @@ function EventCard({
               </span>
             )}
             {(() => {
-              const cardAddress = (event.venue_address && event.venue_address !== "null" && event.venue_address !== "undefined")
-                ? event.venue_address
-                : (/^\d+\s+/.test(event.venue || "") ? event.venue : null);
-              if (!cardAddress || cardAddress === event.venue) return null;
+              const addr = (event.venue_address && event.venue_address !== "null" && event.venue_address !== "undefined" && event.venue_address.trim().length > 0)
+                ? event.venue_address.trim()
+                : null;
+              const venueStr = (event.venue || "").trim();
+              const hasStreetNum = /^\d+\s+[A-Za-z0-9]/.test(venueStr);
+              const isCrossroad = /\b(and|&|\/|at|corner of|intersection)\b/i.test(venueStr) && venueStr.length >= 5;
+              const displayAddr = addr || ((hasStreetNum || isCrossroad) ? venueStr : null);
+
+              if (!displayAddr) return null;
               return (
-                <div style={{ color: "#64748b", fontSize: "10.5px", marginTop: "2px" }}>
-                  📍 {cardAddress}
+                <div style={{ color: "#64748b", fontSize: "11px", fontWeight: 500, marginTop: "3px", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ fontSize: "11px" }}>📍</span>
+                  <span>{displayAddr}</span>
                 </div>
               );
             })()}
@@ -986,29 +992,39 @@ function InlineEventModal({
 
   const mapQuery = displayAddress || (hasDistinctVenue ? `${ev.venue}, ${ev.cityName || cityName || ""}`.trim() : "");
 
+  const isSale = Boolean(
+    saleInfo ||
+    ev.categories?.some((c) =>
+      c === "Yard / Garage Sales" ||
+      /yard|garage|estate|auction|boot|brocante|vide[- ]grenier|rummage|consignment/i.test(c)
+    ) ||
+    /yard sale|garage sale|estate sale|estate auction|storage auction|moving sale|car boot|vide[- ]grenier|brocante|community sale|rummage sale/i.test(
+      `${ev.title || ''} ${ev.details || ''}`
+    )
+  );
+
   // Multi-tier Media Mode Strategy:
-  // Strategy A: Real organizer uploaded flyer/photo if available ($0)
-  // Strategy B: High-res property aerial satellite view ($0)
-  // Strategy C: Interactive on-demand street view & curated fallback
+  // - For Yard/Estate Sales, Auctions, and Boot Sales: Map/Satellite is the natural default unless an organizer photo is provided
+  // - For all other events (Concerts, Arts, Festivals, Food Trucks, Sports): Photos & Graphics are ALWAYS the default!
   const [mediaMode, setMediaMode] = useState<"photo" | "satellite" | "street" | "curated" | "none">(() => {
     if (hasOrganizerPhoto) return "photo";
-    if (hasLocationQuery) return "satellite";
-    if (saleInfo) return "curated";
-    return "none";
+    if (isSale) {
+      if (hasLocationQuery) return "satellite";
+      if (saleInfo) return "curated";
+    }
+    return "photo";
   });
 
   // Switch if photo fails to load
   useEffect(() => {
     if (flyerError && mediaMode === "photo") {
-      if (hasLocationQuery) {
+      if (isSale && hasLocationQuery) {
         setMediaMode("satellite");
       } else if (saleInfo) {
         setMediaMode("curated");
-      } else {
-        setMediaMode("none");
       }
     }
-  }, [flyerError, hasLocationQuery, saleInfo, mediaMode]);
+  }, [flyerError, hasLocationQuery, saleInfo, isSale, mediaMode]);
 
   // Waterfall Graphic Resolver:
   // 1. If Yard/Estate/Boot/Brocante sale:
@@ -1199,7 +1215,7 @@ function InlineEventModal({
               📍 <span style={{ color: "#0f172a" }}>{venueDisplay}</span>{showCitySuffix ? ` · ${effectiveCity}` : ''}
             </div>
             <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 500, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", paddingLeft: "24px" }}>
-              {displayAddress && displayAddress !== venueDisplay && <span>{displayAddress}</span>}
+              {displayAddress && <span>{displayAddress}</span>}
               <button
                 type="button"
                 onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`)}
@@ -1728,6 +1744,8 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         if (data.event.title && !formTitle) setFormTitle(data.event.title);
         if (data.event.venueName && !formVenueName) setFormVenueName(data.event.venueName);
         if (data.event.venueAddress && !formVenueAddress) setFormVenueAddress(data.event.venueAddress);
+        if (data.event.cityName) setFormCity(data.event.cityName);
+        if (data.event.stateName) setFormState(data.event.stateName);
         if (data.event.details && !formDetails) setFormDetails(data.event.details);
         if (data.event.startTime && !formTime) setFormTime(data.event.startTime);
         if (data.event.eventDates && data.event.eventDates.length > 0 && formDates.length === 0) setFormDates(data.event.eventDates);

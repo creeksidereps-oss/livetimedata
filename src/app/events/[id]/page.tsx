@@ -51,6 +51,51 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   
   const event = rows[0];
 
+  const isSale = Boolean(
+    /yard|garage|estate|auction|boot|brocante|vide[- ]grenier|rummage|consignment/i.test(event.category || "") ||
+    /yard sale|garage sale|estate sale|estate auction|storage auction|moving sale|car boot|vide[- ]grenier|brocante|community sale|rummage sale/i.test(
+      `${event.title || ""} ${event.details || ""}`
+    )
+  );
+
+  let curatedSaleUrl: string | null = null;
+  let curatedSaleLabel: string | null = null;
+  if (isSale) {
+    const text = `${event.title || ""} ${event.category || ""} ${event.details || ""}`.toLowerCase();
+    if (text.includes("vide") || text.includes("grenier") || text.includes("brocante")) {
+      curatedSaleUrl = "/images/curated/vide_grenier.jpg";
+      curatedSaleLabel = "French Vide-Grenier & Brocante Notice";
+    } else if (text.includes("car boot") || text.includes("boot sale") || text.includes("carboot")) {
+      curatedSaleUrl = "/images/curated/car_boot_sale.jpg";
+      curatedSaleLabel = "UK & Commonwealth Car Boot Sale Notice";
+    } else if (text.includes("auction") || text.includes("estate")) {
+      curatedSaleUrl = "/images/curated/estate_sale.jpg";
+      curatedSaleLabel = "Estate Sale & Auction Notice";
+    } else {
+      curatedSaleUrl = "/images/curated/yard_sale.jpg";
+      curatedSaleLabel = "Neighborhood Yard & Garage Sale Notice";
+    }
+  }
+
+  // Look for banked entity image or logo if no flyer is present
+  let bankedEntityImage: string | null = null;
+  if (!event.event_flyer_url && (event.venue || event.hosting_entity)) {
+    try {
+      const entityLookup = await sql`
+        SELECT image_url, logo_url FROM entities 
+        WHERE (name ILIKE ${event.venue} OR name ILIKE ${event.hosting_entity})
+          AND (image_url IS NOT NULL OR logo_url IS NOT NULL)
+        LIMIT 1
+      `;
+      if (entityLookup.rows.length > 0) {
+        bankedEntityImage = entityLookup.rows[0].image_url || entityLookup.rows[0].logo_url;
+      }
+    } catch {
+      // silent fallback
+    }
+  }
+
+  const mapQuery = event.venue_address || (event.venue ? `${event.venue}, ${event.city_name}` : event.city_name);
   const shareUrl = `https://livetimedata.com/events/${event.id}`;
   const displayDate = new Date(event.event_date).toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -81,7 +126,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight tracking-tight drop-shadow-md mb-4">
             {event.title}
           </h1>
-          <p className="text-indigo-200 font-medium text-lg md:text-xl max-w-2xl flex items-center gap-2">
+          <p className="text-indigo-200 font-medium text-lg md:text-xl flex items-center gap-2">
             <MapPin size={20} className="shrink-0" /> {event.city_name}{event.state_name ? `, ${event.state_name}` : ''}
           </p>
         </div>
@@ -125,7 +170,6 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
                 </a>
               )}
 
-
               <div className="ml-auto">
                 <ShareButton title={event.title} text={`Check out ${event.title} in ${event.city_name}!`} url={shareUrl} />
               </div>
@@ -157,9 +201,9 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
                         href={`https://maps.google.com/?q=${encodeURIComponent(event.venue + ' ' + event.venue_address + ' ' + event.city_name)}`} 
                         target="_blank" 
                         rel="noreferrer"
-                        className="text-blue-600 hover:text-blue-800 font-medium transition-colors hover:underline"
+                        className="text-blue-600 hover:text-blue-800 font-medium transition-colors hover:underline inline-flex items-center gap-1 mt-0.5"
                       >
-                        {event.venue_address}
+                        {event.venue_address} &rarr;
                       </a>
                     ) : (
                       <div className="text-slate-600 font-medium">{event.city_name}{event.state_name ? `, ${event.state_name}` : ''}</div>
@@ -217,15 +261,46 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
 
-          {/* Flyer / Ads Section at the bottom */}
-          {event.event_flyer_url && (
+          {/* Satellite Map for Sales */}
+          {isSale && mapQuery && (
+            <div className="border-t border-slate-100 bg-slate-50 p-6 md:p-10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  🗺️ Satellite Map & Directions
+                </h3>
+                <a 
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapQuery)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 underline flex items-center gap-1"
+                >
+                  Open in Google Maps &rarr;
+                </a>
+              </div>
+              <div className="w-full h-80 rounded-2xl overflow-hidden shadow-md border border-slate-200">
+                <iframe
+                  title={`Satellite Map of ${event.title}`}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&t=k&z=17&ie=UTF8&iwloc=&output=embed`}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Flyer / Graphic Section */}
+          {(event.event_flyer_url || bankedEntityImage || curatedSaleUrl) && (
             <div className="border-t border-slate-100 bg-slate-50 p-8 md:p-12">
-              <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider mb-6 text-center">Event Flyer & Materials</h3>
+              <h3 className="text-sm font-black text-slate-400 uppercase tracking-wider mb-6 text-center">
+                {event.event_flyer_url ? "Event Flyer & Materials" : (bankedEntityImage ? "Venue & Host Photo" : curatedSaleLabel)}
+              </h3>
               <div className="max-w-2xl mx-auto rounded-xl overflow-hidden shadow-lg border border-slate-200/60 bg-white">
                 <img 
-                  src={event.event_flyer_url} 
-                  alt={`${event.title} Flyer`} 
-                  className="w-full h-auto object-contain"
+                  src={event.event_flyer_url || bankedEntityImage || curatedSaleUrl!} 
+                  alt={`${event.title} Graphic`} 
+                  className="w-full h-auto object-contain max-h-[600px] mx-auto"
                 />
               </div>
             </div>
@@ -233,7 +308,6 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
 
         </div>
       </div>
-
     </div>
   );
 }

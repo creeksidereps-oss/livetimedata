@@ -414,8 +414,8 @@ export async function extractEventsFromUrl(
                     const parts = addr.split(",").map((s: string) => s.trim());
                     if (parts.length >= 2) {
                       cityName = parts[parts.length - 2] || cityName;
-                      stateName =
-                        (parts[parts.length - 1] || "NC").split(" ")[0] || "NC";
+                      const lastPart = (parts[parts.length - 1] || "").trim();
+                      stateName = lastPart.split(" ")[0] || fallbackState || "";
                     }
                   } else if (typeof addr === "object") {
                     if (addr.addressLocality)
@@ -1058,6 +1058,7 @@ export async function ingestDiscoveredEvents(
   context?: {
     cityName?: string | null;
     stateName?: string | null;
+    countryCode?: string | null;
     sourceUrl?: string | null;
     venueName?: string | null;
     entityId?: number | null;
@@ -1160,11 +1161,11 @@ export async function ingestDiscoveredEvents(
             name: ev.cityName,
             slug: citySlug,
             admin1: ev.stateName || null,
-            countryCode: "US",
-            countryName: "United States",
+            countryCode: (ev as any).countryCode || null,
+            countryName: (ev as any).countryName || null,
             latitude: ev.latitude || null,
             longitude: ev.longitude || null,
-            timezone: "America/New_York",
+            timezone: null,
             population: 10000,
           })
           .onConflictDoNothing();
@@ -1181,7 +1182,7 @@ export async function ingestDiscoveredEvents(
           .values({
             title: ev.title,
             cityName: ev.cityName,
-            stateName: ev.stateName || "NC",
+            stateName: ev.stateName || null,
             category: ev.category,
             venue: ev.venue,
             venueAddress: ev.venueAddress || null,
@@ -1207,7 +1208,7 @@ export async function ingestDiscoveredEvents(
           name: ev.venue,
           entityType: "venue",
           cityName: ev.cityName,
-          stateName: ev.stateName || "NC",
+          stateName: ev.stateName || undefined,
           websiteUrl: ev.venueUrl,
         });
         stats.newEntities++;
@@ -1222,7 +1223,7 @@ export async function ingestDiscoveredEvents(
               name: ev.venue,
               sourceType: "venue",
               cityName: ev.cityName,
-              stateName: ev.stateName || "NC",
+              stateName: ev.stateName || null,
               scrapeIntervalDays: 30,
               scrapeHorizonMonths: 6,
               status: "active",
@@ -1238,7 +1239,7 @@ export async function ingestDiscoveredEvents(
           name: ev.performerName,
           entityType: "performer",
           cityName: ev.cityName,
-          stateName: ev.stateName || "NC",
+          stateName: ev.stateName || undefined,
           websiteUrl: ev.performerUrl,
         });
         stats.newEntities++;
@@ -1310,7 +1311,7 @@ export async function ingestDiscoveredEvents(
           name: ev.organizerName,
           entityType: "organization",
           cityName: ev.cityName,
-          stateName: ev.stateName || "NC",
+          stateName: ev.stateName || undefined,
           websiteUrl: ev.organizerUrl,
         });
         stats.newEntities++;
@@ -1334,7 +1335,7 @@ export async function ingestDiscoveredEvents(
               name: ev.organizerName,
               sourceType: "organizer",
               cityName: ev.cityName,
-              stateName: ev.stateName || "NC",
+              stateName: ev.stateName || null,
               scrapeIntervalDays: 30,
               scrapeHorizonMonths: 6,
               status: "active",
@@ -1351,7 +1352,7 @@ export async function ingestDiscoveredEvents(
           entityType: "mobile_food_vendor",
           subtype: "food_truck",
           cityName: ev.cityName,
-          stateName: ev.stateName || "NC",
+          stateName: ev.stateName || undefined,
         });
         stats.newEntities++;
 
@@ -1373,7 +1374,7 @@ export async function ingestDiscoveredEvents(
   // 6. Ingest any discovered contact emails into email_contacts table & link to entities
   if (extractedEmails && extractedEmails.length > 0) {
     const city = context?.cityName || extractedEvents[0]?.cityName || null;
-    const state = context?.stateName || extractedEvents[0]?.stateName || "NC";
+    const state = context?.stateName || extractedEvents[0]?.stateName || null;
     const sourceUrl = context?.sourceUrl || extractedEvents[0]?.source || "Calendar Crawler";
     const venueName = context?.venueName || extractedEvents[0]?.venue || null;
     const targetEntityId = context?.entityId || lastDiscoveredVenueEntityId;
@@ -1387,7 +1388,7 @@ export async function ingestDiscoveredEvents(
             category: "Venues & Organizers",
             cityName: city,
             stateName: state,
-            countryCode: "US",
+            countryCode: context?.countryCode || null,
             status: "active",
             source: sourceUrl,
             metadata: {

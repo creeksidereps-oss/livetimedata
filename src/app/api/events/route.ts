@@ -73,8 +73,8 @@ export async function GET(request: Request) {
                 e.state_name IS NULL 
                 OR c.admin1 IS NULL 
                 OR LOWER(e.state_name) = LOWER(c.admin1)
-                OR LOWER(c.admin1) LIKE LOWER('%' || e.state_name || '%')
-                OR LOWER(e.state_name) LIKE LOWER('%' || c.admin1 || '%')
+                OR c.country_code != 'US'
+                OR c.country_name != 'United States'
                 OR EXISTS (
                   SELECT 1 FROM jsonb_each_text(${stateMapJson}::jsonb) AS states(abbr, full_name)
                   WHERE (
@@ -115,8 +115,8 @@ export async function GET(request: Request) {
                 e.state_name IS NULL 
                 OR c.admin1 IS NULL 
                 OR LOWER(e.state_name) = LOWER(c.admin1)
-                OR LOWER(c.admin1) LIKE LOWER('%' || e.state_name || '%')
-                OR LOWER(e.state_name) LIKE LOWER('%' || c.admin1 || '%')
+                OR c.country_code != 'US'
+                OR c.country_name != 'United States'
                 OR EXISTS (
                   SELECT 1 FROM jsonb_each_text(${stateMapJson}::jsonb) AS states(abbr, full_name)
                   WHERE (

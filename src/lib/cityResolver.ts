@@ -68,21 +68,6 @@ for (const c of top10000Cities as any[]) {
   }
 }
 
-// Special known cities (e.g. Statesville, NC)
-const STATESVILLE_ENTRY: ResolvedCity = {
-  name: "Statesville",
-  admin1: "North Carolina",
-  country: "United States",
-  country_code: "US",
-  lat: 35.7826,
-  lon: -80.8873,
-  timezone: "America/New_York",
-  slug: "statesville",
-};
-slugMap.set("statesville", STATESVILLE_ENTRY);
-slugMap.set("statesville-nc", STATESVILLE_ENTRY);
-nameMap.set("statesville", STATESVILLE_ENTRY);
-
 /**
  * Checks whether an admin1/region string is a valid human-readable region name
  * and filters out raw numeric FIPS/postal codes (e.g. "23", "06", "40").
