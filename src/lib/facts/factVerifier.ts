@@ -44,8 +44,8 @@ Title: "${candidateTitle}"
 Description: "${candidateDescription}"
 
 POLICY GUIDELINES:
-1. TRUTHFULNESS & VERIFICATION:
-   - Use Google Search Grounding to verify this claim against authoritative historical archives, municipal records, news articles, or established encyclopedias.
+1. TRUTHFULNESS & FACTUAL BASIS:
+   - Evaluate this claim against authoritative historical archives, municipal records, news articles, or established encyclopedias.
    - If the claim is proven TRUE by historical or scientific evidence -> VERDICT: "APPROVED"
    - If the claim is demonstrably FALSE, fabricated, made-up by AI, a scam, commercial advertising, spam, or violates safety guidelines -> VERDICT: "REJECTED"
    - If search results are INCONCLUSIVE (e.g. obscure unverified local legend or family lore that can neither be confirmed nor disproven) -> VERDICT: "NEEDS_HUMAN_CURATION"
@@ -137,7 +137,7 @@ export async function researchCityFactsWithAI(
 
   const prompt = `Research verified municipal oddities, forgotten history, strange discoveries, unique local records, or Ripley's Believe-It-Or-Not style facts about ${cityName}, ${stateName} (${countryName}).
 CRITICAL REQUIREMENTS:
-- You MUST use Google Search Grounding to verify every candidate fact against real historical archives, news records, or encyclopedias.
+- Factual authenticity is required: authenticate every candidate fact against real historical records or encyclopedias.
 - DO NOT hallucinate or fabricate events, people, or landmarks.
 - Find 3 real candidates.
 Output ONLY a JSON array of objects:

@@ -64,7 +64,7 @@ async function resolveEntityWebsiteAndCalendar(name, entityType, city, state) {
     const res = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
+      config: { responseMimeType: 'application/json' },
     });
 
     if (!res.text) return null;

@@ -146,14 +146,14 @@ export async function POST(req: Request) {
     let prompt = "";
     
     if (type === 'facts') {
-      prompt = `Provide 12 verified fun facts about ${cityName}, ${stateName}. You MUST use Google Search Grounding to verify every single fact. DO NOT hallucinate or invent history. If deep historical facts are scarce, you MUST provide real geographic data (exact lat/long, elevation, climate, regional geography, demographics). Use **Bold Titles** for each item and number them 1-12. CRITICAL: Do NOT include any introductory or concluding sentences (like "Here are 12 facts..."). Start immediately with "1. **[Title]**".`;
+      prompt = `Provide 12 authentic, historically factual fun facts about ${cityName}, ${stateName}. DO NOT hallucinate or invent history. If deep historical facts are scarce, you MUST provide real geographic data (exact lat/long, elevation, climate, regional geography, demographics). Use **Bold Titles** for each item and number them 1-12. CRITICAL: Do NOT include any introductory or concluding sentences (like "Here are 12 facts..."). Start immediately with "1. **[Title]**".`;
     } else if (type === 'on_this_day') {
-      prompt = `Today is ${todayStr}. Provide a bulleted list of 10 verified historical events that occurred on this exact date (${todayStr}) in history, focusing primarily on ${cityName}, ${stateName}, or ${countryName}. You MUST use Google Search Grounding to verify every single event. DO NOT hallucinate or invent dates. If local history is scarce, include verified major national or global events that occurred on ${todayStr}. Format with clean bold dates.`;
+      prompt = `Today is ${todayStr}. Provide a bulleted list of 10 authentic historical events that occurred on this exact date (${todayStr}) in history, focusing primarily on ${cityName}, ${stateName}, or ${countryName}. DO NOT hallucinate or invent dates. If local history is scarce, include major national or global events that occurred on ${todayStr}. Format with clean bold dates.`;
     } else if (type === 'holidays') {
-      prompt = `Write a verified travel and cultural guide to the national and regional holidays celebrated in ${stateName}, ${countryName}. You MUST use Google Search Grounding to verify every holiday and date. DO NOT hallucinate. CRITICAL: You must include a future planning calendar showing the exact dates for all mentioned holidays for the next 3 years (2026, 2027, and 2028). Use ### for headers.`;
+      prompt = `Write a travel and cultural guide to the national and regional holidays celebrated in ${stateName}, ${countryName}. DO NOT hallucinate. CRITICAL: You must include a future planning calendar showing the exact dates for all mentioned holidays for the next 3 years (2026, 2027, and 2028). Use ### for headers.`;
     } else {
       prompt = `Write a comprehensive, publication-grade Community Guide and City Intelligence Report for ${cityName}, ${stateName}, ${countryName}.
-You MUST use Google Search Grounding to cross-examine and verify all historical facts, attractions, real commercial corridors, and municipal data against authoritative municipal, state, and census archives. DO NOT hallucinate, invent businesses, or fabricate history.
+DO NOT hallucinate, invent businesses, or fabricate history. Ensure all historical facts, attractions, real commercial corridors, and municipal data reflect real municipal, state, and census records.
 
 Structure your report into two clear parts using ### section headers:
 
