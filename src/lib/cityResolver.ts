@@ -68,6 +68,48 @@ for (const c of top10000Cities as any[]) {
   }
 }
 
+// 3. Register additional known community cities so their direct city pages resolve cleanly
+const KNOWN_ENTRIES: ResolvedCity[] = [
+  {
+    name: "Statesville",
+    admin1: "North Carolina",
+    country: "United States",
+    country_code: "US",
+    lat: 35.7826,
+    lon: -80.8873,
+    timezone: "America/New_York",
+    slug: "statesville-north-carolina",
+  },
+  {
+    name: "Mooresville",
+    admin1: "North Carolina",
+    country: "United States",
+    country_code: "US",
+    lat: 35.5851,
+    lon: -80.8103,
+    timezone: "America/New_York",
+    slug: "mooresville-north-carolina",
+  },
+  {
+    name: "Troutman",
+    admin1: "North Carolina",
+    country: "United States",
+    country_code: "US",
+    lat: 35.7032,
+    lon: -80.8906,
+    timezone: "America/New_York",
+    slug: "troutman-north-carolina",
+  },
+];
+
+for (const entry of KNOWN_ENTRIES) {
+  slugMap.set(entry.slug.toLowerCase(), entry);
+  slugMap.set(entry.name.toLowerCase(), entry);
+  slugMap.set(`${entry.name.toLowerCase()}-nc`, entry);
+  nameMap.set(entry.name.toLowerCase(), entry);
+  nameMap.set(entry.name.toLowerCase().replace(/[\s_]+/g, "-"), entry);
+}
+
 /**
  * Checks whether an admin1/region string is a valid human-readable region name
  * and filters out raw numeric FIPS/postal codes (e.g. "23", "06", "40").

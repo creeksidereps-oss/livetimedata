@@ -2,8 +2,44 @@ import CityDashboardClient from "../../city-dashboard/ui";
 import CityJsonLd from "@/components/CityJsonLd";
 import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
-import { resolveCityFromSlug, isValidRegionName } from "@/lib/cityResolver";
+import { resolveCityFromSlug, isValidRegionName, ResolvedCity } from "@/lib/cityResolver";
 import { sql } from "@vercel/postgres";
+
+async function resolveCityWithDb(slug?: string): Promise<ResolvedCity | null> {
+  if (!slug) return null;
+  const memoryResolved = resolveCityFromSlug(slug, false);
+  if (memoryResolved) return memoryResolved;
+
+  try {
+    const slugClean = decodeURIComponent(slug).toLowerCase().trim();
+    const candidateName = slugClean.replace(/-[a-z]{2}$/, "").replace(/-/g, " ");
+    const { rows } = await sql`
+      SELECT name, admin1, country_name, country_code, latitude, longitude, timezone, slug
+      FROM cities
+      WHERE LOWER(slug) = ${slugClean} 
+         OR LOWER(name) = ${slugClean}
+         OR LOWER(slug) = ${candidateName.replace(/\s+/g, '-')}
+         OR LOWER(name) = ${candidateName}
+      LIMIT 1
+    `;
+    if (rows.length > 0) {
+      const c = rows[0];
+      return {
+        name: c.name,
+        admin1: c.admin1 || "",
+        country: c.country_name || (c.country_code === "US" ? "United States" : ""),
+        country_code: c.country_code || "",
+        lat: Number(c.latitude) || 0,
+        lon: Number(c.longitude) || 0,
+        timezone: c.timezone || undefined,
+        slug: c.slug || slugClean,
+      };
+    }
+  } catch (err) {
+    console.warn("DB city lookup error:", err);
+  }
+  return null;
+}
 
 export async function generateMetadata(
   { params, searchParams }: { 
@@ -14,7 +50,7 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const p = await params;
   const sp = await searchParams;
-  const resolved = resolveCityFromSlug(p?.slug, false);
+  const resolved = await resolveCityWithDb(p?.slug);
   if (!resolved) {
     return {};
   }
@@ -130,7 +166,7 @@ export default async function WeatherSlugPage(props: {
 }) {
   const p = await props.params;
   const sp = await props.searchParams;
-  const resolved = resolveCityFromSlug(p?.slug, false);
+  const resolved = await resolveCityWithDb(p?.slug);
   if (!resolved) {
     notFound();
   }

@@ -40,10 +40,9 @@ export default function HomePage() {
   const [isImproveModalOpen, setIsImproveModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-  const [redirectingToStart, setRedirectingToStart] = useState<string | null>(null);
   const [savedStartPage, setSavedStartPage] = useState<{ name: string; path: string } | null>(null);
 
-  // Auto-redirect to user's saved start page (stored strictly in client localStorage)
+  // Load user's saved start page preference (purely for the optional shortcut button)
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -52,11 +51,6 @@ export default function HomePage() {
         const parsed = JSON.parse(raw);
         if (parsed?.path && typeof parsed.path === "string" && parsed.path.startsWith("/")) {
           setSavedStartPage(parsed);
-          const params = new URLSearchParams(window.location.search);
-          if (!params.has("home") && !params.has("explore")) {
-            setRedirectingToStart(parsed.name || "your chosen city");
-            window.location.replace(parsed.path);
-          }
         }
       }
     } catch (e) {
@@ -93,23 +87,6 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#060b18] text-white flex flex-col selection:bg-amber-400 selection:text-slate-950">
-      
-      {/* Start Page Redirect Notice */}
-      {redirectingToStart && (
-        <div className="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 px-4 py-2 text-center text-xs font-black uppercase tracking-wider flex items-center justify-center gap-3 shadow-md z-[200]">
-          <span className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-slate-950 animate-ping" />
-            Opening your saved Start Page ({redirectingToStart})...
-          </span>
-          <Link
-            href="/?home=true"
-            onClick={() => setRedirectingToStart(null)}
-            className="underline text-[11px] font-black hover:text-slate-800 transition-colors ml-2 bg-slate-950/10 px-2 py-0.5 rounded-full"
-          >
-            Stay on Global Home
-          </Link>
-        </div>
-      )}
 
       {/* 1. ABOVE-THE-FOLD SEARCH HEADER (Clean, bright, noticeable, with NO extra pill rows) */}
       <section className="w-full pt-4 md:pt-6 pb-4 px-4 bg-gradient-to-b from-[#030712] via-[#060b18] to-[#0a1128] border-b border-white/10">
