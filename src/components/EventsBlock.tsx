@@ -81,6 +81,8 @@ type DBEventItem = {
   registration_url?: string;
   event_flyer_url?: string;
   cityName?: string;
+  stateName?: string;
+  countryCode?: string;
 };
 
 export type EventItem = {
@@ -103,6 +105,7 @@ export type EventItem = {
   eventDate?: string;
   cityName?: string;
   stateName?: string;
+  countryCode?: string;
 };
 
 type DayBucket = {
@@ -525,7 +528,9 @@ function buildTenDayBucketData(rawEvents: DBEventItem[]): DayBucket[] {
       registration_url: e.registration_url,
       event_flyer_url: e.event_flyer_url,
       eventDate: e.eventDate,
-      cityName: e.cityName
+      cityName: e.cityName,
+      stateName: e.stateName,
+      countryCode: e.countryCode
     }));
 
     const grouped = CATEGORY_ORDER.map((category) => ({
@@ -866,15 +871,6 @@ export function OverlayModal({
 }
 
 
-function getCityLogo(cityName?: string): string | null {
-  if (!cityName) return null;
-  const c = cityName.toLowerCase().trim();
-  if (c.includes("troutman")) return "/images/cities/troutman.png";
-  if (c.includes("statesville")) return "/images/cities/statesville.png";
-  if (c.includes("mooresville")) return "/images/cities/mooresville.png";
-  if (c.includes("charlotte")) return "/images/cities/charlotte.png";
-  return null;
-}
 
 function getCuratedSaleInfo(ev: EventItem): { url: string; label: string } | null {
   const text = `${ev.title || ''} ${ev.details || ''} ${ev.categories.join(' ')}`.toLowerCase();
@@ -1092,12 +1088,9 @@ function InlineEventModal({
     };
   }, [ev.id, ev.official_info_url, ev.social_urls, ev.registration_url, ev.hosting_entity, ev.venue, ev.event_flyer_url, flyerError, isGenericPlaceholder, saleInfo, rawVenueAddress, cityName]);
 
-  const cityLogo = getCityLogo(ev.cityName || cityName);
-
   // Determine active graphic and badge
   let activeGraphicUrl: string | undefined = undefined;
   let graphicBadge: string | null = null;
-  let isSealFallback = false;
   let isCuratedArt = false;
 
   if (saleInfo) {
@@ -1117,10 +1110,6 @@ function InlineEventModal({
   } else if (bankedEntityGraphic && !bankedError) {
     activeGraphicUrl = bankedEntityGraphic;
     graphicBadge = `Banked Profile Photo · ${ev.hosting_entity || ev.venue}`;
-  } else if (cityLogo) {
-    activeGraphicUrl = cityLogo;
-    graphicBadge = `Official ${ev.cityName || cityName} Municipal & Community Notice`;
-    isSealFallback = true;
   }
 
   const effectiveCity = (ev.cityName || cityName || "").trim();
@@ -1237,14 +1226,14 @@ function InlineEventModal({
         ) && (
           <div style={{
             width: "100%",
-            background: isSealFallback ? "#f8fafc" : "#0f172a",
+            background: "#0f172a",
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
             alignItems: "center",
             borderTop: "1px solid #e2e8f0",
             borderBottom: "1px solid #e2e8f0",
-            padding: isSealFallback ? "24px 16px" : "16px 16px 20px 16px"
+            padding: "16px 16px 20px 16px"
           }}>
             {mediaMode === "satellite" && (
               <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -1344,11 +1333,11 @@ function InlineEventModal({
                   alt={graphicBadge || "Event Graphic"} 
                   style={{
                     width: isCuratedArt ? "100%" : "auto",
-                    maxWidth: isSealFallback ? "300px" : isCuratedArt ? "680px" : "100%",
-                    maxHeight: isSealFallback ? "160px" : "75vh",
+                    maxWidth: isCuratedArt ? "680px" : "100%",
+                    maxHeight: "75vh",
                     objectFit: isCuratedArt ? "cover" : "contain",
-                    borderRadius: isSealFallback ? "8px" : "12px",
-                    boxShadow: isSealFallback ? "none" : "0 8px 30px rgba(0,0,0,0.35)"
+                    borderRadius: "12px",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.35)"
                   }} 
                 />
                 {graphicBadge && (
@@ -1356,11 +1345,11 @@ function InlineEventModal({
                     marginTop: "12px",
                     fontSize: "11px",
                     fontWeight: 800,
-                    color: isSealFallback ? "#64748b" : "#94a3b8",
+                    color: "#94a3b8",
                     textTransform: "uppercase",
                     letterSpacing: "0.06em",
-                    background: isSealFallback ? "transparent" : "rgba(255,255,255,0.08)",
-                    padding: isSealFallback ? "0" : "4px 12px",
+                    background: "rgba(255,255,255,0.08)",
+                    padding: "4px 12px",
                     borderRadius: "999px"
                   }}>
                     {graphicBadge}
@@ -1423,29 +1412,6 @@ function InlineEventModal({
                     borderRadius: "999px"
                   }}>
                     {saleInfo.label}
-                  </div>
-                </div>
-              ) : cityLogo ? (
-                <div style={{ width: "100%", maxWidth: "720px", display: "flex", flexDirection: "column", alignItems: "center" }}>
-                  <img 
-                    src={cityLogo} 
-                    alt={`${ev.cityName || cityName} Municipal Notice`}
-                    style={{
-                      width: "auto",
-                      maxWidth: "280px",
-                      maxHeight: "150px",
-                      objectFit: "contain"
-                    }}
-                  />
-                  <div style={{
-                    marginTop: "12px",
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    color: "#64748b",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.06em"
-                  }}>
-                    Official {ev.cityName || cityName} Municipal & Community Notice
                   </div>
                 </div>
               ) : null
@@ -1536,26 +1502,7 @@ function InlineEventModal({
                 </button>
               )}
 
-              {hasLocationQuery && (
-                <button
-                  type="button"
-                  onClick={() => setIframeUrl(`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`)}
-                  style={{
-                    background: "rgba(255,255,255,0.12)",
-                    color: "#e2e8f0",
-                    padding: "6px 14px",
-                    borderRadius: "999px",
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    border: "none",
-                    cursor: "pointer",
-                    letterSpacing: "0.04em",
-                    transition: "all 0.2s"
-                  }}
-                >
-                  📍 Full Directions &rarr;
-                </button>
-              )}
+
             </div>
           </div>
         )}
@@ -2011,7 +1958,9 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         registration_url: e.registration_url,
         event_flyer_url: e.event_flyer_url,
         eventDate: e.eventDate || (e as any).event_date,
-        cityName: e.cityName
+        cityName: e.cityName,
+        stateName: e.stateName,
+        countryCode: e.countryCode
       }));
 
       const grouped = CATEGORY_ORDER.map((category) => ({
@@ -2069,7 +2018,9 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         registration_url: e.registration_url,
         event_flyer_url: e.event_flyer_url,
         eventDate: e.eventDate || (e as any).event_date,
-        cityName: e.cityName
+        cityName: e.cityName,
+        stateName: e.stateName,
+        countryCode: e.countryCode
       }));
 
     return parsedItems
@@ -2656,6 +2607,28 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         <OverlayModal
           title={`${cityName}${showNearby ? " (Nearby)" : ""} - ${selectedDay.dayLabel} · ${selectedDay.dateLabel}`}
           onClose={closeAllModals}
+          headerAction={
+            <div style={{ display: "flex", border: "1px solid #111827", borderRadius: "999px", overflow: "hidden" }}>
+              <button 
+                type="button"
+                onClick={() => setShowNearby(false)}
+                style={{
+                  background: !showNearby ? "#111827" : "#fff",
+                  color: !showNearby ? "#fff" : "#111827",
+                  padding: "4px 12px", fontSize: "9px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >{cityName || "Local"}</button>
+              <button 
+                type="button"
+                onClick={() => setShowNearby(true)}
+                style={{
+                  background: showNearby ? "#111827" : "#fff",
+                  color: showNearby ? "#fff" : "#111827",
+                  padding: "4px 12px", fontSize: "9px", fontWeight: 700, border: "none", cursor: "pointer", textTransform: "uppercase"
+                }}
+              >Nearby</button>
+            </div>
+          }
         >
           {showNearby && nearbyCities.length > 1 && (
             <div
@@ -3693,7 +3666,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           if (!ev) {
             const rawEv = dbEvents.find(e => String(e.id) === String(openEventId));
             if (rawEv) {
-              ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category, rawEv.title), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName } as EventItem;
+              ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category, rawEv.title), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName, stateName: rawEv.stateName, countryCode: rawEv.countryCode } as EventItem;
             }
           }
           const eventFooterActions = ev ? (

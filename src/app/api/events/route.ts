@@ -191,6 +191,8 @@ export async function GET(request: Request) {
       registration_url: row.registration_url,
       event_flyer_url: row.event_flyer_url,
       cityName: row.city_name,
+      stateName: row.state_name,
+      countryCode: row.country_code,
     }));
 
     return NextResponse.json({ ok: true, events }, {
