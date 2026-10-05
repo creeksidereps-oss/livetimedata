@@ -732,73 +732,95 @@ export async function extractEventsFromUrl(
           });
         }
 
-        // (B) Second: Dynamic AJAX calendar lists (e.g. curated post embeds)
-        if (eventsFound.length === 0 && ($(".lotc-event-list").length > 0 || html.includes("lotc-event-load"))) {
+        // (B) Second: Dynamic AJAX calendar lists (e.g. 30-day feeds and curated post embeds)
+        if ($(".lotc-event-list").length > 0 || html.includes("lotc-event-load")) {
           const batched: any[] = [];
-        $(".lotc-event-list").each((_, el) => {
-          const $el = $(el);
-          const myclass = $el.data("class");
-          const date = $el.data("date");
-          const span = $el.data("span");
-          const format = $el.data("format");
-          const month = $el.data("month");
-          const year = $el.data("year");
-          const limit = $el.data("limit");
-          const show = $el.data("show");
-          const mylocation = $el.data("location");
-          const category = $el.data("category");
-          const mytag = $el.data("tag");
-          const isfree = $el.data("free");
-          const settings = {
-            _date: date,
-            _span: span,
-            _format: format,
-            _month: month,
-            _year: year,
-            _limit: limit,
-            _show: show,
-            _location: mylocation,
-            _category: category,
-            _tag: mytag,
-            _free: isfree,
-          };
-          batched.push({
-            class: myclass,
-            date: settings._date,
-            format: settings._format,
-            free: settings._free,
-            limit: settings._limit,
-            location: settings._location,
-            category: settings._category,
-            tag: settings._tag,
-            show: settings._show,
-            settings: settings,
-          });
-        });
-
-        if (batched.length > 0) {
-          const origin = new URL(url).origin;
-          const ajaxUrl = `${origin}/lotc-cms/wp-admin/admin-ajax.php`;
-          const chunkSize = 10;
-
-          for (let i = 0; i < batched.length; i += chunkSize) {
-            const chunk = batched.slice(i, i + chunkSize);
-            const params = new URLSearchParams();
-            params.append("action", "load_multi_days");
-            params.append("requests", JSON.stringify(chunk));
-
-            const ajaxRes = await axios.post(ajaxUrl, params.toString(), {
-              headers: {
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "X-Requested-With": "XMLHttpRequest",
-                Referer: url,
-              },
-              timeout: 12000,
+          $(".lotc-event-list").each((_, el) => {
+            const $el = $(el);
+            const myclass = $el.data("class");
+            const date = $el.data("date");
+            const span = $el.data("span");
+            const format = $el.data("format");
+            const month = $el.data("month");
+            const year = $el.data("year");
+            const limit = $el.data("limit");
+            const show = $el.data("show");
+            const mylocation = $el.data("location");
+            const category = $el.data("category");
+            const mytag = $el.data("tag");
+            const isfree = $el.data("free");
+            const settings = {
+              _date: date,
+              _span: span,
+              _format: format,
+              _month: month,
+              _year: year,
+              _limit: limit,
+              _show: show,
+              _location: mylocation,
+              _category: category,
+              _tag: mytag,
+              _free: isfree,
+            };
+            batched.push({
+              class: myclass,
+              date: settings._date,
+              format: settings._format,
+              free: settings._free,
+              limit: settings._limit,
+              location: settings._location,
+              category: settings._category,
+              tag: settings._tag,
+              show: settings._show,
+              settings: settings,
             });
+          });
 
-            if (ajaxRes.data && ajaxRes.data.success && ajaxRes.data.data?.results) {
+          if (batched.length > 0) {
+            const origin = new URL(url).origin;
+            const ajaxUrlMatch = html.match(/["'](https?:[^"']*admin-ajax\.php)["']/);
+            let ajaxUrl = ajaxUrlMatch ? ajaxUrlMatch[1].replace(/\\/g, "") : `${origin}/wp-admin/admin-ajax.php`;
+            const chunkSize = 10;
+
+            for (let i = 0; i < batched.length; i += chunkSize) {
+              const chunk = batched.slice(i, i + chunkSize);
+              const params = new URLSearchParams();
+              params.append("action", "load_multi_days");
+              params.append("requests", JSON.stringify(chunk));
+
+              let ajaxRes: any;
+              try {
+                ajaxRes = await axios.post(ajaxUrl, params.toString(), {
+                  headers: {
+                    "User-Agent":
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                    "X-Requested-With": "XMLHttpRequest",
+                    Referer: url,
+                  },
+                  timeout: 12000,
+                });
+              } catch (postErr: any) {
+                if (postErr.response?.status === 404) {
+                  const altUrl = ajaxUrl.includes("lotc-cms")
+                    ? `${origin}/wp-admin/admin-ajax.php`
+                    : `${origin}/lotc-cms/wp-admin/admin-ajax.php`;
+                  ajaxRes = await axios.post(altUrl, params.toString(), {
+                    headers: {
+                      "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                      "X-Requested-With": "XMLHttpRequest",
+                      Referer: url,
+                    },
+                    timeout: 12000,
+                  });
+                } else {
+                  throw postErr;
+                }
+              }
+
+              if (ajaxRes.data && ajaxRes.data.success && ajaxRes.data.data?.results) {
               for (const [_, snippet] of Object.entries(ajaxRes.data.data.results as Record<string, string>)) {
                 if (!snippet) continue;
                 const $s = cheerio.load(snippet);
@@ -905,19 +927,26 @@ export async function extractEventsFromUrl(
                   }
 
                   if (eventDate) {
-                    eventsFound.push({
-                      title,
-                      cityName: eventCity,
-                      stateName: eventState,
-                      venue: rawVenue,
-                      venueAddress,
-                      category: categorizeEvent(title, meta),
-                      startTime,
-                      eventDate,
-                      details: `${title} - ${meta}. Community Halloween trick-or-treat celebration in ${eventCity}, ${eventState}.`,
-                      officialInfoUrl: detailUrl || url,
-                      source: url,
-                    });
+                    const isDup = eventsFound.some(
+                      (e) =>
+                        e.title.toLowerCase() === title.toLowerCase() &&
+                        e.eventDate?.toISOString().split("T")[0] === eventDate.toISOString().split("T")[0]
+                    );
+                    if (!isDup) {
+                      eventsFound.push({
+                        title,
+                        cityName: eventCity,
+                        stateName: eventState,
+                        venue: rawVenue,
+                        venueAddress,
+                        category: categorizeEvent(title, meta),
+                        startTime,
+                        eventDate,
+                        details: `${title} - ${meta}. Community event in ${eventCity}, ${eventState}.`,
+                        officialInfoUrl: detailUrl || url,
+                        source: url,
+                      });
+                    }
                   }
                 });
               }
@@ -1374,9 +1403,12 @@ export async function extractEventsFromUrl(
         href &&
         (href.includes("/event/") ||
           href.includes("/events/") ||
+          href.includes("/events-this-month") ||
           href.includes("/calendar/") ||
           href.includes("/shows/") ||
-          href.includes("/happenings/"))
+          href.includes("/happenings/") ||
+          href.includes("weekend") ||
+          href.includes("things-to-do"))
       ) {
         try {
           const parsed = new URL(href, url);

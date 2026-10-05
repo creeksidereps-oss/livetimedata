@@ -249,5 +249,95 @@ export const MASTER_DISCOVERY_HUBS: DiscoverySeedHub[] = [
     category: 'festivals',
     yieldType: 'events',
     notes: 'Annual Trick-or-Treat and Trunk-or-Treat guide across the Charlotte metro region.'
+  },
+  {
+    id: 'seattle_on_the_cheap_month',
+    name: 'Greater Seattle on the Cheap Month Feed',
+    url: 'https://www.greaterseattleonthecheap.com/events-this-month-seattle/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Comprehensive 30-day live calendar across Seattle and the Puget Sound region.'
+  },
+  {
+    id: 'seattle_on_the_cheap_events',
+    name: 'Greater Seattle on the Cheap Events',
+    url: 'https://www.greaterseattleonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Daily and weekly community events in Seattle.'
+  },
+  {
+    id: 'atlanta_on_the_cheap',
+    name: 'Atlanta on the Cheap Events',
+    url: 'https://atlantaonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Community festivals, free museum days, and arts events across metro Atlanta.'
+  },
+  {
+    id: 'denver_on_the_cheap',
+    name: 'Mile High on the Cheap Events (Denver)',
+    url: 'https://milehighonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Denver metro concerts, outdoor festivals, farm tours, and cultural happenings.'
+  },
+  {
+    id: 'columbus_on_the_cheap',
+    name: 'Columbus on the Cheap Events',
+    url: 'https://columbusonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Live community calendar for Columbus and central Ohio.'
+  },
+  {
+    id: 'miami_on_the_cheap',
+    name: 'Miami-South Florida on the Cheap Events',
+    url: 'https://miamionthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Free and affordable events across Miami-Dade, Broward, and Palm Beach.'
+  },
+  {
+    id: 'chicago_on_the_cheap',
+    name: 'Chicago on the Cheap Events',
+    url: 'https://chicagoonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Chicago festivals, live theater, concerts, and museum days.'
+  },
+  {
+    id: 'rva_on_the_cheap',
+    name: 'Richmond on the Cheap Events (RVA)',
+    url: 'https://rvaonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Richmond community arts, theater, food trucks, and seasonal events.'
+  },
+  {
+    id: 'kc_on_the_cheap',
+    name: 'Kansas City on the Cheap Events',
+    url: 'https://kansascityonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Kansas City metro community calendar and entertainment guide.'
+  },
+  {
+    id: 'orlando_on_the_cheap',
+    name: 'Orlando on the Cheap Events',
+    url: 'https://orlandoonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Orlando and central Florida cultural events, parks, and family activities.'
   }
 ];
