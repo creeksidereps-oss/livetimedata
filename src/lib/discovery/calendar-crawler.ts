@@ -145,16 +145,51 @@ export function categorizeEvent(title: string, description: string): string {
 }
 
 /**
+ * Strips HTML tags and decodes common HTML entities to prevent raw HTML leak into event descriptions.
+ */
+export function cleanHtmlEntitiesAndTags(raw?: string): string {
+  if (!raw) return "";
+  let text = String(raw);
+  text = text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;|&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\\r\\n|\\n/g, " ");
+  // Strip tags
+  text = text.replace(/<[^>]+>/g, " ");
+  // Collapse whitespace
+  text = text.replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
+  return text.slice(0, 4000);
+}
+
+/**
  * Parses a readable 12-hour time string from an ISO or date-time string.
+ * Preserves the local time specified in the string to avoid UTC server timezone shifts (e.g. 00:00 -04:00 shifting to 4:00 AM).
  */
 export function formatTimeFromDate(isoStr?: string): string {
   if (!isoStr) return "7:00 PM";
   try {
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return "7:00 PM";
-    let hours = d.getHours();
-    const minutes = d.getMinutes();
-    if (hours === 0 && minutes === 0) return "All Day";
+    // Check if ISO string specifies a time (e.g., "T14:30:00" or "T14:30")
+    const timeMatch = isoStr.match(/T(\d{2}):(\d{2})/i);
+    if (!timeMatch) {
+      // Date-only format (e.g., "2026-10-31") is an All Day event
+      return "All Day";
+    }
+
+    const rawHours = parseInt(timeMatch[1], 10);
+    const rawMinutes = parseInt(timeMatch[2], 10);
+
+    // Midnight (00:00) specified by calendar publishers indicates an All Day event
+    if (rawHours === 0 && rawMinutes === 0) {
+      return "All Day";
+    }
+
+    // Format local time directly from string representation to prevent UTC server offset shifts
+    let hours = rawHours;
+    const minutes = rawMinutes;
     const ampm = hours >= 12 ? "PM" : "AM";
     hours = hours % 12;
     hours = hours ? hours : 12;
@@ -164,6 +199,7 @@ export function formatTimeFromDate(isoStr?: string): string {
     return "7:00 PM";
   }
 }
+
 
 /**
  * Parses natural human date strings (including ranges like "September 2 - 20, 2026" or single dates "Oct 2, 2026").
@@ -384,10 +420,17 @@ export async function extractEventsFromUrl(
               return;
             }
             const title = String(obj.name).trim();
-            const desc = String(obj.description || "")
-              .replace(/<[^>]+>/g, "")
-              .trim()
-              .slice(0, 4000);
+
+            // Strict Guard: Exclude operational / business / facility hours (e.g. "Hours of Operation")
+            if (
+              /\b(hours of operation|operating hours|facility hours|open daily|park hours|visitor center hours|guest services hours|box office hours|business hours)\b/i.test(
+                title
+              )
+            ) {
+              return;
+            }
+
+            const desc = cleanHtmlEntitiesAndTags(obj.description || "");
             const startDateStr = obj.startDate;
             const eventDate = new Date(startDateStr);
             if (isNaN(eventDate.getTime())) return;
@@ -399,6 +442,16 @@ export async function extractEventsFromUrl(
             let venueUrl: string | undefined;
             let latitude: number | undefined;
             let longitude: number | undefined;
+
+            // Known Venue Domain Enrichment
+            if (url.includes("whitewater.org")) {
+              venueName = "U.S. National Whitewater Center";
+              venueAddress = "5000 Whitewater Center Pkwy, Charlotte, NC 28214";
+              cityName = "Charlotte";
+              stateName = "NC";
+              latitude = 35.2726;
+              longitude = -81.0055;
+            }
 
             if (obj.location) {
               if (typeof obj.location === "string") {
@@ -1103,6 +1156,16 @@ export async function ingestDiscoveredEvents(
         continue;
       }
 
+      // Guard: Exclude operational / business / facility hours (e.g. "Hours of Operation")
+      if (
+        /\b(hours of operation|operating hours|facility hours|open daily|park hours|visitor center hours|guest services hours|box office hours|business hours)\b/i.test(
+          ev.title
+        )
+      ) {
+        stats.skipped++;
+        continue;
+      }
+
       // Guard: Require valid city name
       if (!ev.cityName || ev.cityName.trim().length === 0) {
         stats.skipped++;
@@ -1212,20 +1275,38 @@ export async function ingestDiscoveredEvents(
       const isPastEvent = ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000);
       let insertedEvent: { id: number } | undefined;
 
+      let venue = ev.venue;
+      let venueAddress = ev.venueAddress || null;
+      let cityName = ev.cityName;
+      let stateName = ev.stateName || null;
+
+      // Enrich Whitewater Center events if venue defaulted to Local Venue
+      if (
+        (ev.source?.includes("whitewater.org") || ev.officialInfoUrl?.includes("whitewater.org")) &&
+        (venue === "Local Venue" || !venue)
+      ) {
+        venue = "U.S. National Whitewater Center";
+        venueAddress = "5000 Whitewater Center Pkwy, Charlotte, NC 28214";
+        cityName = "Charlotte";
+        stateName = "NC";
+      }
+
+      const cleanDetails = cleanHtmlEntitiesAndTags(ev.details) || `${ev.title} at ${venue}.`;
+
       if (!isPastEvent) {
         const [res] = await db
           .insert(events)
           .values({
             title: ev.title,
-            cityName: ev.cityName,
-            stateName: ev.stateName || null,
+            cityName,
+            stateName,
             category: ev.category,
-            venue: ev.venue,
-            venueAddress: ev.venueAddress || null,
+            venue,
+            venueAddress,
             hostingEntity: ev.hostingEntity || ev.organizerName || null,
             startTime: ev.startTime,
             eventDate: ev.eventDate,
-            details: ev.details,
+            details: cleanDetails,
             officialInfoUrl: ev.officialInfoUrl,
             eventFlyerUrl: ev.eventFlyerUrl,
             status: "live",

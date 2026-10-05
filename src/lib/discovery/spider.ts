@@ -197,13 +197,13 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
           result.emailsIngested += ingestStats.emailsIngested;
         }
 
-        // Register any discovered sub-calendar URLs into sources for future sweeps
         for (const subUrl of crawl.subUrls) {
+          const cleanBaseName = (entity.name || "Discovered").replace(/(\s+Sub-Event)+$/i, "").trim();
           await db
             .insert(sources)
             .values({
               url: subUrl,
-              name: `${entity.name} Sub-Event`,
+              name: `${cleanBaseName} Sub-Event`,
               sourceType: "venue",
               cityName: entity.cityName,
               stateName: entity.stateName || null,
@@ -370,11 +370,12 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
 
         // Register newly discovered sub-event URLs into sources
         for (const subUrl of crawl.subUrls) {
+          const cleanBaseName = (src.name || "Discovered").replace(/(\s+Sub-Event)+$/i, "").trim();
           await db
             .insert(sources)
             .values({
               url: subUrl,
-              name: `${src.name || "Discovered"} Sub-Event`,
+              name: `${cleanBaseName} Sub-Event`,
               sourceType: "venue",
               cityName: src.cityName,
               stateName: src.stateName || null,

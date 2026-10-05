@@ -74,11 +74,12 @@ export async function GET(request: Request) {
 
           // Register newly discovered sub-event URLs into sources
           for (const subUrl of crawl.subUrls) {
+            const cleanBaseName = (src.name || 'Discovered').replace(/(\s+Sub-Event)+$/i, '').trim();
             await db
               .insert(sources)
               .values({
                 url: subUrl,
-                name: `${src.name || 'Discovered'} Sub-Event`,
+                name: `${cleanBaseName} Sub-Event`,
                 sourceType: 'venue',
                 cityName: src.cityName,
                 stateName: src.stateName || 'NC',
