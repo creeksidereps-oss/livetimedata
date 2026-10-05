@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { events, entities, entityRelationships, appearances, cities, sources, performers, emailContacts } from "@/db/schema";
 import { sql, eq, and, isNull } from "drizzle-orm";
 import { upsertEntity, recordRelationship } from "./lifecycle";
+import { areEventsDuplicates, mergeEventRecords } from "@/lib/events/dedup";
 
 export interface ExtractedEvent {
   title: string;
@@ -1118,30 +1119,65 @@ export async function ingestDiscoveredEvents(
         continue;
       }
 
-      const normTitle = ev.title.toLowerCase().trim();
       const normCity = ev.cityName.toLowerCase().trim();
 
-      // Check if event already exists (title + city + event date match)
-      const existing = await db
-        .select({ id: events.id, flyer: events.eventFlyerUrl })
+      // Multi-signal deduplication: query candidates on same calendar date & city
+      const existingCandidates = await db
+        .select({
+          id: events.id,
+          title: events.title,
+          category: events.category,
+          venue: events.venue,
+          venue_address: events.venueAddress,
+          start_time: events.startTime,
+          event_date: events.eventDate,
+          event_flyer_url: events.eventFlyerUrl,
+          details: events.details,
+          official_info_url: events.officialInfoUrl,
+          registration_url: events.registrationUrl,
+          hosting_entity: events.hostingEntity,
+          city_name: events.cityName,
+          source: events.source
+        })
         .from(events)
         .where(
           and(
-            sql`LOWER(${events.title}) = ${normTitle}`,
             sql`LOWER(${events.cityName}) = ${normCity}`,
             sql`DATE(${events.eventDate}) = DATE(${ev.eventDate})`
           )
-        )
-        .limit(1);
+        );
 
-      if (existing.length > 0) {
+      let matchedCandidate: any = null;
+      for (const cand of existingCandidates) {
+        const check = areEventsDuplicates(cand, ev as any);
+        if (check.isDuplicate) {
+          matchedCandidate = cand;
+          break;
+        }
+      }
+
+      if (matchedCandidate) {
         stats.skipped++;
-        // If existing lacks flyer but new one has it, backfill flyer
-        if (!existing[0].flyer && ev.eventFlyerUrl) {
-          await db
-            .update(events)
-            .set({ eventFlyerUrl: ev.eventFlyerUrl })
-            .where(eq(events.id, existing[0].id));
+        // Golden Record Enrichment: backfill missing/superior data from incoming source into existing master
+        const merged = mergeEventRecords(matchedCandidate, ev as any);
+        const updates: any = {};
+        if (!matchedCandidate.event_flyer_url && (merged.event_flyer_url || merged.eventFlyerUrl)) {
+          updates.eventFlyerUrl = merged.event_flyer_url || merged.eventFlyerUrl;
+        }
+        if ((!matchedCandidate.venue_address || matchedCandidate.venue_address === 'null') && (merged.venue_address || merged.venueAddress)) {
+          updates.venueAddress = merged.venue_address || merged.venueAddress;
+        }
+        if ((!matchedCandidate.details || matchedCandidate.details.length < 20) && merged.details && merged.details.length > 20) {
+          updates.details = merged.details;
+        }
+        if (!matchedCandidate.official_info_url && (merged.official_info_url || merged.officialInfoUrl)) {
+          updates.officialInfoUrl = merged.official_info_url || merged.officialInfoUrl;
+        }
+        if (!matchedCandidate.registration_url && (merged.registration_url || merged.registrationUrl)) {
+          updates.registrationUrl = merged.registration_url || merged.registrationUrl;
+        }
+        if (Object.keys(updates).length > 0) {
+          await db.update(events).set(updates).where(eq(events.id, matchedCandidate.id));
         }
         continue;
       }

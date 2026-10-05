@@ -1,6 +1,7 @@
 // src/app/api/events/route.ts
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { deduplicateEventList } from "@/lib/events/dedup";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -172,7 +173,7 @@ export async function GET(request: Request) {
     }
 
     // Format them correctly for the frontend
-    const events = rows.map((row: any) => ({
+    const rawEvents = rows.map((row: any) => ({
       id: row.id,
       title: row.title,
       category: row.category,
@@ -194,6 +195,9 @@ export async function GET(request: Request) {
       stateName: row.state_name,
       countryCode: row.country_code,
     }));
+
+    // Multi-signal deduplication & Golden Record merge (respects 30-min threshold)
+    const events = deduplicateEventList(rawEvents);
 
     return NextResponse.json({ ok: true, events }, {
       headers: {

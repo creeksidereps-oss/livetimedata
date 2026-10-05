@@ -49,8 +49,9 @@ export async function resolveEntityWebsiteAndCalendar(
       Do not use markdown formatting or backticks.
     `;
 
+    const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
     const res = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: modelName,
       contents: prompt,
       config: { responseMimeType: "application/json" },
     });
