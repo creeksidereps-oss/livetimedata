@@ -325,6 +325,29 @@ export async function extractEventsFromUrl(
   const eventsFound: ExtractedEvent[] = [];
   const subUrls: string[] = [];
   const extractedEmails = new Set<string>();
+  const LOTC_DOMAINS: Record<string, { city: string; state: string }> = {
+    "charlotteonthecheap.com": { city: "Charlotte", state: "NC" },
+    "atlantaonthecheap.com": { city: "Atlanta", state: "GA" },
+    "milehighonthecheap.com": { city: "Denver", state: "CO" },
+    "chicagoonthecheap.com": { city: "Chicago", state: "IL" },
+    "rvaonthecheap.com": { city: "Richmond", state: "VA" },
+    "miamionthecheap.com": { city: "Miami", state: "FL" },
+    "orlandoonthecheap.com": { city: "Orlando", state: "FL" },
+    "kansascityonthecheap.com": { city: "Kansas City", state: "MO" },
+    "columbusonthecheap.com": { city: "Columbus", state: "OH" },
+    "greaterseattleonthecheap.com": { city: "Seattle", state: "WA" },
+    "triangleonthecheap.com": { city: "Raleigh", state: "NC" },
+    "southernmaineonthecheap.com": { city: "Portland", state: "ME" },
+    "hawaiionthecheap.com": { city: "Honolulu", state: "HI" },
+  };
+
+  for (const [dom, loc] of Object.entries(LOTC_DOMAINS)) {
+    if (url.includes(dom)) {
+      if (!fallbackCity || fallbackCity === "Local" || fallbackCity === "Unknown") fallbackCity = loc.city;
+      if (!fallbackState) fallbackState = loc.state;
+      break;
+    }
+  }
 
   try {
     const res = await axios.get(url, {
@@ -629,11 +652,89 @@ export async function extractEventsFromUrl(
       }
     }
 
-    // 1b-2. Living On The Cheap (LOTC) Network AJAX Calendars
-    // (for Charlotte on the Cheap, Atlanta on the Cheap, and 30+ regional On The Cheap city networks)
-    if (eventsFound.length === 0 && ($(".lotc-event-list").length > 0 || html.includes("lotc-event-load"))) {
+    // 1b-2. Living On The Cheap (LOTC) Network Calendars
+    // Handles BOTH static server-rendered master calendars (/events/) and dynamic multi-day AJAX calendars
+    const isLotcPage =
+      $(".lotc-v2").length > 0 ||
+      $("h2.lotc-event").length > 0 ||
+      $(".lotc-event-list").length > 0 ||
+      html.includes("lotc-event-load") ||
+      html.includes("lotc-cms");
+
+    if (eventsFound.length === 0 && isLotcPage) {
       try {
-        const batched: any[] = [];
+        // (A) First: Parse static server-rendered event rows (e.g. master /events/ calendar pages)
+        if ($(".lotc-v2").length > 0 || $("h2.lotc-event").length > 0) {
+          let currentDate: Date | null = null;
+          $("h2.lotc-event, div.lotc-v2").each((_, el) => {
+            if ($(el).is("h2.lotc-event")) {
+              const text = $(el).text().trim();
+              const match = text.match(/(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s*\d{4}/i);
+              if (match) {
+                currentDate = new Date(`${match[0]} 12:00:00 UTC`);
+              }
+            } else if ($(el).hasClass("lotc-v2") && currentDate) {
+              const title = $(el).find("h3 a").text().trim().replace(/\s+/g, " ");
+              const detailUrl = $(el).find("h3 a").attr("href") || "";
+              const meta = $(el).find(".meta").text().trim().replace(/\s+/g, " ");
+              if (!title || isGenericCalendarHeader(title)) return;
+
+              if (detailUrl && detailUrl.startsWith("http")) {
+                subUrls.push(detailUrl);
+              }
+
+              const parts = meta.split("|").map((s) => s.trim());
+              let startTime = "All Day";
+              const timePart = parts[0] || "";
+              const timeMatch =
+                timePart.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i) ||
+                timePart.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+              if (timeMatch) {
+                let t = timeMatch[1].trim();
+                if (!/am|pm/i.test(t)) {
+                  const endAmPm = timeMatch[2]?.match(/am|pm/i)?.[0] || "pm";
+                  t += " " + endAmPm;
+                }
+                startTime = t.toUpperCase();
+              }
+
+              let rawVenue = parts.length >= 3 ? parts[2] : (parts.length === 2 && !/free|\$|discount|admission|donation/i.test(parts[1]) ? parts[1] : `${fallbackCity || "Local"} Venue`);
+              let eventCity = fallbackCity || "Local";
+              let eventState = fallbackState || "";
+              let venueAddress: string | undefined;
+
+              if (rawVenue.includes(",")) {
+                const vParts = rawVenue.split(",").map((s) => s.trim());
+                if (vParts.length === 2 && vParts[1].length < 30) {
+                  rawVenue = vParts[0];
+                  eventCity = vParts[1];
+                }
+              }
+
+              if (/^\d+\s+[A-Za-z0-9\s]+(?:Street|St|Road|Rd|Avenue|Ave|Boulevard|Blvd|Pkwy|Drive|Dr)/i.test(rawVenue)) {
+                venueAddress = `${rawVenue}, ${eventCity}, ${eventState}`;
+              }
+
+              eventsFound.push({
+                title,
+                cityName: eventCity,
+                stateName: eventState,
+                venue: rawVenue,
+                venueAddress,
+                category: categorizeEvent(title, meta),
+                startTime,
+                eventDate: currentDate,
+                details: `${title} - ${meta}. Community event in ${eventCity}, ${eventState}.`,
+                officialInfoUrl: detailUrl || url,
+                source: url,
+              });
+            }
+          });
+        }
+
+        // (B) Second: Dynamic AJAX calendar lists (e.g. curated post embeds)
+        if (eventsFound.length === 0 && ($(".lotc-event-list").length > 0 || html.includes("lotc-event-load"))) {
+          const batched: any[] = [];
         $(".lotc-event-list").each((_, el) => {
           const $el = $(el);
           const myclass = $el.data("class");
@@ -823,7 +924,8 @@ export async function extractEventsFromUrl(
             }
           }
         }
-      } catch (lotcErr: any) {
+      }
+    } catch (lotcErr: any) {
         console.error(`[LOTC_FEED_ERROR] Error fetching LOTC events:`, lotcErr.message);
       }
     }
