@@ -231,5 +231,23 @@ export const MASTER_DISCOVERY_HUBS: DiscoverySeedHub[] = [
     category: 'market_vendor',
     yieldType: 'multi_vendor_hubs',
     notes: 'Fairs, farmers markets, and community events seeking food trucks.'
+  },
+  {
+    id: 'charlotte_on_the_cheap',
+    name: 'Charlotte on the Cheap Events',
+    url: 'https://www.charlotteonthecheap.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Free and low-cost community events, festivals, concerts, and family gatherings in Charlotte.'
+  },
+  {
+    id: 'charlotte_on_the_cheap_tot',
+    name: 'Charlotte on the Cheap Trick or Treat Guide',
+    url: 'https://www.charlotteonthecheap.com/trick-or-treat/',
+    scope: 'local',
+    category: 'festivals',
+    yieldType: 'events',
+    notes: 'Annual Trick-or-Treat and Trunk-or-Treat guide across the Charlotte metro region.'
   }
 ];
