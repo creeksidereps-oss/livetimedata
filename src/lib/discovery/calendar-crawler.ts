@@ -629,6 +629,205 @@ export async function extractEventsFromUrl(
       }
     }
 
+    // 1b-2. Living On The Cheap (LOTC) Network AJAX Calendars
+    // (for Charlotte on the Cheap, Atlanta on the Cheap, and 30+ regional On The Cheap city networks)
+    if (eventsFound.length === 0 && ($(".lotc-event-list").length > 0 || html.includes("lotc-event-load"))) {
+      try {
+        const batched: any[] = [];
+        $(".lotc-event-list").each((_, el) => {
+          const $el = $(el);
+          const myclass = $el.data("class");
+          const date = $el.data("date");
+          const span = $el.data("span");
+          const format = $el.data("format");
+          const month = $el.data("month");
+          const year = $el.data("year");
+          const limit = $el.data("limit");
+          const show = $el.data("show");
+          const mylocation = $el.data("location");
+          const category = $el.data("category");
+          const mytag = $el.data("tag");
+          const isfree = $el.data("free");
+          const settings = {
+            _date: date,
+            _span: span,
+            _format: format,
+            _month: month,
+            _year: year,
+            _limit: limit,
+            _show: show,
+            _location: mylocation,
+            _category: category,
+            _tag: mytag,
+            _free: isfree,
+          };
+          batched.push({
+            class: myclass,
+            date: settings._date,
+            format: settings._format,
+            free: settings._free,
+            limit: settings._limit,
+            location: settings._location,
+            category: settings._category,
+            tag: settings._tag,
+            show: settings._show,
+            settings: settings,
+          });
+        });
+
+        if (batched.length > 0) {
+          const origin = new URL(url).origin;
+          const ajaxUrl = `${origin}/lotc-cms/wp-admin/admin-ajax.php`;
+          const chunkSize = 10;
+
+          for (let i = 0; i < batched.length; i += chunkSize) {
+            const chunk = batched.slice(i, i + chunkSize);
+            const params = new URLSearchParams();
+            params.append("action", "load_multi_days");
+            params.append("requests", JSON.stringify(chunk));
+
+            const ajaxRes = await axios.post(ajaxUrl, params.toString(), {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "X-Requested-With": "XMLHttpRequest",
+                Referer: url,
+              },
+              timeout: 12000,
+            });
+
+            if (ajaxRes.data && ajaxRes.data.success && ajaxRes.data.data?.results) {
+              for (const [_, snippet] of Object.entries(ajaxRes.data.data.results as Record<string, string>)) {
+                if (!snippet) continue;
+                const $s = cheerio.load(snippet);
+                const dayHeader = $s("h3").first().text().trim();
+                let eventDate: Date | null = null;
+                if (dayHeader) {
+                  const dateMatch = dayHeader.match(/([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})/);
+                  if (dateMatch) {
+                    eventDate = new Date(`${dateMatch[1]} ${dateMatch[2]}, ${dateMatch[3]} 12:00:00 UTC`);
+                  }
+                }
+
+                $s(".event, .lotc-v2").each((__, evEl) => {
+                  const title = $s(evEl).find("h3 a").text().trim().replace(/\s+/g, " ");
+                  const detailUrl = $s(evEl).find("h3 a").attr("href") || "";
+                  const meta = $s(evEl).find(".meta").text().trim().replace(/\s+/g, " ");
+                  if (!title) return;
+
+                  if (detailUrl && detailUrl.startsWith("http")) {
+                    subUrls.push(detailUrl);
+                  }
+
+                  // Parse time from meta string (e.g. "4:00 pm to 6:00 pm | FREE | Pritchard...")
+                  let startTime = "All Day";
+                  const parts = meta.split("|").map((s) => s.trim());
+                  const timePart = parts[0] || "";
+                  const timeMatch = timePart.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
+                  if (timeMatch) {
+                    let t = timeMatch[1].trim();
+                    if (!/am|pm/i.test(t)) {
+                      const endAmPm = timeMatch[2].match(/am|pm/i)?.[0] || "pm";
+                      t += " " + endAmPm;
+                    }
+                    startTime = t.toUpperCase();
+                  } else {
+                    const singleTime = timePart.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i);
+                    if (singleTime) startTime = singleTime[1].toUpperCase();
+                  }
+
+                  let rawVenue = parts[parts.length - 1] || "Charlotte Venue";
+                  let eventCity = fallbackCity || "Charlotte";
+                  let eventState = fallbackState || "NC";
+                  let venueAddress: string | undefined;
+
+                  // Check if venue ends with city name, e.g. "Gibson Mill, Concord"
+                  const commaParts = rawVenue.split(",").map((s) => s.trim());
+                  if (commaParts.length > 1) {
+                    const candidateCity = commaParts[commaParts.length - 1];
+                    const knownCities = [
+                      "Charlotte", "Concord", "Huntersville", "Matthews", "Gastonia",
+                      "Kannapolis", "Albemarle", "Pineville", "Mint Hill", "Mooresville",
+                      "Davidson", "Cornelius", "Rock Hill", "Fort Mill"
+                    ];
+                    const matchedCity = knownCities.find((c) => c.toLowerCase() === candidateCity.toLowerCase());
+                    if (matchedCity) {
+                      eventCity = matchedCity;
+                      rawVenue = commaParts.slice(0, commaParts.length - 1).join(", ");
+                    }
+                  }
+
+                  // Specific venue enrichment
+                  const lowerVen = rawVenue.toLowerCase();
+                  if (lowerVen.includes("birkdale")) {
+                    eventCity = "Huntersville";
+                    venueAddress = "8712 Lindholm Dr, Huntersville, NC 28078";
+                  } else if (lowerVen.includes("cabarrus arena")) {
+                    eventCity = "Concord";
+                    venueAddress = "4751 NC-49, Concord, NC 28025";
+                  } else if (lowerVen.includes("gibson mill")) {
+                    eventCity = "Concord";
+                    venueAddress = "305 McGill Ave NW, Concord, NC 28027";
+                  } else if (lowerVen.includes("pritchard memorial")) {
+                    eventCity = "Charlotte";
+                    venueAddress = "1117 South Blvd, Charlotte, NC 28203";
+                  } else if (lowerVen.includes("rea farms")) {
+                    eventCity = "Charlotte";
+                    venueAddress = "9855 Sandy Rock Pl, Charlotte, NC 28277";
+                  } else if (lowerVen.includes("promenade on providence")) {
+                    eventCity = "Charlotte";
+                    venueAddress = "10844 Providence Rd, Charlotte, NC 28277";
+                  } else if (lowerVen.includes("arboretum")) {
+                    eventCity = "Charlotte";
+                    venueAddress = "8008 Providence Rd, Charlotte, NC 28277";
+                  } else if (lowerVen.includes("research campus")) {
+                    eventCity = "Kannapolis";
+                    venueAddress = "150 N Research Campus Dr, Kannapolis, NC 28081";
+                  } else if (lowerVen.includes("caromont")) {
+                    eventCity = "Gastonia";
+                    venueAddress = "800 W Franklin Blvd, Gastonia, NC 28052";
+                  } else if (lowerVen.includes("matthews umc") || lowerVen.includes("matthews united")) {
+                    eventCity = "Matthews";
+                    venueAddress = "801 S Trade St, Matthews, NC 28105";
+                  } else if (lowerVen.includes("frank liske")) {
+                    eventCity = "Concord";
+                    venueAddress = "4001 Stough Rd, Concord, NC 28027";
+                  } else if (lowerVen.includes("cabarrus brewing")) {
+                    eventCity = "Concord";
+                    venueAddress = "329 McGill Ave NW, Concord, NC 28027";
+                  } else if (lowerVen.includes("concord convention")) {
+                    eventCity = "Concord";
+                    venueAddress = "5400 John Q. Hammons Dr NW, Concord, NC 28027";
+                  } else if (/^\d+\s+[A-Za-z0-9\s]+(?:Street|St|Road|Rd|Avenue|Ave|Boulevard|Blvd|Pkwy|Drive|Dr)/i.test(rawVenue)) {
+                    venueAddress = `${rawVenue}, ${eventCity}, ${eventState}`;
+                  }
+
+                  if (eventDate) {
+                    eventsFound.push({
+                      title,
+                      cityName: eventCity,
+                      stateName: eventState,
+                      venue: rawVenue,
+                      venueAddress,
+                      category: categorizeEvent(title, meta),
+                      startTime,
+                      eventDate,
+                      details: `${title} - ${meta}. Community Halloween trick-or-treat celebration in ${eventCity}, ${eventState}.`,
+                      officialInfoUrl: detailUrl || url,
+                      source: url,
+                    });
+                  }
+                });
+              }
+            }
+          }
+        }
+      } catch (lotcErr: any) {
+        console.error(`[LOTC_FEED_ERROR] Error fetching LOTC events:`, lotcErr.message);
+      }
+    }
+
     // 1c. Fallback: Standard DOM Event Card Parsing (for theater, arena, and arts pages without JSON-LD)
     if (eventsFound.length === 0) {
       const cardSelectors = [
