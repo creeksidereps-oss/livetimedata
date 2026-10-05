@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { events, emailLogs } from '@/db/schema';
 import { validateYardSaleSubmission } from '@/lib/yardsales/validator';
-import { eq } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
+import { areEventsDuplicates, mergeEventRecords } from '@/lib/events/dedup';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,59 @@ export async function POST(request: Request) {
           eventId: existing[0].id
         });
       }
+    }
+
+    // Check for existing candidate yard sales on the same date and address/city
+    const existingCandidates = await db
+      .select()
+      .from(events)
+      .where(
+        and(
+          sql`LOWER(${events.cityName}) = LOWER(${city || 'Local Area'})`,
+          sql`DATE(${events.eventDate}) = DATE(${validDate})`,
+          sql`${events.status} != 'duplicate'`
+        )
+      );
+
+    const incomingCandidate = {
+      title: title || 'Weekend Yard Sale',
+      cityName: city || 'Local Area',
+      stateName: state || '',
+      category: 'Yard / Garage Sales',
+      venue: address || 'Local Address',
+      venue_address: address || null,
+      startTime: startTime || '8:00 AM',
+      eventDate: validDate,
+      details: details || 'Local household goods, furniture, tools, and collectibles.',
+      source: 'Direct Community Submission'
+    };
+
+    let matchedMaster: any = null;
+    for (const cand of existingCandidates) {
+      const check = areEventsDuplicates(cand, incomingCandidate as any);
+      if (check.isDuplicate) {
+        matchedMaster = cand;
+        break;
+      }
+    }
+
+    if (matchedMaster) {
+      const merged = mergeEventRecords(matchedMaster, incomingCandidate as any);
+      await db
+        .update(events)
+        .set({
+          venueAddress: merged.venue_address || merged.venueAddress,
+          details: merged.details,
+          updatedAt: new Date(),
+        })
+        .where(eq(events.id, matchedMaster.id));
+
+      return NextResponse.json({
+        success: true,
+        status: 'approved',
+        message: 'Yard sale details updated and enriched into existing listing!',
+        eventId: matchedMaster.id
+      });
     }
 
     // Insert new yard sale listing

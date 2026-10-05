@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
+import { areEventsDuplicates, mergeEventRecords } from "@/lib/events/dedup";
 import fs from "fs/promises";
 import path from "path";
 
@@ -126,18 +127,54 @@ export async function POST(request: Request) {
       // 2. Insert into Events Table (Live Status)
       let firstInsertedId: number | null = null;
       for (const eventDateStr of eventDates) {
-        const existing = await sql`
-          SELECT id FROM events
-          WHERE title = ${title}
-            AND city_name = ${cityName}
-            AND event_date = ${eventDateStr}::timestamp
-          LIMIT 1
+        const existingCandidates = await sql`
+          SELECT id, title, venue, venue_address, start_time, event_date, event_flyer_url, details,
+                 official_info_url, social_urls, registration_url, hosting_entity, city_name, source
+          FROM events
+          WHERE LOWER(city_name) = LOWER(${cityName})
+            AND DATE(event_date) = DATE(${eventDateStr}::timestamp)
+            AND status != 'duplicate'
         `;
 
-        if (existing.rows.length > 0) {
-          const existingId = existing.rows[0].id;
-          await sql`UPDATE events SET duplicate_count = duplicate_count + 1 WHERE id = ${existingId}`;
-          if (!firstInsertedId) firstInsertedId = existingId;
+        const incomingCandidate = {
+          title,
+          cityName,
+          stateName,
+          category,
+          venue: venueName,
+          venue_address: venueAddress,
+          hosting_entity: venueName,
+          start_time: startTime,
+          event_date: eventDateStr,
+          details,
+          official_info_url: officialInfoUrl,
+          event_flyer_url: finalEventFlyerUrl,
+          source: 'Mobile Quick Post'
+        };
+
+        let matchedMaster: any = null;
+        for (const cand of existingCandidates.rows) {
+          const check = areEventsDuplicates(cand as any, incomingCandidate as any);
+          if (check.isDuplicate) {
+            matchedMaster = cand;
+            break;
+          }
+        }
+
+        if (matchedMaster) {
+          const merged = mergeEventRecords(matchedMaster as any, incomingCandidate as any);
+          await sql`
+            UPDATE events
+            SET 
+              duplicate_count = duplicate_count + 1,
+              event_flyer_url = COALESCE(event_flyer_url, ${merged.event_flyer_url || null}),
+              venue_address = COALESCE(venue_address, ${merged.venue_address || null}),
+              details = CASE WHEN LENGTH(details) < LENGTH(${details}) THEN ${details} ELSE details END,
+              official_info_url = COALESCE(official_info_url, ${merged.official_info_url || null}),
+              updated_at = NOW()
+            WHERE id = ${matchedMaster.id}
+          `;
+          if (!firstInsertedId) firstInsertedId = matchedMaster.id;
           continue;
         }
 
