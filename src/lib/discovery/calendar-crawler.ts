@@ -166,6 +166,22 @@ export function cleanHtmlEntitiesAndTags(raw?: string): string {
 }
 
 /**
+ * Detects whether a string is a generic calendar / page heading rather than a physical venue name.
+ */
+export function isGenericCalendarHeader(text?: string | null): boolean {
+  if (!text) return true;
+  const clean = text.trim().toLowerCase();
+  return (
+    clean.length < 3 ||
+    clean.length > 70 ||
+    /\b(events?\s*(&|and)?\s*tickets?|upcoming\s*events?|calendar|event\s*calendar|schedule|what['’]?s\s*on|shows?\s*(&|and)?\s*events?|all\s*events?|find\s*events?|search\s*results?|ticket\s*center|box\s*office|home|welcome)\b/i.test(
+      clean
+    )
+  );
+}
+
+
+/**
  * Parses a readable 12-hour time string from an ISO or date-time string.
  * Preserves the local time specified in the string to avoid UTC server timezone shifts (e.g. 00:00 -04:00 shifting to 4:00 AM).
  */
@@ -674,22 +690,94 @@ export async function extractEventsFromUrl(
             } catch {}
 
             const category = categorizeEvent(title, tagline);
-            let venueName = $(el).find(".rhp-event__venue--list, .rhp-event-info, .venue, .location").first().text().trim();
+            let venueName = $(el)
+              .find(
+                ".event_venue, .event-venue, .rhp-event__venue--list, .rhp-event-info, .venue, .location, [class*='event_venue'], [class*='event-venue'], [class*='venue'], [class*='location']"
+              )
+              .first()
+              .text()
+              .replace(/\s+/g, " ")
+              .trim();
+
             if (venueName.includes("Richmond Music Hall")) venueName = "Richmond Music Hall";
             else if (venueName.includes("The Broadberry")) venueName = "The Broadberry";
-            else if (!venueName) venueName = $("h1").first().text().trim() || fallbackCity;
+
+            // If card lacks venue or picked up a generic label, check page h1 but only if it's NOT a generic heading
+            if (!venueName || isGenericCalendarHeader(venueName)) {
+              const h1Candidate = $("h1").first().text().replace(/\s+/g, " ").trim();
+              if (h1Candidate && !isGenericCalendarHeader(h1Candidate)) {
+                venueName = h1Candidate;
+              } else {
+                venueName = "";
+              }
+            }
+
+            let venueAddress: string | undefined;
+            let cardCity = fallbackCity;
+            let cardState = fallbackState;
+
+            // Known Performing Arts Centers & Complex Venues
+            if (url.includes("blumenthalarts.org")) {
+              cardCity = "Charlotte";
+              cardState = "NC";
+              const lowerVen = venueName.toLowerCase();
+              if (lowerVen.includes("knight")) {
+                venueName = "Knight Theater";
+                venueAddress = "430 S Tryon St, Charlotte, NC 28202";
+              } else if (lowerVen.includes("belk")) {
+                venueName = "Belk Theater";
+                venueAddress = "130 N Tryon St, Charlotte, NC 28202";
+              } else if (lowerVen.includes("booth")) {
+                venueName = "Booth Playhouse";
+                venueAddress = "130 N Tryon St, Charlotte, NC 28202";
+              } else if (lowerVen.includes("stage door")) {
+                venueName = "Stage Door Theater";
+                venueAddress = "155 N College St, Charlotte, NC 28202";
+              } else if (lowerVen.includes("blume")) {
+                venueName = "Stage 2 at Blume Studios";
+                venueAddress = "904 Post St, Charlotte, NC 28208";
+              } else if (lowerVen.includes("dance") || lowerVen.includes("mcbride") || lowerVen.includes("bonnefoux")) {
+                venueName = "Patricia McBride & Jean-Pierre Bonnefoux Center for Dance";
+                venueAddress = "701 N Tryon St, Charlotte, NC 28202";
+              } else if (lowerVen.includes("ovens")) {
+                venueName = "Ovens Auditorium";
+                venueAddress = "2700 E Independence Blvd, Charlotte, NC 28205";
+              } else {
+                venueName = "Belk Theater at Blumenthal Arts";
+                venueAddress = "130 N Tryon St, Charlotte, NC 28202";
+              }
+            } else if (url.includes("pikespeakcenter.com")) {
+              venueName = "Pikes Peak Center";
+              venueAddress = "190 S Cascade Ave, Colorado Springs, CO 80903";
+              cardCity = "Colorado Springs";
+              cardState = "CO";
+            } else if (url.includes("comericacenter.com")) {
+              venueName = "Comerica Center";
+              venueAddress = "2601 Avenue of the Stars, Frisco, TX 75034";
+              cardCity = "Frisco";
+              cardState = "TX";
+            }
+
+            if (!venueName) {
+              venueName = cardCity ? `${cardCity} Venue` : "Local Venue";
+            }
+
+            const atVenueStr = venueName && venueName !== "Local Venue" ? ` at ${venueName}` : "";
+            const inLocationStr = cardCity ? ` in ${cardCity}${cardState ? `, ${cardState}` : ""}` : "";
+            const details = tagline
+              ? `${title} - ${tagline}. Live${atVenueStr}${inLocationStr}.`
+              : `${title} live${atVenueStr}${inLocationStr}.`;
 
             eventsFound.push({
               title,
-              cityName: fallbackCity,
-              stateName: fallbackState,
+              cityName: cardCity,
+              stateName: cardState,
               venue: venueName,
+              venueAddress,
               category,
               startTime: "7:30 PM",
               eventDate: parsedDate,
-              details: tagline
-                ? `${title} - ${tagline}. Live in ${fallbackCity}, ${fallbackState}.`
-                : `${title} live in ${fallbackCity}, ${fallbackState}.`,
+              details,
               officialInfoUrl: detailUrl,
               eventFlyerUrl: flyerUrl,
               source: url,
@@ -1283,7 +1371,7 @@ export async function ingestDiscoveredEvents(
       // Enrich Whitewater Center events if venue defaulted to Local Venue
       if (
         (ev.source?.includes("whitewater.org") || ev.officialInfoUrl?.includes("whitewater.org")) &&
-        (venue === "Local Venue" || !venue)
+        (venue === "Local Venue" || !venue || isGenericCalendarHeader(venue))
       ) {
         venue = "U.S. National Whitewater Center";
         venueAddress = "5000 Whitewater Center Pkwy, Charlotte, NC 28214";
@@ -1291,7 +1379,68 @@ export async function ingestDiscoveredEvents(
         stateName = "NC";
       }
 
-      const cleanDetails = cleanHtmlEntitiesAndTags(ev.details) || `${ev.title} at ${venue}.`;
+      // Enrich Blumenthal Arts events
+      if (ev.source?.includes("blumenthalarts.org") || ev.officialInfoUrl?.includes("blumenthalarts.org")) {
+        cityName = "Charlotte";
+        stateName = "NC";
+        const lowerVen = (venue || "").toLowerCase();
+        if (lowerVen.includes("knight")) {
+          venue = "Knight Theater";
+          venueAddress = "430 S Tryon St, Charlotte, NC 28202";
+        } else if (lowerVen.includes("belk")) {
+          venue = "Belk Theater";
+          venueAddress = "130 N Tryon St, Charlotte, NC 28202";
+        } else if (lowerVen.includes("booth")) {
+          venue = "Booth Playhouse";
+          venueAddress = "130 N Tryon St, Charlotte, NC 28202";
+        } else if (lowerVen.includes("stage door")) {
+          venue = "Stage Door Theater";
+          venueAddress = "155 N College St, Charlotte, NC 28202";
+        } else if (lowerVen.includes("blume")) {
+          venue = "Stage 2 at Blume Studios";
+          venueAddress = "904 Post St, Charlotte, NC 28208";
+        } else if (lowerVen.includes("dance") || lowerVen.includes("mcbride") || lowerVen.includes("bonnefoux")) {
+          venue = "Patricia McBride & Jean-Pierre Bonnefoux Center for Dance";
+          venueAddress = "701 N Tryon St, Charlotte, NC 28202";
+        } else if (lowerVen.includes("ovens")) {
+          venue = "Ovens Auditorium";
+          venueAddress = "2700 E Independence Blvd, Charlotte, NC 28205";
+        } else if (!venue || isGenericCalendarHeader(venue) || venue === "Local Venue") {
+          venue = "Belk Theater at Blumenthal Arts";
+          venueAddress = "130 N Tryon St, Charlotte, NC 28202";
+        }
+      }
+
+      // Enrich Pikes Peak Center
+      if (ev.source?.includes("pikespeakcenter.com") || ev.officialInfoUrl?.includes("pikespeakcenter.com")) {
+        venue = "Pikes Peak Center";
+        venueAddress = "190 S Cascade Ave, Colorado Springs, CO 80903";
+        cityName = "Colorado Springs";
+        stateName = "CO";
+      }
+
+      // Enrich Comerica Center
+      if (ev.source?.includes("comericacenter.com") || ev.officialInfoUrl?.includes("comericacenter.com")) {
+        venue = "Comerica Center";
+        venueAddress = "2601 Avenue of the Stars, Frisco, TX 75034";
+        cityName = "Frisco";
+        stateName = "TX";
+      }
+
+      // Catch-all: reject generic calendar headers as venue names
+      if (isGenericCalendarHeader(venue)) {
+        if (context?.venueName && !isGenericCalendarHeader(context.venueName)) {
+          venue = context.venueName;
+        } else {
+          venue = cityName ? `${cityName} Venue` : "Local Venue";
+        }
+      }
+
+      let cleanDetails = cleanHtmlEntitiesAndTags(ev.details) || `${ev.title} at ${venue}.`;
+      if (cleanDetails.includes("Events & Tickets")) {
+        cleanDetails = cleanDetails.replace(/Live at Events & Tickets\./gi, `Live at ${venue} in ${cityName}, ${stateName}.`);
+        cleanDetails = cleanDetails.replace(/Events & Tickets/gi, venue);
+      }
 
       if (!isPastEvent) {
         const [res] = await db
