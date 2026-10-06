@@ -393,7 +393,7 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
     if (/\/events\/[^\/]+\/[^\/]+\/?$/i.test(path) && !path.includes("/page/")) {
       return false;
     }
-    // 7. Reject authentication, account, cart, and checkout paths
+    // 7. Reject authentication, account, cart, checkout, and redirect loops
     if (
       path.includes("/account") ||
       path.includes("/login") ||
@@ -406,7 +406,12 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
       path.includes("/basket") ||
       path.includes("/privacy") ||
       path.includes("/terms") ||
-      search.includes("returnurl=")
+      search.includes("returnurl") ||
+      search.includes("redirect") ||
+      search.includes("next=") ||
+      search.includes("dest=") ||
+      search.includes("goto=") ||
+      urlStr.length > 200
     ) {
       return false;
     }
