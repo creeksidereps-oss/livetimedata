@@ -315,6 +315,100 @@ export function isValidEmail(email: string): boolean {
 }
 
 /**
+ * Strict validator to guarantee only genuine recurring calendar hubs,
+ * schedules, and venue directories enter the sources table.
+ * Rejects add-to-calendar webmail links, date pagination loops, single-event permalinks, and social media.
+ */
+export function isValidCalendarSourceUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase();
+    const search = parsed.search.toLowerCase();
+
+    // 1. Must be http / https
+    if (!parsed.protocol.startsWith("http")) return false;
+
+    // 2. Reject webmail & add-to-calendar providers
+    const blockedHosts = [
+      "google.com",
+      "calendar.google.com",
+      "outlook.live.com",
+      "outlook.office.com",
+      "outlook.com",
+      "live.com",
+      "mail.yahoo.com",
+      "yahoo.com",
+      "apple.com",
+      "icloud.com",
+    ];
+    if (blockedHosts.some((bh) => host === bh || host.endsWith("." + bh))) {
+      return false;
+    }
+
+    // 3. Reject bot-blocked social platforms & messaging
+    const socialHosts = [
+      "facebook.com",
+      "instagram.com",
+      "twitter.com",
+      "x.com",
+      "linkedin.com",
+      "tiktok.com",
+      "youtube.com",
+      "pinterest.com",
+      "snapchat.com",
+      "reddit.com",
+      "threads.net",
+    ];
+    if (socialHosts.some((sh) => host === sh || host.endsWith("." + sh))) {
+      return false;
+    }
+
+    // 4. Reject static assets & documents
+    if (/\.(png|jpg|jpeg|gif|webp|svg|pdf|mp4|zip|css|js|ics|vcf|ashx)(\?.*)?$/i.test(path)) {
+      return false;
+    }
+
+    // 5. Reject calendar date pagination loops (e.g. /events/2026-10-01/, /events/month/2026-11/)
+    if (/\/(?:events?|calendar|shows)\/\d{4}[-/]\d{2}(?:[-/]\d{2})?\/?$/i.test(path)) {
+      return false;
+    }
+    if (/\/(?:events?|calendar)\/(?:month|week|day|list|today|upcoming)\/?$/i.test(path)) {
+      return false;
+    }
+    if (
+      search.includes("tribe-bar-date") ||
+      search.includes("eventdate") ||
+      search.includes("startdt=") ||
+      search.includes("action=template")
+    ) {
+      return false;
+    }
+
+    // 6. Reject single-event permalinks (e.g. /event/polar-express-16/ or /events/music/band-name/)
+    // Genuine calendar hubs are: /events, /calendar, /shows, /concerts, /schedule, /upcoming
+    if (/\/event\/[^\/]+\/?$/i.test(path)) {
+      return false;
+    }
+    if (/\/events\/[^\/]+\/[^\/]+\/?$/i.test(path) && !path.includes("/page/")) {
+      return false;
+    }
+    if (
+      path.includes("/tickets/") ||
+      path.includes("/ticket/") ||
+      (host.includes("eventbrite") && path.startsWith("/e/")) ||
+      (host.includes("ticketmaster") && path.includes("/event/"))
+    ) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Extracts Schema.org events and calendar links from any URL.
  */
 export async function extractEventsFromUrl(
@@ -1412,14 +1506,8 @@ export async function extractEventsFromUrl(
       ) {
         try {
           const parsed = new URL(href, url);
-          const isSingleEventInstance =
-            (parsed.hostname.includes("facebook.com") && /\/events\/\d+/.test(parsed.pathname)) ||
-            (parsed.hostname.includes("eventbrite.com") && parsed.pathname.startsWith("/e/")) ||
-            (parsed.hostname.includes("ticketmaster.com") && parsed.pathname.includes("/event/"));
-
           if (
-            !isSingleEventInstance &&
-            parsed.protocol.startsWith("http") &&
+            isValidCalendarSourceUrl(parsed.href) &&
             parsed.href !== url &&
             !subUrls.includes(parsed.href)
           ) {

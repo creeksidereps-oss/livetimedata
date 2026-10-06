@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { entities, entityRelationships, appearances, cities, sources } from "@/db/schema";
 import { eq, and, sql, asc, or, isNull, lte } from "drizzle-orm";
 import { recordRelationship } from "./lifecycle";
-import { extractEventsFromUrl, ingestDiscoveredEvents } from "./calendar-crawler";
+import { extractEventsFromUrl, ingestDiscoveredEvents, isValidCalendarSourceUrl } from "./calendar-crawler";
 import { GoogleGenAI } from "@google/genai";
 
 export interface SpiderResult {
@@ -198,12 +198,13 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
         }
 
         for (const subUrl of crawl.subUrls) {
+          if (!isValidCalendarSourceUrl(subUrl)) continue;
           const cleanBaseName = (entity.name || "Discovered").replace(/(\s+Sub-Event)+$/i, "").trim();
           await db
             .insert(sources)
             .values({
               url: subUrl,
-              name: `${cleanBaseName} Sub-Event`,
+              name: `${cleanBaseName} Calendar Hub`,
               sourceType: "venue",
               cityName: entity.cityName,
               stateName: entity.stateName || null,

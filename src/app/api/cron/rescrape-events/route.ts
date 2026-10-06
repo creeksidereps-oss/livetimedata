@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { sources, performers } from '@/db/schema';
 import { eq, lte, and, sql, asc } from 'drizzle-orm';
-import { extractEventsFromUrl, ingestDiscoveredEvents } from '@/lib/discovery/calendar-crawler';
+import { extractEventsFromUrl, ingestDiscoveredEvents, isValidCalendarSourceUrl } from '@/lib/discovery/calendar-crawler';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,12 +74,13 @@ export async function GET(request: Request) {
 
           // Register newly discovered sub-event URLs into sources
           for (const subUrl of crawl.subUrls) {
+            if (!isValidCalendarSourceUrl(subUrl)) continue;
             const cleanBaseName = (src.name || 'Discovered').replace(/(\s+Sub-Event)+$/i, '').trim();
             await db
               .insert(sources)
               .values({
                 url: subUrl,
-                name: `${cleanBaseName} Sub-Event`,
+                name: `${cleanBaseName} Calendar Hub`,
                 sourceType: 'venue',
                 cityName: src.cityName,
                 stateName: src.stateName || 'NC',
