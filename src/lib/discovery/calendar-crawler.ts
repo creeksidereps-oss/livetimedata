@@ -6,6 +6,7 @@ import { events, entities, entityRelationships, appearances, cities, sources, pe
 import { sql, eq, and, isNull } from "drizzle-orm";
 import { upsertEntity, recordRelationship } from "./lifecycle";
 import { areEventsDuplicates, mergeEventRecords } from "@/lib/events/dedup";
+import { isLegitimateHostWebsite, isBlacklistedHostName } from "@/lib/events/host-website";
 
 export interface ExtractedEvent {
   title: string;
@@ -14,6 +15,7 @@ export interface ExtractedEvent {
   venue: string;
   venueAddress?: string;
   hostingEntity?: string;
+  contactPhone?: string;
   category: string;
   startTime: string;
   eventDate: Date;
@@ -1542,6 +1544,264 @@ export async function extractEventsFromUrl(
 }
 
 /**
+ * Detects whether an event is mobile or a tour (walking tour, ghost tour, pub crawl, parade, 5k run, etc.)
+ */
+export function isMobileOrTourEvent(title?: string, details?: string, category?: string, venue?: string): boolean {
+  const combined = `${title || ''} ${details || ''} ${category || ''} ${venue || ''}`.toLowerCase();
+  return /\b(walking tour|ghost tour|haunted tour|historic tour|guided tour|trolley tour|sightseeing tour|pub crawl|bar crawl|beer crawl|wine crawl|brewery crawl|scavenger hunt|bike tour|parade|fun run|5k\b|10k\b|marathon\b|charity walk|turkey trot)\b/i.test(combined);
+}
+
+/**
+ * Checks if a venue address is a specific street address with a house/building number
+ * rather than a generic neighborhood like "Downtown Charlotte", "Uptown", "French Quarter", etc.
+ */
+export function hasSpecificStreetAddress(address?: string | null): boolean {
+  if (!address) return false;
+  const trimmed = address.trim();
+  if (trimmed.length < 5) return false;
+  if (/^(downtown|uptown|midtown|historic downtown|historic district|french quarter|arts district|central city|city center)/i.test(trimmed)) {
+    return false;
+  }
+  return /\b\d{1,5}\s+[A-Za-z0-9#\s.,-]+(?:street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|court|ct|place|pl|circle|cir|parkway|pkwy|highway|hwy|square|sq)\b/i.test(trimmed);
+}
+
+export interface DeepDiveResult {
+  extractedAddress?: string;
+  extractedVenue?: string;
+  extractedPhone?: string;
+  extractedHost?: string;
+  extractedHostWebsite?: string;
+}
+
+/**
+ * Deterministic Zero-Cost Deep-Dive Scraper ($0.00 spend guarantee):
+ * Fetches the event subpage or official host URL using Axios and Cheerio (no LLM, no AI API cost)
+ * to extract exact physical meeting address, verified contact phone, and official host website.
+ */
+export async function deepDiveTourOrMobileEvent(url?: string | null): Promise<DeepDiveResult | null> {
+  if (!url || !url.startsWith("http")) return null;
+
+  try {
+    const res = await axios.get(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      timeout: 6000,
+      maxRedirects: 3,
+    });
+
+    const html = res.data;
+    if (typeof html !== "string") return null;
+    const $ = cheerio.load(html);
+
+    let extractedAddress: string | undefined;
+    let extractedVenue: string | undefined;
+    let extractedPhone: string | undefined;
+    let extractedHost: string | undefined;
+    let extractedHostWebsite: string | undefined;
+
+    // 1. JSON-LD Schema.org parsing
+    $('script[type="application/ld+json"]').each((_, el) => {
+      const raw = $(el).html();
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw);
+        const items = Array.isArray(parsed) ? parsed : (parsed["@graph"] || [parsed]);
+
+        for (const item of items) {
+          // Direct address on LocalBusiness, Place, Organization, Event
+          if (item.address && !extractedAddress) {
+            if (typeof item.address === "string" && hasSpecificStreetAddress(item.address)) {
+              extractedAddress = item.address;
+            } else if (typeof item.address === "object") {
+              const parts = [
+                item.address.streetAddress,
+                item.address.addressLocality,
+                item.address.addressRegion,
+                item.address.postalCode
+              ].filter(Boolean);
+              if (parts.length > 0) extractedAddress = parts.join(", ");
+            }
+          }
+
+          // Event location
+          if (item.location) {
+            const loc = item.location;
+            if (typeof loc === "object") {
+              if (loc.name && !extractedVenue) extractedVenue = loc.name;
+              if (loc.telephone && !extractedPhone) extractedPhone = loc.telephone;
+              if (loc.sameAs && !extractedHostWebsite && isLegitimateHostWebsite(loc.sameAs)) {
+                extractedHostWebsite = loc.sameAs.startsWith("http") ? loc.sameAs : `https://${loc.sameAs}`;
+              }
+              if (loc.address && !extractedAddress) {
+                if (typeof loc.address === "string" && hasSpecificStreetAddress(loc.address)) {
+                  extractedAddress = loc.address;
+                } else if (typeof loc.address === "object") {
+                  const parts = [
+                    loc.address.streetAddress,
+                    loc.address.addressLocality,
+                    loc.address.addressRegion,
+                    loc.address.postalCode
+                  ].filter(Boolean);
+                  if (parts.length > 0) extractedAddress = parts.join(", ");
+                }
+              }
+            } else if (typeof loc === "string" && hasSpecificStreetAddress(loc) && !extractedAddress) {
+              extractedAddress = loc;
+            }
+          }
+
+          // Name, Telephone, Website on LocalBusiness / Organizer
+          if (item.telephone && !extractedPhone) extractedPhone = item.telephone;
+          if (item.url && !extractedHostWebsite && typeof item.url === "string" && isLegitimateHostWebsite(item.url)) {
+            extractedHostWebsite = item.url;
+          }
+          if (item.name) {
+            const type = item["@type"];
+            if (type === "LocalBusiness" || type === "Organization") {
+              if (!extractedHost && !isBlacklistedHostName(item.name)) extractedHost = item.name;
+            } else if (type === "Place" && !extractedVenue) {
+              extractedVenue = item.name;
+            }
+          }
+
+          if (item.organizer) {
+            const org = item.organizer;
+            if (typeof org === "string" && !extractedHost && !isBlacklistedHostName(org)) extractedHost = org;
+            else if (typeof org === "object") {
+              if (org.name && !extractedHost && !isBlacklistedHostName(org.name)) extractedHost = org.name;
+              if (org.telephone && !extractedPhone) extractedPhone = org.telephone;
+              if (org.url && !extractedHostWebsite && isLegitimateHostWebsite(org.url)) extractedHostWebsite = org.url;
+            }
+          }
+        }
+      } catch {
+        // Fallback regex extraction from JSON-LD if JSON.parse fails due to unescaped control characters
+        try {
+          if (!extractedAddress) {
+            const addrMatch = raw.match(/"address"\s*:\s*\{([^}]+)\}/);
+            if (addrMatch) {
+              const street = addrMatch[1].match(/"streetAddress"\s*:\s*"([^"]+)"/)?.[1];
+              const loc = addrMatch[1].match(/"addressLocality"\s*:\s*"([^"]+)"/)?.[1];
+              const reg = addrMatch[1].match(/"addressRegion"\s*:\s*"([^"]+)"/)?.[1];
+              const post = addrMatch[1].match(/"postalCode"\s*:\s*"([^"]+)"/)?.[1];
+              if (street) {
+                extractedAddress = [street, loc, reg, post].filter(Boolean).join(", ");
+              }
+            }
+          }
+          if (!extractedPhone) {
+            const telMatch = raw.match(/"telephone"\s*:\s*"([^"]+)"/);
+            if (telMatch) extractedPhone = telMatch[1];
+          }
+          if (!extractedHost) {
+            const orgMatch = raw.match(/"@type"\s*:\s*"(?:LocalBusiness|Organization)"[^}]*?"name"\s*:\s*"([^"]+)"/);
+            if (orgMatch && !isBlacklistedHostName(orgMatch[1])) extractedHost = orgMatch[1];
+          }
+        } catch {}
+      }
+    });
+
+    // 2. Microdata and standard address selectors
+    if (!extractedAddress) {
+      const street = $("[itemprop='streetAddress'], .street-address").first().text().trim();
+      const locality = $("[itemprop='addressLocality'], .locality").first().text().trim();
+      const region = $("[itemprop='addressRegion'], .region").first().text().trim();
+      const postal = $("[itemprop='postalCode'], .postal-code").first().text().trim();
+      if (street) {
+        extractedAddress = [street, locality, region, postal].filter(Boolean).join(", ");
+      }
+    }
+
+    // 3. Phone selectors
+    if (!extractedPhone) {
+      const tel = $('a[href^="tel:"]').first().attr("href")?.replace("tel:", "").trim() ||
+                  $("[itemprop='telephone']").first().text().trim();
+      if (tel && tel.replace(/\D/g, "").length >= 7) extractedPhone = tel;
+    }
+
+    // 4. Meeting Point text regex cues (e.g. "Meet @ The Dunhill Hotel", "Meets at 200 W Trade St", "Starting point: ...")
+    if (!extractedAddress || !extractedVenue) {
+      const bodyText = $("body").text().replace(/\s+/g, " ");
+      const meetingMatch = bodyText.match(/(?:meet(?:s)?\s*(?:@|at)|meeting\s*(?:point|location|spot)|starting\s*(?:point|location)|starts\s*at|check-in\s*at|departs\s*from|tour\s*begins\s*at|begins\s*at)\s*[:\-–]?\s*([A-Za-z0-9\s.,#'"-]{3,90}?(?:Hotel|Center|Park|Plaza|Square|Station|Hall|Building|St\b|Street\b|Ave\b|Avenue\b|Rd\b|Road\b|Blvd\b|Boulevard\b|Dr\b|Drive\b|\d{5}))/i);
+      if (meetingMatch) {
+        const val = meetingMatch[1].trim();
+        if (hasSpecificStreetAddress(val) && !extractedAddress) {
+          extractedAddress = val;
+        } else if (!extractedVenue || extractedVenue === "Local Venue") {
+          extractedVenue = val;
+        }
+      }
+    }
+
+    // 5. If currently crawling an aggregator page (e.g. LOTC / blog), extract outbound legitimate host link
+    if (!extractedHostWebsite && !isLegitimateHostWebsite(url)) {
+      $("article a[href], .entry-content a[href], .post-content a[href], main a[href]").each((_, el) => {
+        if (extractedHostWebsite) return;
+        const linkHref = $(el).attr("href");
+        if (linkHref && isLegitimateHostWebsite(linkHref)) {
+          extractedHostWebsite = linkHref;
+        }
+      });
+    }
+
+    // 6. If we found an official host website and still lack an address, do one single sub-hop fetch
+    if (extractedHostWebsite && !extractedAddress && extractedHostWebsite !== url) {
+      try {
+        const subRes = await axios.get(extractedHostWebsite, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          },
+          timeout: 5000,
+        });
+        const sub$ = cheerio.load(subRes.data);
+        const subTel = sub$('a[href^="tel:"]').first().attr("href")?.replace("tel:", "").trim();
+        if (subTel && !extractedPhone) extractedPhone = subTel;
+
+        sub$('script[type="application/ld+json"]').each((_, el) => {
+          const raw = sub$(el).html();
+          if (!raw) return;
+          try {
+            const parsed = JSON.parse(raw);
+            const items = Array.isArray(parsed) ? parsed : (parsed["@graph"] || [parsed]);
+            for (const item of items) {
+              if (item.address && !extractedAddress) {
+                if (typeof item.address === "string" && hasSpecificStreetAddress(item.address)) {
+                  extractedAddress = item.address;
+                } else if (typeof item.address === "object") {
+                  const parts = [item.address.streetAddress, item.address.addressLocality, item.address.addressRegion, item.address.postalCode].filter(Boolean);
+                  if (parts.length > 0) extractedAddress = parts.join(", ");
+                }
+              }
+              if (item.telephone && !extractedPhone) extractedPhone = item.telephone;
+              if (item.name && !extractedHost && (item["@type"] === "LocalBusiness" || item["@type"] === "Organization")) {
+                extractedHost = item.name;
+              }
+            }
+          } catch {}
+        });
+      } catch {}
+    }
+
+    if (isLegitimateHostWebsite(url) && !extractedHostWebsite) {
+      extractedHostWebsite = url;
+    }
+
+    return {
+      extractedAddress,
+      extractedVenue,
+      extractedPhone,
+      extractedHost,
+      extractedHostWebsite,
+    };
+  } catch (err: any) {
+    return null;
+  }
+}
+
+/**
  * Decomposes multi-activity festivals and fairs into distinct sub-events
  * (e.g. Car Cruise-In, Food Truck Row, featured stage performances, 5k runs).
  */
@@ -1750,7 +2010,7 @@ export async function ingestDiscoveredEvents(
         if (!matchedCandidate.event_flyer_url && (merged.event_flyer_url || merged.eventFlyerUrl)) {
           updates.eventFlyerUrl = merged.event_flyer_url || merged.eventFlyerUrl;
         }
-        if ((!matchedCandidate.venue_address || matchedCandidate.venue_address === 'null') && (merged.venue_address || merged.venueAddress)) {
+        if ((!matchedCandidate.venue_address || matchedCandidate.venue_address === 'null' || !hasSpecificStreetAddress(matchedCandidate.venue_address)) && (merged.venue_address || merged.venueAddress)) {
           updates.venueAddress = merged.venue_address || merged.venueAddress;
         }
         if ((!matchedCandidate.details || matchedCandidate.details.length < 20) && merged.details && merged.details.length > 20) {
@@ -1762,6 +2022,35 @@ export async function ingestDiscoveredEvents(
         if (!matchedCandidate.registration_url && (merged.registration_url || merged.registrationUrl)) {
           updates.registrationUrl = merged.registration_url || merged.registrationUrl;
         }
+
+        // Deep-dive mobile/tour event if existing candidate lacks specific street address
+        if (
+          isMobileOrTourEvent(matchedCandidate.title, matchedCandidate.details, matchedCandidate.category, matchedCandidate.venue) &&
+          !hasSpecificStreetAddress(matchedCandidate.venue_address || updates.venueAddress)
+        ) {
+          const candidateUrl = updates.officialInfoUrl || matchedCandidate.official_info_url || ev.officialInfoUrl || (ev.source?.startsWith("http") ? ev.source : null);
+          if (candidateUrl) {
+            const dive = await deepDiveTourOrMobileEvent(candidateUrl);
+            if (dive) {
+              if (dive.extractedAddress && hasSpecificStreetAddress(dive.extractedAddress)) {
+                updates.venueAddress = dive.extractedAddress;
+              }
+              if (dive.extractedVenue && (matchedCandidate.venue === "Local Venue" || isGenericCalendarHeader(matchedCandidate.venue) || matchedCandidate.venue.includes("Downtown") || matchedCandidate.venue.includes("Uptown"))) {
+                updates.venue = dive.extractedVenue;
+              }
+              if (dive.extractedHost && !matchedCandidate.hosting_entity) {
+                updates.hostingEntity = dive.extractedHost;
+              }
+              if (dive.extractedPhone && !(matchedCandidate as any).contact_phone) {
+                updates.contactPhone = dive.extractedPhone;
+              }
+              if (dive.extractedHostWebsite && isLegitimateHostWebsite(dive.extractedHostWebsite)) {
+                updates.officialInfoUrl = dive.extractedHostWebsite;
+              }
+            }
+          }
+        }
+
         if (Object.keys(updates).length > 0) {
           await db.update(events).set(updates).where(eq(events.id, matchedCandidate.id));
         }
@@ -1877,6 +2166,37 @@ export async function ingestDiscoveredEvents(
         cleanDetails = cleanDetails.replace(/Events & Tickets/gi, venue);
       }
 
+      // Mobile & Walking Tour Deep-Dive Check:
+      // If event is a walking tour, ghost tour, pub crawl, parade, or 5K and lacks a specific street address,
+      // deterministically fetch the subpage to extract meeting location, host entity, and contact phone with $0.00 spend.
+      let hostingEntity = ev.hostingEntity || ev.organizerName || null;
+      let contactPhone = ev.contactPhone || null;
+      let officialInfoUrl = ev.officialInfoUrl || null;
+
+      if (isMobileOrTourEvent(ev.title, cleanDetails, ev.category, venue) && !hasSpecificStreetAddress(venueAddress)) {
+        const candidateUrl = ev.officialInfoUrl || (ev.source?.startsWith("http") ? ev.source : null);
+        if (candidateUrl) {
+          const dive = await deepDiveTourOrMobileEvent(candidateUrl);
+          if (dive) {
+            if (dive.extractedAddress && hasSpecificStreetAddress(dive.extractedAddress)) {
+              venueAddress = dive.extractedAddress;
+            }
+            if (dive.extractedVenue && (venue === "Local Venue" || isGenericCalendarHeader(venue) || venue.includes("Downtown") || venue.includes("Uptown"))) {
+              venue = dive.extractedVenue;
+            }
+            if (dive.extractedHost && !hostingEntity) {
+              hostingEntity = dive.extractedHost;
+            }
+            if (dive.extractedPhone && !contactPhone) {
+              contactPhone = dive.extractedPhone;
+            }
+            if (dive.extractedHostWebsite && isLegitimateHostWebsite(dive.extractedHostWebsite)) {
+              officialInfoUrl = dive.extractedHostWebsite;
+            }
+          }
+        }
+      }
+
       if (!isPastEvent) {
         const [res] = await db
           .insert(events)
@@ -1887,12 +2207,13 @@ export async function ingestDiscoveredEvents(
             category: ev.category,
             venue,
             venueAddress,
-            hostingEntity: ev.hostingEntity || ev.organizerName || null,
+            hostingEntity,
             startTime: ev.startTime,
             eventDate: ev.eventDate,
             details: cleanDetails,
-            officialInfoUrl: ev.officialInfoUrl,
+            officialInfoUrl,
             eventFlyerUrl: ev.eventFlyerUrl,
+            contactPhone,
             status: "live",
             source: ev.source || "Automated Calendar Crawler",
           })

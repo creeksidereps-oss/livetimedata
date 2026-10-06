@@ -116,11 +116,14 @@ export const events = pgTable("events", {
   viewCount: integer("view_count").default(0), // Monetization upsell impression validation metric
   status: text("status").default("pending_review"), // live, pending_review, needs_info, legal_hold
   
-  // Premium Registry Form Data Fields
+  // Premium Registry & Contact Data Fields
   userName: text("user_name"),
   userEmail: text("user_email"),
   userPhone: text("user_phone"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
   officialInfoUrl: text("official_info_url"),
+  socialUrls: text("social_urls"),
   eventFlyerUrl: text("event_flyer_url"),
 
   // AI Moderation & Fast Approval Fields

@@ -6,6 +6,7 @@ import AddToCalendarButton from "./AddToCalendarButton";
 import PremiumEventModal from "./PremiumEventModal";
 import ShareButton from "./ShareButton";
 import { getLocalizedCategoryLabel } from "@/lib/locale-categories";
+import { isLegitimateHostWebsite, formatDisplayHostUrl } from "@/lib/events/host-website";
 
 type EventsBlockProps = {
   cityName: string;
@@ -1129,6 +1130,23 @@ function InlineEventModal({
   const venueDisplay = (venueIsCity && displayAddress) ? displayAddress : (venueStr || effectiveCity);
   const showCitySuffix = !venueIsCity && !!effectiveCity && !venueLower.includes(cityLower);
 
+  // Verified contact extraction for description end
+  const verifiedPhone = (() => {
+    if (ev.contact_phone && ev.contact_phone.trim().length >= 7) {
+      return ev.contact_phone.trim();
+    }
+    const phoneMatch = ev.details?.match(/(?:\+?1[-.\s]?)?\(?([2-9][0-9]{2})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/);
+    if (phoneMatch) return phoneMatch[0].trim();
+    return null;
+  })();
+
+  const verifiedHostWebsite = (() => {
+    if (isLegitimateHostWebsite(ev.official_info_url)) return ev.official_info_url;
+    if (isLegitimateHostWebsite(ev.registration_url)) return ev.registration_url;
+    if (ev.source?.startsWith("http") && isLegitimateHostWebsite(ev.source)) return ev.source;
+    return null;
+  })();
+
   return (
     <OverlayModal
       title={modalTitle}
@@ -1514,6 +1532,45 @@ function InlineEventModal({
             <div style={{ fontSize: "15px", color: "#334155", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
               {ev.details}
             </div>
+
+            {/* End-of-Description Verified Contact & Official Website */}
+            {(verifiedPhone || verifiedHostWebsite) && (
+              <div style={{
+                marginTop: "16px",
+                paddingTop: "14px",
+                borderTop: "1px dashed #cbd5e1",
+                display: "flex",
+                flexDirection: "column",
+                gap: "8px"
+              }}>
+                {verifiedPhone && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#334155" }}>
+                    <span style={{ fontSize: "15px" }}>📞</span>
+                    <span style={{ fontWeight: 700, color: "#0f172a" }}>Phone:</span>
+                    <a 
+                      href={`tel:${verifiedPhone.replace(/[^\d+]/g, '')}`}
+                      style={{ color: "#4f46e5", textDecoration: "none", fontWeight: 700 }}
+                    >
+                      {verifiedPhone}
+                    </a>
+                  </div>
+                )}
+                {verifiedHostWebsite && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#334155" }}>
+                    <span style={{ fontSize: "15px" }}>🌐</span>
+                    <span style={{ fontWeight: 700, color: "#0f172a" }}>Official Website:</span>
+                    <a 
+                      href={verifiedHostWebsite} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: "#4f46e5", textDecoration: "underline", fontWeight: 700, wordBreak: "break-all" }}
+                    >
+                      {formatDisplayHostUrl(verifiedHostWebsite)} &rarr;
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Owner Claim / Photo Submission Callout */}
             <div style={{
