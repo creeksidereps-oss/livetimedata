@@ -393,11 +393,20 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
     if (/\/events\/[^\/]+\/[^\/]+\/?$/i.test(path) && !path.includes("/page/")) {
       return false;
     }
+    // 7. Reject authentication, account, cart, and checkout paths
     if (
-      path.includes("/tickets/") ||
-      path.includes("/ticket/") ||
-      (host.includes("eventbrite") && path.startsWith("/e/")) ||
-      (host.includes("ticketmaster") && path.includes("/event/"))
+      path.includes("/account") ||
+      path.includes("/login") ||
+      path.includes("/logout") ||
+      path.includes("/signin") ||
+      path.includes("/signup") ||
+      path.includes("/register") ||
+      path.includes("/cart") ||
+      path.includes("/checkout") ||
+      path.includes("/basket") ||
+      path.includes("/privacy") ||
+      path.includes("/terms") ||
+      search.includes("returnurl=")
     ) {
       return false;
     }
