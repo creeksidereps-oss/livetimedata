@@ -348,21 +348,15 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
       return false;
     }
 
-    // 3. Reject bot-blocked social platforms & messaging
-    const socialHosts = [
-      "facebook.com",
-      "instagram.com",
-      "twitter.com",
-      "x.com",
-      "linkedin.com",
-      "tiktok.com",
-      "youtube.com",
-      "pinterest.com",
-      "snapchat.com",
-      "reddit.com",
-      "threads.net",
+    // 3. Reject bot-blocked social platforms & ticket brokers
+    const blockedPlatforms = [
+      "facebook.com", "instagram.com", "twitter.com", "x.com", "linkedin.com",
+      "tiktok.com", "youtube.com", "pinterest.com", "snapchat.com", "reddit.com",
+      "threads.net", "seatgeek.com", "ticketmaster.com", "livenation.com",
+      "stubhub.com", "vividseats.com", "axs.com", "dice.fm", "etix.com",
+      "ticketweb.com"
     ];
-    if (socialHosts.some((sh) => host === sh || host.endsWith("." + sh))) {
+    if (blockedPlatforms.some((bp) => host === bp || host.endsWith("." + bp))) {
       return false;
     }
 
@@ -371,30 +365,32 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
       return false;
     }
 
-    // 5. Reject calendar date pagination loops (e.g. /events/2026-10-01/, /events/month/2026-11/)
-    if (/\/(?:events?|calendar|shows)\/\d{4}[-/]\d{2}(?:[-/]\d{2})?\/?$/i.test(path)) {
-      return false;
-    }
-    if (/\/(?:events?|calendar)\/(?:month|week|day|list|today|upcoming)\/?$/i.test(path)) {
-      return false;
-    }
+    // 5. Strictly reject calendar date pagination loops & exports (e.g. /day/2026-10-11, /month/2026-10, ?ical=1)
     if (
+      /\/(?:day|week|month|year)\/\d{4}/i.test(path) ||
+      /\/\d{4}[-/]\d{2}(?:[-/]\d{2})?\/?/i.test(path) ||
+      /\/(?:month|week|day|today)\/?$/i.test(path) ||
+      path.includes("/tag/") ||
+      search.includes("ical=") ||
+      search.includes("outlook-ical=") ||
+      search.includes("eventdisplay=") ||
       search.includes("tribe-bar-date") ||
       search.includes("eventdate") ||
       search.includes("startdt=") ||
+      search.includes("enddt=") ||
       search.includes("action=template")
     ) {
       return false;
     }
 
-    // 6. Reject single-event permalinks (e.g. /event/polar-express-16/ or /events/music/band-name/)
-    // Genuine calendar hubs are: /events, /calendar, /shows, /concerts, /schedule, /upcoming
-    if (/\/event\/[^\/]+\/?$/i.test(path)) {
+    // 6. Reject single-event permalinks (e.g. /event/polar-express-16/ or Eventbrite single events /e/...)
+    if (/\/event\/[^\/]+\/?$/i.test(path) || /\/events\/[^\/]+\/[^\/]+\/?$/i.test(path) && !path.includes("/page/")) {
       return false;
     }
-    if (/\/events\/[^\/]+\/[^\/]+\/?$/i.test(path) && !path.includes("/page/")) {
+    if (path.includes("/e/") || path.includes("/tickets/")) {
       return false;
     }
+
     // 7. Reject authentication, account, cart, checkout, and redirect loops
     if (
       path.includes("/account") ||
