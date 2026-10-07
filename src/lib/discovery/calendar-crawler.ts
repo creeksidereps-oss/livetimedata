@@ -464,6 +464,7 @@ export async function extractEventsFromUrl(
         "Accept-Language": "en-US,en;q=0.9",
       },
       timeout: 12000,
+      signal: AbortSignal.timeout(12000),
       maxRedirects: 3,
     });
 
@@ -1584,6 +1585,7 @@ export async function deepDiveTourOrMobileEvent(url?: string | null): Promise<De
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
       timeout: 6000,
+      signal: AbortSignal.timeout(6000),
       maxRedirects: 3,
     });
 
@@ -1751,6 +1753,7 @@ export async function deepDiveTourOrMobileEvent(url?: string | null): Promise<De
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
           },
           timeout: 5000,
+          signal: AbortSignal.timeout(5000),
         });
         const sub$ = cheerio.load(subRes.data);
         const subTel = sub$('a[href^="tel:"]').first().attr("href")?.replace("tel:", "").trim();
@@ -1964,6 +1967,21 @@ export async function ingestDiscoveredEvents(
       const normCity = ev.cityName.toLowerCase().trim();
 
       // Multi-signal deduplication: query candidates on same calendar date & city
+      let isoDate: string | null = null;
+      if (ev.eventDate) {
+        try {
+          const d = ev.eventDate instanceof Date ? ev.eventDate : new Date(ev.eventDate);
+          if (!isNaN(d.getTime())) {
+            isoDate = d.toISOString().slice(0, 10);
+          }
+        } catch {}
+      }
+
+      const matchConditions = [sql`LOWER(${events.cityName}) = ${normCity}`];
+      if (isoDate) {
+        matchConditions.push(sql`DATE(${events.eventDate}) = ${isoDate}::date`);
+      }
+
       const existingCandidates = await db
         .select({
           id: events.id,
@@ -1982,12 +2000,7 @@ export async function ingestDiscoveredEvents(
           source: events.source
         })
         .from(events)
-        .where(
-          and(
-            sql`LOWER(${events.cityName}) = ${normCity}`,
-            sql`DATE(${events.eventDate}) = DATE(${ev.eventDate})`
-          )
-        );
+        .where(and(...matchConditions));
 
       let matchedCandidate: any = null;
       for (const cand of existingCandidates) {
@@ -2019,13 +2032,13 @@ export async function ingestDiscoveredEvents(
           updates.registrationUrl = merged.registration_url || merged.registrationUrl;
         }
 
-        // Deep-dive mobile/tour event if existing candidate lacks specific street address
+        // Deep-dive mobile/tour event if existing candidate lacks specific street address (avoid re-fetching parent source)
         if (
           isMobileOrTourEvent(matchedCandidate.title, matchedCandidate.details, matchedCandidate.category, matchedCandidate.venue) &&
           !hasSpecificStreetAddress(matchedCandidate.venue_address || updates.venueAddress)
         ) {
-          const candidateUrl = updates.officialInfoUrl || matchedCandidate.official_info_url || ev.officialInfoUrl || (ev.source?.startsWith("http") ? ev.source : null);
-          if (candidateUrl) {
+          const candidateUrl = updates.officialInfoUrl || matchedCandidate.official_info_url || ev.officialInfoUrl || null;
+          if (candidateUrl && candidateUrl !== context?.sourceUrl && candidateUrl !== ev.source) {
             const dive = await deepDiveTourOrMobileEvent(candidateUrl);
             if (dive) {
               if (dive.extractedAddress && hasSpecificStreetAddress(dive.extractedAddress)) {
@@ -2170,8 +2183,8 @@ export async function ingestDiscoveredEvents(
       let officialInfoUrl = ev.officialInfoUrl || null;
 
       if (isMobileOrTourEvent(ev.title, cleanDetails, ev.category, venue) && !hasSpecificStreetAddress(venueAddress)) {
-        const candidateUrl = ev.officialInfoUrl || (ev.source?.startsWith("http") ? ev.source : null);
-        if (candidateUrl) {
+        const candidateUrl = ev.officialInfoUrl || null;
+        if (candidateUrl && candidateUrl !== context?.sourceUrl && candidateUrl !== ev.source) {
           const dive = await deepDiveTourOrMobileEvent(candidateUrl);
           if (dive) {
             if (dive.extractedAddress && hasSpecificStreetAddress(dive.extractedAddress)) {
