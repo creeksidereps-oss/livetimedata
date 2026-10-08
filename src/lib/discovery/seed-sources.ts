@@ -75,6 +75,15 @@ export const MASTER_DISCOVERY_HUBS: DiscoverySeedHub[] = [
     yieldType: 'events',
     notes: 'Hiddenite Arts, Taylorsville farmers markets, and community events.'
   },
+  {
+    id: 'hickory_record_events',
+    name: 'Hickory Daily Record Events',
+    url: 'https://hickoryrecord.com/events/',
+    scope: 'local',
+    category: 'public_calendar',
+    yieldType: 'events',
+    notes: 'Catawba County and Greater Hickory community events, arts, festivals, and concerts.'
+  },
 
 
   // --- Mobile Food & Vendor Seed Hubs ---
