@@ -1,4 +1,10 @@
 import { createPool } from '@vercel/postgres';
+import * as dotenv from 'dotenv';
+
+if (!process.env.POSTGRES_URL) {
+  dotenv.config({ path: '.env.local' });
+  dotenv.config();
+}
 
 // Create the connection pool
 export const pool = createPool({
