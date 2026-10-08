@@ -179,24 +179,55 @@ export default function FeaturedFactCard({ cityName, stateName, countryName, ini
 
             {/* Modal Body: Scrollable list of all unthrottled facts */}
             <div id="fun-facts-modal-list" className="p-5 overflow-y-auto space-y-4 flex-1 divide-y divide-slate-100">
-              {allFacts.map((fact, idx) => (
-                <div key={fact.id || idx} className={`${idx > 0 ? "pt-4" : ""} group`}>
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                      Fact #{idx + 1}
-                    </span>
-                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                      {fact.category?.replace(/_/g, " ") || "Curiosity"}
-                    </span>
+              {allFacts.map((fact, idx) => {
+                const categoryLabels: Record<string, string> = {
+                  world_record: "World Record",
+                  product_birthplace: "Product Origin",
+                  historical_first: "Historical First",
+                  roadside_oddity: "Roadside Oddity",
+                  strange_but_true: "Strange But True",
+                  notable_origin: "Notable Origin",
+                  oddity: "Local Oddity",
+                  discovery: "Curious Discovery",
+                  forgotten_history: "Forgotten History",
+                  local_history: "Local Lore & History",
+                  almanac_profile: "Almanac Profile"
+                };
+                const displayCategory = categoryLabels[fact.category] || fact.category?.replace(/_/g, " ") || "Curiosity";
+
+                return (
+                  <div key={fact.id || idx} className={`${idx > 0 ? "pt-4" : ""} group`}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        Item #{idx + 1}
+                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {fact.source_attribution && (
+                          <span className="text-[9px] font-semibold text-slate-500 bg-slate-50 border border-slate-200/70 px-2 py-0.5 rounded-full">
+                            {fact.source_attribution}
+                          </span>
+                        )}
+                        <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/60">
+                          {displayCategory}
+                        </span>
+                      </div>
+                    </div>
+                    <h4 className="text-[13px] font-black text-slate-900 mb-1">
+                      {fact.title}
+                    </h4>
+                    <p className="text-[12px] text-slate-600 leading-relaxed">
+                      {fact.description}
+                    </p>
                   </div>
-                  <h4 className="text-[13px] font-black text-slate-900 mb-1">
-                    {fact.title}
-                  </h4>
-                  <p className="text-[12px] text-slate-600 leading-relaxed">
-                    {fact.description}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
+
+              {/* Curiosity Disclaimer */}
+              <div className="pt-4 mt-2">
+                <p className="text-[10px] text-slate-400 leading-relaxed italic bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  Compiled from public archives, historical records, and community contributors for educational and curiosity exploration. Content includes local folklore, anecdotes, and roadside trivia. LiveTimeData makes no representations or warranties regarding completeness or accuracy.
+                </p>
+              </div>
             </div>
 
             {/* Modal Footer: Stacked on Mobile, Side-by-Side on Desktop */}

@@ -92,7 +92,7 @@ export async function POST(req: Request) {
         return NextResponse.json({
           ok: true,
           verdict: "APPROVED",
-          message: `AI verified fact #${factId} as authentic. Approved into live rotation.`,
+          message: `Fact #${factId} audited as authentic. Approved into live rotation.`,
           audit
         });
       } else if (audit.verdict === "REJECTED") {

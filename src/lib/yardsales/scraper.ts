@@ -416,7 +416,7 @@ export async function scrapeYardSaleTreasureMapForCity(
       sales.push({
         title,
         url: href,
-        streetAddress: fullAddress,
+        streetAddress: streetPart,
         cityName: cityPart,
         stateName: statePart,
         startDate: eventDate,

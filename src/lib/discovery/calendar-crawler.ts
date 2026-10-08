@@ -349,14 +349,14 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
     }
 
     // 3. Reject bot-blocked social platforms & ticket brokers
-    const blockedPlatforms = [
-      "facebook.com", "instagram.com", "twitter.com", "x.com", "linkedin.com",
-      "tiktok.com", "youtube.com", "pinterest.com", "snapchat.com", "reddit.com",
-      "threads.net", "seatgeek.com", "ticketmaster.com", "livenation.com",
-      "stubhub.com", "vividseats.com", "axs.com", "dice.fm", "etix.com",
-      "ticketweb.com"
+    const blockedKeywords = [
+      "facebook.", "instagram.", "twitter.", "x.com", "linkedin.",
+      "tiktok.", "youtube.", "pinterest.", "snapchat.", "reddit.",
+      "threads.net", "seatgeek.", "ticketmaster.", "livenation.",
+      "stubhub.", "vividseats.", "axs.com", "dice.fm", "etix.",
+      "ticketweb.", "eventbrite."
     ];
-    if (blockedPlatforms.some((bp) => host === bp || host.endsWith("." + bp))) {
+    if (blockedKeywords.some((bk) => host.includes(bk) || host === bk.replace(/\.$/, ""))) {
       return false;
     }
 
@@ -365,8 +365,12 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
       return false;
     }
 
-    // 5. Strictly reject calendar date pagination loops & exports (e.g. /day/2026-10-11, /month/2026-10, ?ical=1)
+    // 5. Strictly reject calendar date pagination loops, registration confirmation modals, and exports
     if (
+      path.includes("/confirm") ||
+      path.includes("/checkout") ||
+      path.includes("/cart") ||
+      search.includes("instance_id=") ||
       /\/(?:day|week|month|year)\/\d{4}/i.test(path) ||
       /\/\d{4}[-/]\d{2}(?:[-/]\d{2})?\/?/i.test(path) ||
       /\/(?:month|week|day|today)\/?$/i.test(path) ||
@@ -1948,8 +1952,29 @@ export async function ingestDiscoveredEvents(
         continue;
       }
 
-      // Guard: Require valid city name
-      if (!ev.cityName || ev.cityName.trim().length === 0) {
+      // Guard: Require valid non-numeric city name (at least 2 chars, cannot be purely numeric, cannot contain foreign address tokens like корпус)
+      let cleanCity = (ev.cityName || "").trim();
+      if (!cleanCity || cleanCity.length < 2 || /^\d+$/.test(cleanCity) || /корпус/i.test(cleanCity) || /корпус/i.test(ev.stateName || "")) {
+        if (context?.cityName && !/^\d+$/.test(context.cityName.trim()) && context.cityName.trim().length >= 2) {
+          cleanCity = context.cityName.trim();
+          ev.cityName = cleanCity;
+          ev.stateName = context.stateName?.trim() || ev.stateName;
+        } else {
+          stats.skipped++;
+          continue;
+        }
+      }
+
+      // Guard: Reject ticket broker and social media traffic leaks
+      const fullSourceInfo = `${ev.officialInfoUrl || ""} ${ev.source || ""}`.toLowerCase();
+      if (
+        fullSourceInfo.includes("ticketmaster") ||
+        fullSourceInfo.includes("eventbrite") ||
+        fullSourceInfo.includes("livenation") ||
+        fullSourceInfo.includes("stubhub") ||
+        fullSourceInfo.includes("seatgeek") ||
+        fullSourceInfo.includes("vividseats")
+      ) {
         stats.skipped++;
         continue;
       }

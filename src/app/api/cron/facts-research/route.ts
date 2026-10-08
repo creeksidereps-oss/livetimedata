@@ -88,8 +88,8 @@ export async function GET(req: Request) {
                 ai_verification_notes, ai_grounded_sources
               ) VALUES (
                 ${cityName}, ${stateName}, ${countryName}, ${item.title}, ${item.description},
-                ${verdict.category}, 'city', ${verdict.sources[0] || 'AI Grounded Search'},
-                'ai_verified', TRUE, 'approved',
+                ${verdict.category}, 'city', ${verdict.sources[0] || 'Regional Gazette & Almanac'},
+                'almanac_curator', TRUE, 'approved',
                 ${verdict.reason}, ${JSON.stringify(verdict.sources)}
               )
             `;
@@ -103,7 +103,7 @@ export async function GET(req: Request) {
               source_attribution, contributed_by, rejection_reason, ai_confidence, ai_notes
             ) VALUES (
               ${cityName}, ${stateName}, ${countryName}, ${item.title}, ${item.description},
-              ${verdict.category}, ${verdict.sources[0] || 'AI Audit'}, 'ai_researcher',
+              ${verdict.category}, ${verdict.sources[0] || 'Almanac Screening'}, 'ai_researcher',
               ${verdict.reason}, ${verdict.confidence}, ${JSON.stringify(verdict.sources)}
             )
           `;
@@ -125,7 +125,7 @@ export async function GET(req: Request) {
                 ai_verification_notes, ai_grounded_sources
               ) VALUES (
                 ${cityName}, ${stateName}, ${countryName}, ${item.title}, ${item.description},
-                ${verdict.category}, 'city', ${verdict.sources[0] || 'Pending Verification'},
+                ${verdict.category}, 'city', ${verdict.sources[0] || 'Community Lore Archive'},
                 'ai_inconclusive', FALSE, 'needs_human_curation',
                 ${verdict.reason}, ${JSON.stringify(verdict.sources)}
               )
