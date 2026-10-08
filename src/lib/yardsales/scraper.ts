@@ -337,3 +337,100 @@ export async function scrapeStorageTreasuresLiveAuctions(): Promise<ScrapedYardS
   return auctions;
 }
 
+/**
+ * Scrapes garage, yard, and community sales from Yard Sale Treasure Map (yardsaletreasuremap.com).
+ * Enforces mandatory physical street address with a house number parsed from the permalink structure.
+ */
+export async function scrapeYardSaleTreasureMapForCity(
+  citySlug: string,
+  stateSlug: string
+): Promise<ScrapedYardSale[]> {
+  const stateFormatted = stateSlug.includes("-")
+    ? stateSlug
+    : stateSlug.toLowerCase() === "nc"
+    ? "North-Carolina"
+    : stateSlug;
+  const cityFormatted = citySlug
+    .split(/[\s-]+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join("-");
+
+  const url = `https://yardsaletreasuremap.com/US/${stateFormatted}/${cityFormatted}.html`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) return [];
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    const sales: ScrapedYardSale[] = [];
+    const streetPattern = /\d+\s+([a-zA-Z0-9#.\s]+)/;
+
+    $(".grid-item").each((_, el) => {
+      const href = $(el).find("a.sale_url").attr("href") || "";
+      const rawTitle = $(el).find(".sale_title").text().replace(/[\uE000-\uF8FF]/g, "").trim();
+      const rawDesc = $(el).find(".sale_desc").text().replace(/\s+/g, " ").replace(/[\uE000-\uF8FF]/g, "").trim();
+
+      // Match /US/{State}/{City}/{Street}/{Id}/
+      const urlMatch = href.match(/\/US\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(\d+)\//i);
+      if (!urlMatch) return;
+
+      const statePart = urlMatch[1].replace(/-/g, " ");
+      const cityPart = urlMatch[2].replace(/-/g, " ");
+      const streetPart = urlMatch[3].replace(/-/g, " ");
+
+      // MANDATORY ADDRESS ENFORCEMENT: Reject listings without a valid street number
+      if (!streetPattern.test(streetPart)) return;
+
+      // Extract date from desc
+      let eventDate = new Date().toISOString().slice(0, 10);
+      const dateMatch = rawDesc.match(/(\d{1,2})\/(\d{1,2})/);
+      if (dateMatch) {
+        const mon = dateMatch[1].padStart(2, "0");
+        const day = dateMatch[2].padStart(2, "0");
+        eventDate = `${new Date().getFullYear()}-${mon}-${day}`;
+      }
+
+      // Extract start time
+      let startTime = "08:00 AM";
+      const timeMatch =
+        rawDesc.match(/start time:\s*(\d+(?::\d+)?\s*(?:am|pm)?)/i) ||
+        rawDesc.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*-\s*/i);
+      if (timeMatch) {
+        startTime = timeMatch[1].toUpperCase();
+        if (!startTime.includes("AM") && !startTime.includes("PM")) {
+          startTime += " AM";
+        }
+      }
+
+      const fullAddress = `${streetPart}, ${cityPart}, ${statePart}`;
+      const title = rawTitle || `Yard Sale - ${streetPart}`;
+      const details = `${rawDesc}\n\nLocation: ${fullAddress}. Sourced via Yard Sale Treasure Map.`;
+
+      sales.push({
+        title,
+        url: href,
+        streetAddress: fullAddress,
+        cityName: cityPart,
+        stateName: statePart,
+        startDate: eventDate,
+        startTime,
+        description: details.slice(0, 800),
+        hostingEntity: "Community Member",
+        source: "Yard Sale Treasure Map",
+      });
+    });
+
+    return sales;
+  } catch (err: any) {
+    console.error(`YardSaleTreasureMap scraper error for ${citySlug}, ${stateSlug}:`, err.message);
+    return [];
+  }
+}
+

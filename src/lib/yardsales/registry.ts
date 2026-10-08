@@ -57,6 +57,24 @@ export const YARD_SALE_SOURCES: YardSaleSourceDef[] = [
     feedType: 'json_api',
     notes: 'Nationwide live in-person self-storage lien auctions held on-site at physical facilities with exact street addresses.'
   },
+  {
+    id: 'yardsaletreasuremap',
+    name: 'Yard Sale Treasure Map',
+    domain: 'yardsaletreasuremap.com',
+    tier: 1,
+    status: 'active',
+    feedType: 'html',
+    notes: 'Clean server-rendered HTML grid with exact street addresses embedded in listing permalinks.'
+  },
+  {
+    id: 'consignmentmommies',
+    name: 'Consignment Mommies',
+    domain: 'consignmentmommies.com',
+    tier: 1,
+    status: 'active',
+    feedType: 'html',
+    notes: 'Nationwide directory of seasonal and pop-up kids consignment sales with verified venue street addresses.'
+  },
 
   // --- TIER 2: SECONDARY FEEDS (Backlog Cache) ---
   {
@@ -67,15 +85,6 @@ export const YARD_SALE_SOURCES: YardSaleSourceDef[] = [
     status: 'backlog',
     feedType: 'html',
     notes: 'Cloudflare-protected directory. Good quality listings.'
-  },
-  {
-    id: 'yardsaletreasuremap',
-    name: 'Yard Sale Treasure Map',
-    domain: 'yardsaletreasuremap.com',
-    tier: 2,
-    status: 'backlog',
-    feedType: 'app_feed',
-    notes: 'Aggregates Craigslist + user app submissions.'
   },
   {
     id: 'garagesaletracker',
