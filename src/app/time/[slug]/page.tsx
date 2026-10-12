@@ -2,8 +2,25 @@ import CityDashboardClient from "../../city-dashboard/ui";
 import CityJsonLd from "@/components/CityJsonLd";
 import type { Metadata, ResolvingMetadata } from "next";
 import { notFound } from "next/navigation";
-import { resolveCityFromSlug, isValidRegionName, ResolvedCity } from "@/lib/cityResolver";
+import { 
+  resolveCityFromSlug, 
+  isValidRegionName, 
+  findSitemapMatch, 
+  KNOWN_ENTRIES, 
+  US_STATE_TO_CODE, 
+  CA_PROV_TO_CODE,
+  ResolvedCity 
+} from "@/lib/cityResolver";
 import { sql } from "@vercel/postgres";
+
+function slugify(text: string): string {
+  return String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 async function resolveCityWithDb(
   slug?: string,
@@ -11,51 +28,14 @@ async function resolveCityWithDb(
 ): Promise<ResolvedCity | null> {
   if (!slug && !searchParams?.name && !searchParams?.lat) return null;
 
-  // 1. In-memory fast cache lookup
-  if (slug) {
-    const memoryResolved = resolveCityFromSlug(slug, false);
-    if (memoryResolved) return memoryResolved;
-  }
-
   const slugClean = slug ? decodeURIComponent(slug).toLowerCase().trim() : "";
-  const candidateName = slugClean.replace(/-[a-z]{2}$/, "").replace(/-/g, " ");
 
-  // 2. Database `cities` table lookup
-  if (slugClean) {
-    try {
-      const { rows } = await sql`
-        SELECT name, admin1, country_name, country_code, latitude, longitude, timezone, slug
-        FROM cities
-        WHERE LOWER(slug) = ${slugClean} 
-           OR LOWER(name) = ${slugClean}
-           OR LOWER(slug) = ${candidateName.replace(/\s+/g, '-')}
-           OR LOWER(name) = ${candidateName}
-        LIMIT 1
-      `;
-      if (rows.length > 0) {
-        const c = rows[0];
-        return {
-          name: c.name,
-          admin1: c.admin1 || "",
-          country: c.country_name || (c.country_code === "US" ? "United States" : ""),
-          country_code: c.country_code || "",
-          lat: Number(c.latitude) || 0,
-          lon: Number(c.longitude) || 0,
-          timezone: c.timezone || undefined,
-          slug: c.slug || slugClean,
-        };
-      }
-    } catch (err) {
-      console.warn("DB city lookup error:", err);
-    }
-  }
-
-  // 3. URL Search Parameters (e.g. from SearchBox autocomplete: ?lat=36.23708&lon=-79.97948&name=Stokesdale...)
+  // 1. URL Search Parameters with valid coordinates supplied by search (ground truth)
   if (searchParams && searchParams.lat && searchParams.lon) {
     const lat = parseFloat(searchParams.lat as string);
     const lon = parseFloat(searchParams.lon as string);
-    if (!isNaN(lat) && !isNaN(lon)) {
-      const rawName = (searchParams.name as string) || candidateName || slugClean;
+    if (!isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
+      const rawName = (searchParams.name as string) || slugClean;
       const name = decodeURIComponent(rawName).replace(/\+/g, " ").trim();
       const rawAdmin = (searchParams.admin1 as string) || "";
       const admin1 = isValidRegionName(rawAdmin) ? decodeURIComponent(rawAdmin).replace(/\+/g, " ").trim() : "";
@@ -64,9 +44,38 @@ async function resolveCityWithDb(
         : ((searchParams.country_code as string) === "US" ? "United States" : "");
       const country_code = (searchParams.country_code as string) || (country === "United States" ? "US" : "");
       const timezone = (searchParams.timezone as string) || undefined;
-      const finalSlug = slugClean || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-      // Auto-save to `cities` database so future direct visits resolve instantly
+      // Check if this matches a sitemap city
+      const sitemapMatch = findSitemapMatch(name, admin1, country, country_code);
+      let finalSlug = sitemapMatch ? sitemapMatch.slug : "";
+
+      // Check if matches known entries
+      if (!finalSlug) {
+        const normName = name.toLowerCase();
+        const normAdmin = admin1.toLowerCase();
+        const stateCode = US_STATE_TO_CODE[normAdmin] || (normAdmin.length === 2 ? normAdmin.toUpperCase() : "");
+        for (const entry of KNOWN_ENTRIES) {
+          if (entry.name.toLowerCase() === normName) {
+            if (stateCode && entry.admin1 && (entry.admin1.toLowerCase() === normAdmin || entry.admin1.toUpperCase() === stateCode)) {
+              finalSlug = entry.slug;
+              break;
+            }
+          }
+        }
+      }
+
+      // If still no canonical slug, construct an unambiguous slug using region if available
+      if (!finalSlug) {
+        if (admin1 && isValidRegionName(admin1)) {
+          finalSlug = `${slugify(name)}-${slugify(admin1)}`;
+        } else if (slugClean) {
+          finalSlug = slugClean;
+        } else {
+          finalSlug = slugify(name);
+        }
+      }
+
+      // Auto-save/update database with valid coordinates
       try {
         await sql`
           INSERT INTO cities (slug, name, admin1, country_name, country_code, latitude, longitude, timezone)
@@ -74,6 +83,8 @@ async function resolveCityWithDb(
           ON CONFLICT (slug) DO UPDATE SET
             name = EXCLUDED.name,
             admin1 = COALESCE(NULLIF(EXCLUDED.admin1, ''), cities.admin1),
+            country_name = COALESCE(NULLIF(EXCLUDED.country_name, ''), cities.country_name),
+            country_code = COALESCE(NULLIF(EXCLUDED.country_code, ''), cities.country_code),
             latitude = EXCLUDED.latitude,
             longitude = EXCLUDED.longitude,
             timezone = COALESCE(EXCLUDED.timezone, cities.timezone)
@@ -95,31 +106,117 @@ async function resolveCityWithDb(
     }
   }
 
-  // 4. Dynamic Open-Meteo Geocoding Lookup (Free, Zero Cost Fallback for unindexed slugs)
+  // 2. In-memory fast cache lookup (for direct visits to clean slugs)
+  if (slug) {
+    const memoryResolved = resolveCityFromSlug(slug, false);
+    if (memoryResolved && (memoryResolved.lat !== 0 || memoryResolved.lon !== 0)) {
+      return memoryResolved;
+    }
+  }
+
+  // 3. Database `cities` table lookup
+  const candidateName = slugClean.replace(/-[a-z]{2}$/, "").replace(/-/g, " ");
+  let dbCityName = "";
+  let dbAdmin1 = "";
+
   if (slugClean) {
     try {
+      const { rows } = await sql`
+        SELECT name, admin1, country_name, country_code, latitude, longitude, timezone, slug
+        FROM cities
+        WHERE LOWER(slug) = ${slugClean} 
+           OR LOWER(name) = ${slugClean}
+           OR LOWER(slug) = ${candidateName.replace(/\s+/g, '-')}
+           OR LOWER(name) = ${candidateName}
+        ORDER BY CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN 0 ELSE 1 END
+        LIMIT 1
+      `;
+      if (rows.length > 0) {
+        const c = rows[0];
+        const lat = Number(c.latitude);
+        const lon = Number(c.longitude);
+        dbCityName = c.name;
+        dbAdmin1 = c.admin1 || "";
+
+        // Only return if coordinates are valid non-zero numbers
+        if (c.latitude !== null && c.longitude !== null && !isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
+          return {
+            name: c.name,
+            admin1: c.admin1 || "",
+            country: c.country_name || (c.country_code === "US" ? "United States" : ""),
+            country_code: c.country_code || "",
+            lat,
+            lon,
+            timezone: c.timezone || undefined,
+            slug: c.slug || slugClean,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("DB city lookup error:", err);
+    }
+  }
+
+  // 4. Dynamic Open-Meteo Geocoding Lookup (when coordinates are missing or slug unindexed)
+  if (slugClean) {
+    try {
+      // Parse potential qualifiers from hyphenated slug
+      const parts = slugClean.split("-");
+      let searchCity = candidateName || slugClean;
+      let qual = "";
+      if (parts.length >= 2) {
+        searchCity = parts[0];
+        qual = parts.slice(1).join(" ");
+      } else if (dbCityName) {
+        searchCity = dbCityName;
+        qual = dbAdmin1;
+      }
+
       const searchTerms = [
-        candidateName,
+        searchCity,
         slugClean.replace(/-/g, " "),
       ];
+
       for (const term of searchTerms) {
         if (!term || term.length < 2) continue;
         const geoRes = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(term)}&count=1&language=en&format=json`,
+          `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(term)}&count=10&language=en&format=json`,
           { next: { revalidate: 86400 } }
         );
         if (geoRes.ok) {
           const geoData = await geoRes.json();
           if (Array.isArray(geoData?.results) && geoData.results.length > 0) {
-            const first = geoData.results[0];
-            const name = first.name;
-            const admin1 = first.admin1 || "";
-            const country = first.country || (first.country_code === "US" ? "United States" : "");
-            const country_code = first.country_code || "";
-            const lat = Number(first.latitude);
-            const lon = Number(first.longitude);
-            const timezone = first.timezone || undefined;
+            let matched = geoData.results[0];
+
+            // If a qualifier (state/country) exists, match against results
+            if (qual) {
+              const normQual = qual.toLowerCase();
+              const stateCode = US_STATE_TO_CODE[normQual] || (normQual.length === 2 ? normQual.toUpperCase() : "");
+              const caCode = CA_PROV_TO_CODE[normQual];
+
+              const found = geoData.results.find((r: any) => {
+                const rAdmin = (r.admin1 || "").toLowerCase();
+                const rCountry = (r.country || "").toLowerCase();
+                if (stateCode && r.country_code === "US" && (rAdmin === normQual || r.admin1 === stateCode)) return true;
+                if (caCode && r.country_code === "CA" && rAdmin === caCode) return true;
+                if (rAdmin === normQual || rCountry === normQual) return true;
+                return false;
+              });
+              if (found) matched = found;
+            }
+
+            const name = matched.name;
+            const admin1 = matched.admin1 || "";
+            const country = matched.country || (matched.country_code === "US" ? "United States" : "");
+            const country_code = matched.country_code || "";
+            const lat = Number(matched.latitude);
+            const lon = Number(matched.longitude);
+            const timezone = matched.timezone || undefined;
             const finalSlug = slugClean;
+
+            if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) {
+              continue;
+            }
 
             // Auto-persist dynamically discovered city into database
             try {
@@ -129,6 +226,8 @@ async function resolveCityWithDb(
                 ON CONFLICT (slug) DO UPDATE SET
                   name = EXCLUDED.name,
                   admin1 = COALESCE(NULLIF(EXCLUDED.admin1, ''), cities.admin1),
+                  country_name = COALESCE(NULLIF(EXCLUDED.country_name, ''), cities.country_name),
+                  country_code = COALESCE(NULLIF(EXCLUDED.country_code, ''), cities.country_code),
                   latitude = EXCLUDED.latitude,
                   longitude = EXCLUDED.longitude,
                   timezone = COALESCE(EXCLUDED.timezone, cities.timezone)
@@ -174,7 +273,7 @@ export async function generateMetadata(
   }
 
   const rawAdmin = (sp?.admin1 as string) ?? resolved.admin1;
-  const validAdmin = isValidRegionName(rawAdmin) ? rawAdmin : undefined;
+  const validAdmin = isValidRegionName(rawAdmin) ? rawAdmin : (isValidRegionName(resolved.admin1) ? resolved.admin1 : undefined);
 
   const cityName = (sp?.name as string) || resolved.name;
   const stateName = validAdmin ? `, ${validAdmin}` : "";
@@ -354,6 +453,7 @@ export default async function TimeSlugPage(props: {
         lat={lat} 
         lon={lon} 
         pageType="time" 
+        slug={resolved.slug}
       />
     </div>
   );

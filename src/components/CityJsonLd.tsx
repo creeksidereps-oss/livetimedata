@@ -8,6 +8,7 @@ interface CityJsonLdProps {
   lat: number;
   lon: number;
   pageType?: "time" | "weather" | "dashboard";
+  slug?: string;
 }
 
 export default function CityJsonLd({
@@ -17,11 +18,12 @@ export default function CityJsonLd({
   lat,
   lon,
   pageType = "dashboard",
+  slug,
 }: CityJsonLdProps) {
   const validAdmin = isValidRegionName(stateName) ? stateName : undefined;
   const locationLabel = [cityName, validAdmin, countryName].filter(Boolean).join(", ");
 
-  const cleanSlug = cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const cleanSlug = slug || cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const pageUrl = `https://www.livetimedata.com/${pageType === "weather" ? "weather" : "time"}/${cleanSlug}`;
 
   const schemaData = {
@@ -40,11 +42,13 @@ export default function CityJsonLd({
               "@type": "Country",
               "name": countryName,
             },
-        "geo": {
-          "@type": "GeoCoordinates",
-          "latitude": lat,
-          "longitude": lon,
-        },
+        ...((lat !== 0 || lon !== 0) && !isNaN(lat) && !isNaN(lon) ? {
+          "geo": {
+            "@type": "GeoCoordinates",
+            "latitude": lat,
+            "longitude": lon,
+          },
+        } : {}),
         "description": `Current local time, weather forecast, live webcams, and community guide for ${locationLabel}.`,
         "url": pageUrl,
       },
