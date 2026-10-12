@@ -1952,9 +1952,9 @@ export async function ingestDiscoveredEvents(
         continue;
       }
 
-      // Guard: Require valid non-numeric city name (at least 2 chars, cannot be purely numeric, cannot contain foreign address tokens like корпус)
+      // Guard: Require valid non-numeric city name (at least 2 chars, cannot be purely numeric)
       let cleanCity = (ev.cityName || "").trim();
-      if (!cleanCity || cleanCity.length < 2 || /^\d+$/.test(cleanCity) || /корпус/i.test(cleanCity) || /корпус/i.test(ev.stateName || "")) {
+      if (!cleanCity || cleanCity.length < 2 || /^\d+$/.test(cleanCity)) {
         if (context?.cityName && !/^\d+$/.test(context.cityName.trim()) && context.cityName.trim().length >= 2) {
           cleanCity = context.cityName.trim();
           ev.cityName = cleanCity;

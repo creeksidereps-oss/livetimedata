@@ -106,7 +106,6 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
           eq(entities.verificationStatus, "verified"),
           isNull(entities.updatedAt)
         ),
-        eq(entities.countryCode, "US"),
         sql`${entities.cityName} IS NOT NULL AND ${entities.cityName} != ''`,
         sql`TRIM(${entities.name}) !~ '^[0-9]+\\s+[A-Za-z]'`,
         sql`TRIM(${entities.name}) !~ '^#[0-9]+'`
