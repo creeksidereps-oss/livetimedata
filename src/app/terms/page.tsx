@@ -1,5 +1,19 @@
 import React from "react";
 import CompliancePageLayout from "@/components/CompliancePageLayout";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description: "LiveTimeData Terms of Service governing access, content use, user submissions, and platform policies.",
+  alternates: {
+    canonical: "https://www.livetimedata.com/terms",
+  },
+  openGraph: {
+    title: "LiveTimeData Terms of Service",
+    description: "LiveTimeData Terms of Service governing access, content use, user submissions, and platform policies.",
+    url: "https://www.livetimedata.com/terms",
+  },
+};
 
 export default function TermsPage() {
   return (
@@ -112,15 +126,7 @@ export default function TermsPage() {
         <p>LiveTimeData respects intellectual-property rights.</p>
         <p>If you believe copyrighted material is being infringed on LiveTimeData, you may send a written copyright complaint to:</p>
         <p className="font-bold">LiveTimeData<br />P.O. Box 5272<br />Statesville, NC 28687<br />United States<br /><br />Email: LiveTimeData@gmail.com</p>
-        <p>To help us identify and evaluate the complaint, please provide:</p>
-        <ul className="list-decimal pl-6 space-y-1.5">
-          <li>Your physical or electronic signature, or the signature of a person authorized to act for the copyright owner.</li>
-          <li>Identification of the copyrighted work claimed to have been infringed, or a representative list if multiple works are involved.</li>
-          <li>Identification of the material claimed to be infringing and information reasonably sufficient for LiveTimeData to locate it, preferably including the applicable URL.</li>
-          <li>Information reasonably sufficient for us to contact you, such as your name, mailing address, telephone number, and email address.</li>
-          <li>A statement that you have a good-faith belief that the complained-of use is not authorized by the copyright owner, its agent, or the law.</li>
-          <li>A statement that the information in your complaint is accurate and, under penalty of perjury, that you are the copyright owner or authorized to act on behalf of the owner.</li>
-        </ul>
+        <p>To help us identify and evaluate the complaint, please provide: (1) your physical or electronic signature, or the signature of a person authorized to act for the copyright owner; (2) identification of the copyrighted work claimed to have been infringed, or a representative list if multiple works are involved; (3) identification of the material claimed to be infringing and information reasonably sufficient for LiveTimeData to locate it, preferably including the applicable URL; (4) information reasonably sufficient for us to contact you, such as your name, mailing address, telephone number, and email address; (5) a statement that you have a good-faith belief that the complained-of use is not authorized by the copyright owner, its agent, or the law; and (6) a statement that the information in your complaint is accurate and, under penalty of perjury, that you are the copyright owner or authorized to act on behalf of the owner.</p>
         <p>LiveTimeData may request additional information when reasonably necessary to understand or process a complaint.</p>
         <p>LiveTimeData may remove or disable access to material while a complaint is investigated.</p>
         <p className="font-bold uppercase tracking-wider">IMPORTANT: LiveTimeData has not represented that the contact listed above is currently a Copyright Office-registered DMCA designated agent. If LiveTimeData completes a designated-agent registration, this section may be updated with the applicable registered-agent information.</p>
@@ -192,20 +198,7 @@ export default function TermsPage() {
         <p>Nothing in these Terms excludes warranties, liabilities, or legal rights that cannot lawfully be excluded.</p>
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">28. LIMITATION OF LIABILITY</h3>
-        <p className="uppercase">TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LIVETIMEDATA AND ITS OPERATOR, CONTRACTORS, SERVICE PROVIDERS, REPRESENTATIVES, AND AFFILIATED PARTICIPANTS WILL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, LOST REVENUE, LOST DATA, BUSINESS INTERRUPTION, TRAVEL COSTS, MISSED EVENTS, MISSED DEADLINES, PURCHASE DECISIONS, OR OTHER LOSSES ARISING FROM OR RELATING TO:</p>
-        <ul className="list-disc pl-6 space-y-1.5 uppercase">
-          <li>use of or inability to use the Service;</li>
-          <li>reliance on information displayed through the Service;</li>
-          <li>inaccurate, delayed, incomplete, outdated, or unavailable information;</li>
-          <li>AI-assisted or automated content;</li>
-          <li>user or contributor Submissions;</li>
-          <li>copyright or other rights disputes involving submitted material;</li>
-          <li>third-party material, links, products, services, advertisements, or transactions;</li>
-          <li>event changes or cancellations;</li>
-          <li>webcam, map, weather, time, currency, geographic, attraction, restaurant, business, or transportation information;</li>
-          <li>changes to or discontinuation of the Service;</li>
-          <li>interruptions, errors, security incidents, or technical failures.</li>
-        </ul>
+        <p className="uppercase">TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LIVETIMEDATA AND ITS OPERATOR, CONTRACTORS, SERVICE PROVIDERS, REPRESENTATIVES, AND AFFILIATED PARTICIPANTS WILL NOT BE LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, LOST REVENUE, LOST DATA, BUSINESS INTERRUPTION, TRAVEL COSTS, MISSED EVENTS, MISSED DEADLINES, PURCHASE DECISIONS, OR OTHER LOSSES ARISING FROM OR RELATING TO: USE OF OR INABILITY TO USE THE SERVICE; RELIANCE ON INFORMATION DISPLAYED THROUGH THE SERVICE; INACCURATE, DELAYED, INCOMPLETE, OUTDATED, OR UNAVAILABLE INFORMATION; AI-ASSISTED OR AUTOMATED CONTENT; USER OR CONTRIBUTOR SUBMISSIONS; COPYRIGHT OR OTHER RIGHTS DISPUTES INVOLVING SUBMITTED MATERIAL; THIRD-PARTY MATERIAL, LINKS, PRODUCTS, SERVICES, ADVERTISEMENTS, OR TRANSACTIONS; EVENT CHANGES OR CANCELLATIONS; WEBCAM, MAP, WEATHER, TIME, CURRENCY, GEOGRAPHIC, ATTRACTION, RESTAURANT, BUSINESS, OR TRANSPORTATION INFORMATION; CHANGES TO OR DISCONTINUATION OF THE SERVICE; OR INTERRUPTIONS, ERRORS, SECURITY INCIDENTS, OR TECHNICAL FAILURES.</p>
         <p>Where applicable law does not permit a limitation stated above, the limitation applies only to the maximum extent permitted by that law.</p>
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">29. INDEMNIFICATION</h3>

@@ -1,5 +1,19 @@
 import React from "react";
 import CompliancePageLayout from "@/components/CompliancePageLayout";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "About LiveTimeData",
+  description: "Learn about LiveTimeData, our mission, data sources, independent operation, and global city exploration platform.",
+  alternates: {
+    canonical: "https://www.livetimedata.com/about",
+  },
+  openGraph: {
+    title: "About LiveTimeData",
+    description: "Learn about LiveTimeData, our mission, data sources, independent operation, and global city exploration platform.",
+    url: "https://www.livetimedata.com/about",
+  },
+};
 
 export default function AboutPage() {
   return (

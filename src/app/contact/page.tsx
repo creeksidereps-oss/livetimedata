@@ -1,5 +1,19 @@
 import React from "react";
 import CompliancePageLayout from "@/components/CompliancePageLayout";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Contact LiveTimeData",
+  description: "Contact information, inquiries, feedback, content concerns, and partnerships for LiveTimeData.",
+  alternates: {
+    canonical: "https://www.livetimedata.com/contact",
+  },
+  openGraph: {
+    title: "Contact LiveTimeData",
+    description: "Contact information, inquiries, feedback, content concerns, and partnerships for LiveTimeData.",
+    url: "https://www.livetimedata.com/contact",
+  },
+};
 
 export default function ContactPage() {
   return (
