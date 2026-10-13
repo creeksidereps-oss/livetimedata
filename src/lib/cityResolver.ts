@@ -52,6 +52,36 @@ export const CA_PROV_TO_CODE: Record<string, string> = {
 const slugMap = new Map<string, ResolvedCity>();
 const nameMap = new Map<string, ResolvedCity[]>();
 
+export function normalizeDiacritics(str?: string | null): string {
+  if (!str) return "";
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function addToNameMap(name: string, entry: ResolvedCity) {
+  const norm = normalizeDiacritics(name);
+  if (!nameMap.has(norm)) nameMap.set(norm, []);
+  nameMap.get(norm)!.push(entry);
+}
+
+// Dynamically populate all worldwide country names from the 10,000 city dataset
+export const ALL_COUNTRIES_SET = new Set<string>();
+for (const c of top10000Cities as any[]) {
+  if (c.country) {
+    ALL_COUNTRIES_SET.add(c.country.toLowerCase().trim());
+    ALL_COUNTRIES_SET.add(normalizeDiacritics(c.country));
+  }
+}
+// Universal country aliases & abbreviations
+ALL_COUNTRIES_SET.add("united states");
+ALL_COUNTRIES_SET.add("usa");
+ALL_COUNTRIES_SET.add("us");
+ALL_COUNTRIES_SET.add("united kingdom");
+ALL_COUNTRIES_SET.add("uk");
+ALL_COUNTRIES_SET.add("united arab emirates");
+ALL_COUNTRIES_SET.add("uae");
+ALL_COUNTRIES_SET.add("south korea");
+ALL_COUNTRIES_SET.add("north korea");
+
 // 1. Seed known community entries so their direct city pages resolve cleanly with correct coordinates
 export const KNOWN_ENTRIES: (ResolvedCity & { aliases?: string[] })[] = [
   {
@@ -138,9 +168,7 @@ for (const entry of KNOWN_ENTRIES) {
   for (const alias of (entry.aliases || [])) {
     slugMap.set(alias.toLowerCase(), entry);
   }
-  const n = entry.name.toLowerCase();
-  if (!nameMap.has(n)) nameMap.set(n, []);
-  nameMap.get(n)!.push(entry);
+  addToNameMap(entry.name, entry);
 }
 
 // 2. Seed top 100 cities (highest metadata quality)
@@ -158,9 +186,7 @@ for (const c of top100Cities as any[]) {
   if (c.slug && !slugMap.has(c.slug.toLowerCase())) {
     slugMap.set(c.slug.toLowerCase(), resolved);
   }
-  const n = c.name.toLowerCase();
-  if (!nameMap.has(n)) nameMap.set(n, []);
-  nameMap.get(n)!.push(resolved);
+  addToNameMap(c.name, resolved);
 }
 
 // 3. Seed 10,000 global cities
@@ -178,9 +204,7 @@ for (const c of top10000Cities as any[]) {
   if (s && !slugMap.has(s)) {
     slugMap.set(s, resolved);
   }
-  const n = c.name.toLowerCase();
-  if (!nameMap.has(n)) nameMap.set(n, []);
-  nameMap.get(n)!.push(resolved);
+  addToNameMap(c.name, resolved);
 }
 
 /**
@@ -205,7 +229,7 @@ export function findSitemapMatch(
   country?: string | null,
   countryCode?: string | null
 ): ResolvedCity | null {
-  const normName = (name || "").toLowerCase().trim();
+  const normName = normalizeDiacritics(name);
   if (!normName) return null;
   const normCountry = (country || "").toLowerCase().trim();
   const normAdmin = (admin1 || "").toLowerCase().trim();
@@ -214,27 +238,106 @@ export function findSitemapMatch(
 
   const list = nameMap.get(normName) || [];
   for (const cand of list) {
-    if (countryCode === "US" || normCountry === "united states") {
-      if (stateCode && cand.admin1 && cand.admin1.toUpperCase() === stateCode) {
+    const candCountry = cand.country.toLowerCase();
+    const candAdmin = (cand.admin1 || "").toLowerCase();
+    const candAdminUpper = (cand.admin1 || "").toUpperCase();
+
+    if (countryCode === "US" || normCountry === "united states" || candCountry === "united states") {
+      if (stateCode && cand.admin1 && candAdminUpper === stateCode) {
         return cand;
       }
-      if (normAdmin && cand.admin1 && cand.admin1.toLowerCase() === normAdmin) {
+      if (normAdmin && cand.admin1 && candAdmin === normAdmin) {
         return cand;
       }
-    } else if (countryCode === "CA" || normCountry === "canada") {
-      if (caCode && cand.admin1 === caCode) {
+    } else if (countryCode === "CA" || normCountry === "canada" || candCountry === "canada") {
+      if (caCode && cand.admin1 && (candAdminUpper === caCode || candAdmin === caCode.toLowerCase())) {
         return cand;
       }
-      if (normCountry && cand.country.toLowerCase() === normCountry) {
+      if (normAdmin && cand.admin1 && (candAdmin === normAdmin || candAdminUpper === normAdmin.toUpperCase())) {
+        return cand;
+      }
+      if (normCountry && candCountry === normCountry) {
         return cand;
       }
     } else {
-      if (normCountry && cand.country.toLowerCase() === normCountry) {
+      if (normCountry && candCountry === normCountry) {
         return cand;
       }
     }
   }
   return null;
+}
+
+export interface SlugGeographicContext {
+  cityName: string;
+  qualifier: string;
+  country: string;
+}
+
+/**
+ * Parses hyphenated slugs to identify city name, region/state qualifier, and country suffix.
+ * Generalized to support all worldwide countries and Canadian/US administrative regions.
+ */
+export function parseSlugGeographicContext(slug?: string): SlugGeographicContext {
+  if (!slug) return { cityName: "", qualifier: "", country: "" };
+  const clean = decodeURIComponent(slug).toLowerCase().trim();
+  const parts = clean.split("-");
+  if (parts.length < 2) return { cityName: clean, qualifier: "", country: "" };
+
+  let country = "";
+  let cityParts = [...parts];
+
+  if (parts.length >= 4) {
+    const threeWord = parts.slice(-3).join(" ");
+    if (ALL_COUNTRIES_SET.has(threeWord)) {
+      country = threeWord;
+      cityParts = parts.slice(0, -3);
+    }
+  }
+
+  if (!country && parts.length >= 3) {
+    const twoWord = parts.slice(-2).join(" ");
+    if (ALL_COUNTRIES_SET.has(twoWord)) {
+      country = twoWord;
+      cityParts = parts.slice(0, -2);
+    }
+  }
+
+  if (!country && parts.length >= 2) {
+    const oneWord = parts[parts.length - 1];
+    if (ALL_COUNTRIES_SET.has(oneWord)) {
+      country = oneWord;
+      cityParts = parts.slice(0, -1);
+    }
+  }
+
+  let qualifier = "";
+  if (cityParts.length >= 2) {
+    const lastPart = cityParts[cityParts.length - 1];
+    const twoWordLast = cityParts.length >= 3 ? cityParts.slice(-2).join(" ") : "";
+    const twoWordSlug = cityParts.length >= 3 ? cityParts.slice(-2).join("-") : "";
+
+    if (twoWordLast && (US_STATE_TO_CODE[twoWordLast] || US_STATE_TO_CODE[twoWordSlug] || CA_PROV_TO_CODE[twoWordLast] || CA_PROV_TO_CODE[twoWordSlug])) {
+      qualifier = twoWordLast;
+      if (US_STATE_TO_CODE[twoWordLast] || US_STATE_TO_CODE[twoWordSlug]) country = country || "united states";
+      if (CA_PROV_TO_CODE[twoWordLast] || CA_PROV_TO_CODE[twoWordSlug]) country = country || "canada";
+      cityParts = cityParts.slice(0, -2);
+    } else if (US_STATE_TO_CODE[lastPart] || (lastPart.length === 2 && Object.values(US_STATE_TO_CODE).includes(lastPart.toUpperCase()))) {
+      qualifier = lastPart;
+      country = country || "united states";
+      cityParts = cityParts.slice(0, -1);
+    } else if (CA_PROV_TO_CODE[lastPart]) {
+      qualifier = lastPart;
+      country = country || "canada";
+      cityParts = cityParts.slice(0, -1);
+    } else if (/^\d+$/.test(lastPart)) {
+      qualifier = lastPart;
+      cityParts = cityParts.slice(0, -1);
+    }
+  }
+
+  const cityName = cityParts.join(" ");
+  return { cityName, qualifier, country };
 }
 
 /**
@@ -255,7 +358,16 @@ export function resolveCityFromSlug(slug?: string, allowDefault = true): Resolve
     return slugMap.get(clean)!;
   }
 
-  // 2. Hyphenated qualifier match: [city]-[admin1] or [city]-[admin1]-[country]
+  // 2. Parse geographic context and match sitemap directly
+  const geo = parseSlugGeographicContext(clean);
+  if (geo.cityName) {
+    const sitemapMatch = findSitemapMatch(geo.cityName, geo.qualifier, geo.country);
+    if (sitemapMatch) {
+      return sitemapMatch;
+    }
+  }
+
+  // 3. Hyphenated qualifier match: [city]-[admin1] or [city]-[admin1]-[country]
   const parts = clean.split("-");
   if (parts.length >= 2) {
     for (let i = 1; i < parts.length; i++) {
@@ -265,7 +377,7 @@ export function resolveCityFromSlug(slug?: string, allowDefault = true): Resolve
       const stateCode = US_STATE_TO_CODE[qualCandidate] || US_STATE_TO_CODE[qualSlug] || (qualCandidate.length === 2 ? qualCandidate.toUpperCase() : null);
       const caCode = CA_PROV_TO_CODE[qualCandidate] || CA_PROV_TO_CODE[qualSlug];
 
-      const candidates = nameMap.get(cityCandidate.toLowerCase()) || [];
+      const candidates = nameMap.get(normalizeDiacritics(cityCandidate)) || [];
       for (const cand of candidates) {
         if (stateCode && cand.admin1 && cand.admin1.toUpperCase() === stateCode) {
           return cand;
@@ -283,16 +395,17 @@ export function resolveCityFromSlug(slug?: string, allowDefault = true): Resolve
     }
   }
 
-  // 3. Exact city name match if single entry or prominent global city
-  if (nameMap.has(clean)) {
-    const list = nameMap.get(clean)!;
+  // 4. Exact city name match if single entry or prominent global city
+  const normClean = normalizeDiacritics(clean);
+  if (nameMap.has(normClean)) {
+    const list = nameMap.get(normClean)!;
     if (list.length === 1) return list[0];
     const top100Match = list.find(c => (top100Cities as any[]).some(t => t.slug === c.slug));
     if (top100Match) return top100Match;
     return list[0];
   }
 
-  // 4. Safe prefix match ONLY when the slug has no qualifiers and is unique
+  // 5. Safe prefix match ONLY when the slug has no qualifiers and is unique
   if (!clean.includes("-")) {
     for (const [k, v] of slugMap.entries()) {
       if (k.startsWith(clean + "-")) {

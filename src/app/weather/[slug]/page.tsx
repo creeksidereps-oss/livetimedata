@@ -6,6 +6,7 @@ import {
   resolveCityFromSlug, 
   isValidRegionName, 
   findSitemapMatch, 
+  parseSlugGeographicContext,
   KNOWN_ENTRIES, 
   US_STATE_TO_CODE, 
   CA_PROV_TO_CODE,
@@ -114,8 +115,9 @@ async function resolveCityWithDb(
     }
   }
 
-  // 3. Database `cities` table lookup
-  const candidateName = slugClean.replace(/-[a-z]{2}$/, "").replace(/-/g, " ");
+  // 3. Database `cities` table lookup with geographic integrity validation
+  const geoContext = parseSlugGeographicContext(slugClean);
+  const candidateName = geoContext.cityName || slugClean.replace(/-[a-z]{2}$/, "").replace(/-/g, " ");
   let dbCityName = "";
   let dbAdmin1 = "";
 
@@ -138,8 +140,29 @@ async function resolveCityWithDb(
         dbCityName = c.name;
         dbAdmin1 = c.admin1 || "";
 
-        // Only return if coordinates are valid non-zero numbers
-        if (c.latitude !== null && c.longitude !== null && !isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
+        // Integrity verification: reject corrupted rows that conflict with slug's country, state/region, or city name
+        const dbCountry = (c.country_name || (c.country_code === "US" ? "united states" : "")).toLowerCase();
+        const countryConflict = Boolean(geoContext.country && dbCountry && dbCountry !== geoContext.country);
+        const nameConflict = Boolean(geoContext.cityName && !c.name.toLowerCase().includes(geoContext.cityName.split(" ")[0]));
+
+        const qualNorm = geoContext.qualifier.toLowerCase();
+        const expectedState = US_STATE_TO_CODE[qualNorm] || (qualNorm.length === 2 ? qualNorm.toUpperCase() : "");
+        const expectedCaProv = CA_PROV_TO_CODE[qualNorm];
+        const dbAdmin = (c.admin1 || "").toLowerCase();
+        const dbAdminUpper = (c.admin1 || "").toUpperCase();
+
+        let adminConflict = false;
+        if (qualNorm && c.admin1) {
+          if (expectedState) {
+            adminConflict = (dbAdmin !== qualNorm && dbAdminUpper !== expectedState);
+          } else if (expectedCaProv) {
+            adminConflict = (dbAdmin !== qualNorm && dbAdminUpper !== expectedCaProv);
+          } else if (!/^\d+$/.test(qualNorm)) {
+            adminConflict = (dbAdmin !== qualNorm);
+          }
+        }
+
+        if (!countryConflict && !nameConflict && !adminConflict && c.latitude !== null && c.longitude !== null && !isNaN(lat) && !isNaN(lon) && (lat !== 0 || lon !== 0)) {
           return {
             name: c.name,
             admin1: c.admin1 || "",
@@ -160,15 +183,11 @@ async function resolveCityWithDb(
   // 4. Dynamic Open-Meteo Geocoding Lookup (when coordinates are missing or slug unindexed)
   if (slugClean) {
     try {
-      // Parse potential qualifiers from hyphenated slug
-      const parts = slugClean.split("-");
-      let searchCity = candidateName || slugClean;
-      let qual = "";
-      if (parts.length >= 2) {
-        searchCity = parts[0];
-        qual = parts.slice(1).join(" ");
-      } else if (dbCityName) {
-        searchCity = dbCityName;
+      let searchCity = geoContext.cityName || candidateName || slugClean;
+      let qual = geoContext.qualifier;
+      let expectedCountry = geoContext.country;
+
+      if (!qual && dbAdmin1) {
         qual = dbAdmin1;
       }
 
@@ -188,19 +207,21 @@ async function resolveCityWithDb(
           if (Array.isArray(geoData?.results) && geoData.results.length > 0) {
             let matched = geoData.results[0];
 
-            // If a qualifier (state/country) exists, match against results
-            if (qual) {
+            // If expected country or region qualifier exists, match accurately against Open-Meteo results
+            if (expectedCountry || qual) {
               const normQual = qual.toLowerCase();
               const stateCode = US_STATE_TO_CODE[normQual] || (normQual.length === 2 ? normQual.toUpperCase() : "");
               const caCode = CA_PROV_TO_CODE[normQual];
 
               const found = geoData.results.find((r: any) => {
                 const rAdmin = (r.admin1 || "").toLowerCase();
-                const rCountry = (r.country || "").toLowerCase();
+                const rCountry = (r.country || (r.country_code === "US" ? "united states" : "")).toLowerCase();
+
+                if (expectedCountry && rCountry !== expectedCountry) return false;
                 if (stateCode && r.country_code === "US" && (rAdmin === normQual || r.admin1 === stateCode)) return true;
-                if (caCode && r.country_code === "CA" && rAdmin === caCode) return true;
-                if (rAdmin === normQual || rCountry === normQual) return true;
-                return false;
+                if (caCode && r.country_code === "CA" && (rAdmin === normQual || r.admin1 === caCode)) return true;
+                if (normQual && (rAdmin === normQual || rCountry === normQual)) return true;
+                return !normQual;
               });
               if (found) matched = found;
             }
@@ -212,7 +233,9 @@ async function resolveCityWithDb(
             const lat = Number(matched.latitude);
             const lon = Number(matched.longitude);
             const timezone = matched.timezone || undefined;
-            const finalSlug = slugClean;
+
+            const sitemapMatch = findSitemapMatch(name, admin1, country, country_code);
+            const finalSlug = sitemapMatch ? sitemapMatch.slug : slugClean;
 
             if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) {
               continue;

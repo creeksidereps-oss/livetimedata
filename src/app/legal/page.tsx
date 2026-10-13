@@ -1,5 +1,19 @@
 import React from "react";
 import CompliancePageLayout from "@/components/CompliancePageLayout";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Legal & Disclaimers",
+  description: "LiveTimeData Legal Information, General Information Disclaimers, and Compliance Notices.",
+  alternates: {
+    canonical: "https://www.livetimedata.com/legal",
+  },
+  openGraph: {
+    title: "LiveTimeData Legal & Disclaimers",
+    description: "LiveTimeData Legal Information, General Information Disclaimers, and Compliance Notices.",
+    url: "https://www.livetimedata.com/legal",
+  },
+};
 
 export default function LegalPage() {
   return (

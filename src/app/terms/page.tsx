@@ -1,5 +1,19 @@
 import React from "react";
 import CompliancePageLayout from "@/components/CompliancePageLayout";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Terms of Service",
+  description: "LiveTimeData Terms of Service governing access, content use, user submissions, and platform policies.",
+  alternates: {
+    canonical: "https://www.livetimedata.com/terms",
+  },
+  openGraph: {
+    title: "LiveTimeData Terms of Service",
+    description: "LiveTimeData Terms of Service governing access, content use, user submissions, and platform policies.",
+    url: "https://www.livetimedata.com/terms",
+  },
+};
 
 export default function TermsPage() {
   return (

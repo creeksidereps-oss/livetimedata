@@ -1,5 +1,19 @@
 import React from "react";
 import CompliancePageLayout from "@/components/CompliancePageLayout";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Privacy Policy",
+  description: "LiveTimeData Privacy Policy explaining data collection, use, advertising practices, cookies, and privacy rights.",
+  alternates: {
+    canonical: "https://www.livetimedata.com/privacy",
+  },
+  openGraph: {
+    title: "LiveTimeData Privacy Policy",
+    description: "LiveTimeData Privacy Policy explaining data collection, use, advertising practices, cookies, and privacy rights.",
+    url: "https://www.livetimedata.com/privacy",
+  },
+};
 
 export default function PrivacyPage() {
   return (
