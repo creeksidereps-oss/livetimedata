@@ -26,20 +26,7 @@ export default function LegalPage() {
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">1. GENERAL INFORMATION DISCLAIMER</h3>
         <p>LiveTimeData may display, organize, generate, compile, summarize, or otherwise provide information originating from LiveTimeData, third parties, contributors, organizations, businesses, public sources, automated systems, artificial intelligence, editorial processes, or combinations of these sources.</p>
-        <p>Information may be:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>incomplete;</li>
-          <li>inaccurate;</li>
-          <li>outdated;</li>
-          <li>delayed;</li>
-          <li>estimated;</li>
-          <li>approximate;</li>
-          <li>automatically generated;</li>
-          <li>incorrectly categorized;</li>
-          <li>based on incomplete source material;</li>
-          <li>unavailable;</li>
-          <li>changed without notice.</li>
-        </ul>
+        <p>Information may be incomplete, inaccurate, outdated, delayed, estimated, approximate, automatically generated, incorrectly categorized, based on incomplete source material, unavailable, or changed without notice.</p>
         <p>LiveTimeData does not guarantee that information appearing through the Service is complete, current, error-free, verified, official, or suitable for any particular purpose.</p>
         <p>When information matters to health, safety, travel, money, legal rights, deadlines, purchases, transportation, reservations, admission, or another consequential decision, users should independently verify the information with an appropriate authoritative source.</p>
 
@@ -55,16 +42,7 @@ export default function LegalPage() {
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">3. TIME, DATE, AND TIME-ZONE INFORMATION</h3>
         <p>Time, date, and time-zone information may depend on geographic information, time-zone databases, governmental decisions, daylight-saving rules, software, network conditions, browser or device settings, third-party information, and other technical factors.</p>
         <p>Time-zone boundaries and daylight-saving practices can change.</p>
-        <p>LiveTimeData does not guarantee:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>atomic-clock accuracy;</li>
-          <li>second-by-second precision;</li>
-          <li>perfect synchronization;</li>
-          <li>correct device-clock information;</li>
-          <li>perfect daylight-saving treatment;</li>
-          <li>legally authoritative time;</li>
-          <li>uninterrupted availability of time information.</li>
-        </ul>
+        <p>LiveTimeData does not guarantee atomic-clock accuracy, second-by-second precision, perfect synchronization, correct device-clock information, perfect daylight-saving treatment, legally authoritative time, or uninterrupted availability of time information.</p>
         <p>Do not rely on LiveTimeData as the sole source for legal filing deadlines, transportation departures, financial transactions, medical schedules, examinations, appointments, business deadlines, broadcasts, or other consequential time-sensitive matters.</p>
         <p>Confirm important times and deadlines with the appropriate authoritative source.</p>
 
@@ -86,16 +64,7 @@ export default function LegalPage() {
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">6. CURRENCY AND EXCHANGE-RATE INFORMATION</h3>
         <p>Currency conversions, exchange rates, calculations, and related financial information displayed by LiveTimeData are provided for general informational purposes only.</p>
-        <p>Displayed rates may be:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>delayed;</li>
-          <li>estimated;</li>
-          <li>rounded;</li>
-          <li>indicative;</li>
-          <li>incomplete;</li>
-          <li>unavailable;</li>
-          <li>different from actual transaction rates.</li>
-        </ul>
+        <p>Displayed rates may be delayed, estimated, rounded, indicative, incomplete, unavailable, or different from actual transaction rates.</p>
         <p>Banks, payment networks, card issuers, currency exchanges, merchants, financial institutions, and other providers may use different exchange rates and may charge additional fees or commissions.</p>
         <p>LiveTimeData does not guarantee that any displayed exchange rate will be available for an actual transaction.</p>
         <p>Nothing displayed by LiveTimeData constitutes financial, investment, banking, accounting, tax, currency-trading, or other professional advice.</p>
@@ -103,24 +72,7 @@ export default function LegalPage() {
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">7. EVENTS, CALENDARS, TICKETS, AND SCHEDULES</h3>
         <p>Event information is provided for discovery and informational purposes.</p>
         <p>Event information may originate from event organizers, venues, ticket sellers, contributors, third-party sources, public information, automated systems, or other sources.</p>
-        <p>LiveTimeData does not guarantee that:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>every event occurring in a city or area is listed;</li>
-          <li>an empty date means that no real-world events exist;</li>
-          <li>an event listing has been independently verified;</li>
-          <li>a listed event will actually occur;</li>
-          <li>an event will occur at the displayed date or time;</li>
-          <li>a displayed venue is correct;</li>
-          <li>performers or participants will appear;</li>
-          <li>prices are current;</li>
-          <li>admission requirements are correct;</li>
-          <li>tickets will remain available;</li>
-          <li>seating will remain available;</li>
-          <li>reservations will be accepted;</li>
-          <li>vendor or exhibitor spaces will remain available;</li>
-          <li>an event is suitable for a particular person;</li>
-          <li>an organizer, promoter, venue, ticket seller, or other participant is legitimate or reliable.</li>
-        </ul>
+        <p>LiveTimeData does not guarantee that every event occurring in a city or area is listed, that an empty date means that no real-world events exist, that an event listing has been independently verified, that a listed event will actually occur, that an event will occur at the displayed date or time, that a displayed venue is correct, that performers or participants will appear, that prices are current, that admission requirements are correct, that tickets will remain available, that seating will remain available, that reservations will be accepted, that vendor or exhibitor spaces will remain available, that an event is suitable for a particular person, or that an organizer, promoter, venue, ticket seller, or other participant is legitimate or reliable.</p>
         <p>Events may be canceled, postponed, moved, rescheduled, modified, sold out, or otherwise changed without notice.</p>
         <p>Before traveling, purchasing tickets, making reservations, arranging accommodations, or otherwise relying on an event listing, confirm important information directly with the organizer, venue, ticket seller, or other authoritative source.</p>
         <p>Event categories are provided for convenience.</p>
@@ -131,21 +83,7 @@ export default function LegalPage() {
         <p>Some media may be supplied, hosted, operated, transmitted, or controlled by third parties.</p>
         <p>A label such as "Live," "Live Cam," "Webcam," or similar wording may refer to a live stream, periodically refreshed image, recent snapshot, or other camera feed.</p>
         <p>Such wording does not guarantee zero delay, continuous transmission, uninterrupted operation, or exact real-time imagery.</p>
-        <p>A camera or feed may be:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>delayed;</li>
-          <li>cached;</li>
-          <li>frozen;</li>
-          <li>temporarily unavailable;</li>
-          <li>permanently offline;</li>
-          <li>redirected;</li>
-          <li>moved;</li>
-          <li>mislabeled;</li>
-          <li>obstructed;</li>
-          <li>incorrectly located;</li>
-          <li>displaying older imagery;</li>
-          <li>changed by its operator without notice.</li>
-        </ul>
+        <p>A camera or feed may be delayed, cached, frozen, temporarily unavailable, permanently offline, redirected, moved, mislabeled, obstructed, incorrectly located, displaying older imagery, or changed by its operator without notice.</p>
         <p>LiveTimeData may not control what unexpectedly appears in a third-party camera feed.</p>
         <p>LiveTimeData does not guarantee that a webcam is continuously monitored, safe, appropriate, accurate, representative of current conditions, or available at any particular time.</p>
         <p>Webcam imagery should not be relied upon as official traffic, aviation, marine, weather, emergency, security, road-condition, or public-safety information.</p>
@@ -164,39 +102,12 @@ export default function LegalPage() {
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">10. ATTRACTIONS, RESTAURANTS, BUSINESSES, AND LOCAL PLACES</h3>
         <p>LiveTimeData may provide information concerning attractions, restaurants, businesses, venues, museums, parks, landmarks, entertainment, shopping, lodging, transportation, services, and other local places.</p>
         <p>This information may change frequently.</p>
-        <p>LiveTimeData does not guarantee:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>that a business or attraction is currently operating;</li>
-          <li>that operating hours are correct;</li>
-          <li>that an address is correct;</li>
-          <li>that admission is available;</li>
-          <li>that reservations are available;</li>
-          <li>that displayed prices are current;</li>
-          <li>that menus or services are current;</li>
-          <li>that a location is accessible to every visitor;</li>
-          <li>that a business provides a particular product or service;</li>
-          <li>that an attraction or business will meet a user's expectations;</li>
-          <li>that a listed location is safe;</li>
-          <li>that a listing constitutes endorsement.</li>
-        </ul>
+        <p>LiveTimeData does not guarantee that a business or attraction is currently operating, that operating hours are correct, that an address is correct, that admission is available, that reservations are available, that displayed prices are current, that menus or services are current, that a location is accessible to every visitor, that a business provides a particular product or service, that an attraction or business will meet a user's expectations, that a listed location is safe, or that a listing constitutes endorsement.</p>
         <p>Businesses may close, relocate, change ownership, change hours, modify prices, discontinue services, or otherwise change without notice.</p>
         <p>Confirm important information directly with the applicable business, attraction, venue, transportation provider, or other authoritative source before making plans.</p>
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">11. RECOMMENDATIONS, POPULAR LOCATIONS, RANKINGS, AND FEATURED CONTENT</h3>
-        <p>LiveTimeData may identify locations, events, attractions, businesses, views, photographs, webcams, or other information using descriptions such as:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>popular;</li>
-          <li>featured;</li>
-          <li>recommended;</li>
-          <li>iconic;</li>
-          <li>notable;</li>
-          <li>nearby;</li>
-          <li>hidden gem;</li>
-          <li>top;</li>
-          <li>favorite;</li>
-          <li>must-see;</li>
-          <li>similar descriptive terminology.</li>
-        </ul>
+        <p>LiveTimeData may identify locations, events, attractions, businesses, views, photographs, webcams, or other information using descriptions such as popular, featured, recommended, iconic, notable, nearby, hidden gem, top, favorite, must-see, or similar descriptive terminology.</p>
         <p>These descriptions may reflect editorial judgment, third-party information, contributor suggestions, popularity information, automated processing, commercial arrangements where appropriately disclosed, or combinations of these factors.</p>
         <p>Such descriptions do not guarantee quality, safety, suitability, popularity, availability, accessibility, value, or user satisfaction.</p>
         <p>They should not be interpreted as professional advice, certification, or an official ranking unless expressly identified as such.</p>
@@ -227,70 +138,25 @@ export default function LegalPage() {
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">15. BUSINESS, ECONOMIC, PROPERTY, AND INVESTMENT INFORMATION</h3>
         <p>LiveTimeData may provide general information concerning local economies, businesses, industries, employment, population, demographics, development, property, investment conditions, or similar subjects.</p>
         <p>Such information is informational only.</p>
-        <p>Nothing on LiveTimeData constitutes:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>investment advice;</li>
-          <li>financial advice;</li>
-          <li>legal advice;</li>
-          <li>tax advice;</li>
-          <li>accounting advice;</li>
-          <li>real-estate advice;</li>
-          <li>business consulting;</li>
-          <li>due-diligence advice;</li>
-          <li>a recommendation to buy, sell, invest, relocate, or enter into a transaction.</li>
-        </ul>
+        <p>Nothing on LiveTimeData constitutes investment advice, financial advice, legal advice, tax advice, accounting advice, real-estate advice, business consulting, due-diligence advice, or a recommendation to buy, sell, invest, relocate, or enter into a transaction.</p>
         <p>Users should consult appropriately qualified professionals and authoritative sources before making consequential business, financial, property, legal, tax, or investment decisions.</p>
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">16. TRANSPORTATION, AIRPORTS, TRAFFIC, AND TRAVEL INFORMATION</h3>
         <p>LiveTimeData may display or reference airports, transportation services, traffic information, roads, transit, travel conditions, distances, or other transportation-related information.</p>
         <p>This information may be delayed, incomplete, estimated, or unavailable.</p>
         <p>LiveTimeData does not provide official aviation, traffic-control, navigation, road-safety, or transportation-operational information.</p>
-        <p>Do not rely on LiveTimeData as the sole source for:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>flight operations;</li>
-          <li>departure or arrival times;</li>
-          <li>road closures;</li>
-          <li>navigation;</li>
-          <li>emergency routes;</li>
-          <li>traffic safety;</li>
-          <li>transit schedules;</li>
-          <li>transportation deadlines;</li>
-          <li>other safety-critical travel decisions.</li>
-        </ul>
+        <p>Do not rely on LiveTimeData as the sole source for flight operations, departure or arrival times, road closures, navigation, emergency routes, traffic safety, transit schedules, transportation deadlines, or other safety-critical travel decisions.</p>
         <p>Verify consequential transportation information with the applicable transportation provider, airport, government agency, carrier, or other authoritative source.</p>
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">17. THIRD-PARTY LINKS, EMBEDS, SERVICES, AND TRANSACTIONS</h3>
         <p>LiveTimeData may contain links to or embeds from third-party websites and services.</p>
         <p>These may include businesses, event organizers, ticket sellers, webcam operators, mapping services, media services, advertisers, merchants, travel providers, attractions, restaurants, or other third parties.</p>
-        <p>LiveTimeData does not control independent third-party:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>content;</li>
-          <li>security;</li>
-          <li>privacy practices;</li>
-          <li>prices;</li>
-          <li>products;</li>
-          <li>services;</li>
-          <li>availability;</li>
-          <li>transactions;</li>
-          <li>refunds;</li>
-          <li>fulfillment;</li>
-          <li>representations;</li>
-          <li>terms and conditions.</li>
-        </ul>
+        <p>LiveTimeData does not control independent third-party content, security, privacy practices, prices, products, services, availability, transactions, refunds, fulfillment, representations, or terms and conditions.</p>
         <p>A link, listing, embed, mention, photograph, map, event listing, advertisement, or reference does not necessarily constitute endorsement, sponsorship, certification, partnership, or affiliation.</p>
         <p>Users interact with independent third parties at their own discretion and subject to the third party's applicable terms and policies.</p>
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">18. ADVERTISING, AFFILIATE, AND SPONSORED CONTENT</h3>
-        <p>LiveTimeData may earn revenue from:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>advertisements;</li>
-          <li>sponsorships;</li>
-          <li>affiliate relationships;</li>
-          <li>referrals;</li>
-          <li>promoted placements;</li>
-          <li>partnerships;</li>
-          <li>other commercial arrangements.</li>
-        </ul>
+        <p>LiveTimeData may earn revenue from advertisements, sponsorships, affiliate relationships, referrals, promoted placements, partnerships, or other commercial arrangements.</p>
         <p>Where required, LiveTimeData will appropriately identify sponsored, paid, promotional, or affiliate relationships.</p>
         <p>Advertising appearing near editorial or informational content does not mean that an advertiser created, approved, or influenced that content unless expressly disclosed.</p>
         <p>Likewise, the presence of an advertisement does not constitute a LiveTimeData guarantee or endorsement of the advertiser's claims, products, services, prices, security, or fulfillment.</p>
@@ -317,19 +183,7 @@ export default function LegalPage() {
 
         <h3 className="text-[14px] md:text-[15px] font-bold text-white uppercase tracking-wider mt-10 mb-2">22. THIRD-PARTY AVAILABILITY AND TECHNICAL FAILURES</h3>
         <p>LiveTimeData depends in part on third-party infrastructure, data, media, advertising, communications, and other services.</p>
-        <p>Third-party services may experience:</p>
-        <ul className="list-disc pl-6 space-y-1.5">
-          <li>outages;</li>
-          <li>delays;</li>
-          <li>rate limits;</li>
-          <li>maintenance;</li>
-          <li>errors;</li>
-          <li>data changes;</li>
-          <li>discontinued services;</li>
-          <li>changed terms;</li>
-          <li>unavailable content;</li>
-          <li>technical failures.</li>
-        </ul>
+        <p>Third-party services may experience outages, delays, rate limits, maintenance, errors, data changes, discontinued services, changed terms, unavailable content, or technical failures.</p>
         <p>LiveTimeData does not guarantee the uninterrupted availability of third-party information or functionality.</p>
         <p>We may replace, change, suspend, or discontinue a provider, feature, data source, feed, embed, or other component at any time.</p>
 
