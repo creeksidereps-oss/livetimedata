@@ -57,6 +57,24 @@ export default function HomeSearch() {
   const onSelect = async (city: CityResult) => {
     setQ("");
     setShowDropdown(false);
+
+    // Immediately trigger asynchronous generation in the background so content is ready or compiling in transit
+    fetch("/api/generate-report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cityName: city.name,
+        stateName: city.admin1 || "",
+        countryName: city.country_name || (city.country_code === "US" ? "United States" : ""),
+        countryCode: city.country_code || "",
+        lat: city.latitude,
+        lng: city.longitude,
+        type: "about"
+      }),
+    }).catch(() => {});
+
+    fetch(`/api/facts/featured?city=${encodeURIComponent(city.name)}&state=${encodeURIComponent(city.admin1 || "")}&country=${encodeURIComponent(city.country_name || (city.country_code === "US" ? "United States" : ""))}&lat=${city.latitude}&lng=${city.longitude}`).catch(() => {});
+
     router.push(city.href);
   };
 

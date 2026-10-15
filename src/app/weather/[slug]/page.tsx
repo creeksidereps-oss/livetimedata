@@ -12,6 +12,7 @@ import {
   CA_PROV_TO_CODE,
   ResolvedCity 
 } from "@/lib/cityResolver";
+import { isGeographicMatch, normalizeAdminRegion } from "@/lib/geoIdentity";
 import { sql } from "@vercel/postgres";
 
 function slugify(text: string): string {
@@ -339,30 +340,41 @@ async function fetchInitialWeather(lat: number, lon: number) {
   return null;
 }
 
-async function fetchInitialReport(cityName: string, stateName?: string) {
+async function fetchInitialReport(
+  cityName: string,
+  stateName?: string,
+  countryName?: string,
+  lat?: number,
+  lon?: number
+) {
   try {
     const cName = String(cityName || "").replace(/\+/g, " ").replace(/\s+/g, " ").trim();
-    const sName = String(stateName || "").replace(/\+/g, " ").replace(/\s+/g, " ").trim();
+    if (!cName) return null;
+
     const { rows } = await sql`
-      SELECT content FROM city_reports 
-      WHERE city_name = ${cName} 
-        AND state_name = ${sName} 
+      SELECT content, state_name, lat, lng FROM city_reports 
+      WHERE LOWER(city_name) = LOWER(${cName})
         AND report_type = 'about'
-      LIMIT 1
+      ORDER BY updated_at DESC
+      LIMIT 10
     `;
-    if (rows.length > 0 && rows[0].content) {
-      return rows[0].content as string;
-    }
-    if (sName) {
-      const fallbackRows = await sql`
-        SELECT content FROM city_reports 
-        WHERE city_name = ${cName} 
-          AND report_type = 'about'
-        ORDER BY id DESC
-        LIMIT 1
-      `;
-      if (fallbackRows.rows.length > 0 && fallbackRows.rows[0].content) {
-        return fallbackRows.rows[0].content as string;
+
+    for (const row of rows) {
+      if (!row.content || row.content.length < 50) continue;
+      const isMatch = isGeographicMatch(
+        cName,
+        stateName || "",
+        countryName || "",
+        lat,
+        lon,
+        cName,
+        row.state_name || "",
+        countryName || "",
+        Number(row.lat),
+        Number(row.lng)
+      );
+      if (isMatch) {
+        return row.content as string;
       }
     }
   } catch (err) {
@@ -371,43 +383,71 @@ async function fetchInitialReport(cityName: string, stateName?: string) {
   return null;
 }
 
-async function fetchInitialFact(cityName: string, stateName?: string) {
+async function fetchInitialFact(
+  cityName: string,
+  stateName?: string,
+  countryName?: string,
+  lat?: number,
+  lon?: number
+) {
   try {
     const cName = String(cityName || "").replace(/\+/g, " ").replace(/\s+/g, " ").trim();
-    const sName = String(stateName || "").replace(/\+/g, " ").replace(/\s+/g, " ").trim();
-    const normCity = cName.toLowerCase().replace(/[^a-z0-9]/g, "");
-    let { rows } = await sql`
-      SELECT id, title, description, category, scope, source_attribution, contributed_by
+    if (!cName) return { featured: null, allFacts: [] };
+
+    const { rows } = await sql`
+      SELECT id, city_name, state_name, country_name, title, description, category, scope, source_attribution, contributed_by
       FROM city_fun_facts
-      WHERE (
-        LOWER(city_name) = LOWER(${cName})
-        OR LOWER(REGEXP_REPLACE(city_name, '[^a-zA-Z0-9]', '', 'g')) = ${normCity}
-      )
+      WHERE LOWER(city_name) = LOWER(${cName})
         AND is_approved = TRUE
       ORDER BY id ASC
-      LIMIT 10
     `;
-    if (rows.length === 0 && sName) {
+
+    const matchingFacts = rows.filter((r) =>
+      isGeographicMatch(
+        cName,
+        stateName || "",
+        countryName || "",
+        lat,
+        lon,
+        r.city_name,
+        r.state_name || "",
+        r.country_name || ""
+      )
+    );
+
+    if (matchingFacts.length > 0) {
+      const allFacts = matchingFacts.map((r, idx) => ({
+        ...r,
+        factNumber: idx + 1,
+        totalFacts: matchingFacts.length,
+      }));
+      return { featured: allFacts[0], allFacts };
+    }
+
+    if (stateName) {
+      const normAdmin = normalizeAdminRegion(stateName, countryName);
+      const stateCandidate = normAdmin.fullName || stateName;
       const stateResult = await sql`
         SELECT id, title, description, category, scope, source_attribution, contributed_by
         FROM city_fun_facts
         WHERE city_name = 'STATE_FACTS'
-          AND LOWER(state_name) = LOWER(${sName})
+          AND (
+            LOWER(state_name) = LOWER(${stateCandidate})
+            OR LOWER(state_name) = LOWER(${stateName})
+          )
           AND is_approved = TRUE
         ORDER BY id ASC
         LIMIT 10
       `;
       if (stateResult.rows.length > 0) {
-        rows = stateResult.rows;
+        const allFacts = stateResult.rows.map((r, idx) => ({
+          ...r,
+          scope: "state",
+          factNumber: idx + 1,
+          totalFacts: stateResult.rows.length,
+        }));
+        return { featured: allFacts[0], allFacts };
       }
-    }
-    if (rows.length > 0) {
-      const allFacts = rows.map((r, idx) => ({
-        ...r,
-        factNumber: idx + 1,
-        totalFacts: rows.length,
-      }));
-      return { featured: allFacts[0], allFacts };
     }
   } catch (err) {
     console.warn("SSR initial fact fetch warning:", err);
@@ -439,8 +479,8 @@ export default async function WeatherSlugPage(props: {
 
   const [initialWeather, initialReport, factData] = await Promise.all([
     fetchInitialWeather(lat, lon),
-    fetchInitialReport(cityName, stateName),
-    fetchInitialFact(cityName, stateName),
+    fetchInitialReport(cityName, stateName, country, lat, lon),
+    fetchInitialFact(cityName, stateName, country, lat, lon),
   ]);
 
   const timezone = (sp?.timezone as string) || (resolved.timezone && resolved.timezone !== "auto" ? resolved.timezone : undefined) || initialWeather?.timezone || "UTC";

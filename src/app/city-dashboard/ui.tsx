@@ -98,25 +98,24 @@ export default function Page(props: {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cityName: currentCity, stateName: currentState }),
         }).catch(() => {});
+        const currentCountry = (sp.country as string) || "United States";
+        const currentCountryCode = (sp.country_code as string) || "US";
+
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'about' }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: currentCountry, countryCode: currentCountryCode, lat: currentLat, lng: currentLon, type: 'about' }),
+        }).catch(() => {});
+        fetch(`/api/facts/featured?city=${encodeURIComponent(currentCity)}&state=${encodeURIComponent(currentState)}&country=${encodeURIComponent(currentCountry)}&lat=${currentLat}&lng=${currentLon}`).catch(() => {});
+        fetch('/api/generate-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: currentCountry, countryCode: currentCountryCode, lat: currentLat, lng: currentLon, type: 'on_this_day', timezone: (sp.timezone as string) }),
         }).catch(() => {});
         fetch('/api/generate-report', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'facts' }),
-        }).catch(() => {});
-        fetch('/api/generate-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon, type: 'on_this_day', timezone: (sp.timezone as string) }),
-        }).catch(() => {});
-        fetch('/api/generate-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: (sp.country as string) || "United States", lat: currentLat, lng: currentLon, type: 'holidays' }),
+          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: currentCountry, countryCode: currentCountryCode, lat: currentLat, lng: currentLon, type: 'holidays' }),
         }).catch(() => {});
       } catch (e) {
         console.error("Background pre-cache loop paused:", e);
@@ -229,6 +228,8 @@ export default function Page(props: {
                 cityName={cityName} 
                 stateName={searchParams?.admin1} 
                 countryName={searchParams?.country} 
+                lat={lat}
+                lon={lon}
                 initialFact={props.initialFact}
                 initialAllFacts={props.initialAllFacts}
               />
@@ -277,11 +278,11 @@ export default function Page(props: {
                 </button>
               </div>
 
-              <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} flagAtBottom={true} initialFact={props.initialFact} initialAllFacts={props.initialAllFacts} />
+              <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} lat={lat} lon={lon} flagAtBottom={true} initialFact={props.initialFact} initialAllFacts={props.initialAllFacts} />
             </div>
           </div>
           <aside id="webcams-desktop" className="hidden lg:block min-w-0">
-            <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} initialFact={props.initialFact} initialAllFacts={props.initialAllFacts} />
+            <RightRail cityName={cityName} stateName={searchParams?.admin1} countryName={searchParams?.country} lat={lat} lon={lon} initialFact={props.initialFact} initialAllFacts={props.initialAllFacts} />
           </aside>
         </div>
       </main>

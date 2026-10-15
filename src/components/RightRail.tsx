@@ -14,6 +14,8 @@ type RightRailProps = {
   cityName: string;
   stateName?: string;
   countryName?: string;
+  lat?: number;
+  lon?: number;
   flagAtBottom?: boolean;
   initialFact?: any;
   initialAllFacts?: any[];
@@ -209,7 +211,7 @@ function RailCardView({ card, detectedCountry, cityName, liveCam, onMapClick, on
   );
 }
 
-export default function RightRail({ cityName, stateName, countryName, flagAtBottom = false, initialFact, initialAllFacts }: RightRailProps) {
+export default function RightRail({ cityName, stateName, countryName, lat, lon, flagAtBottom = false, initialFact, initialAllFacts }: RightRailProps) {
   const { columnA, columnB } = buildRail(cityName);
   const [currentCountry, setCurrentCountry] = useState<string>(countryName || "United States");
   const [currentCountryCode, setCurrentCountryCode] = useState<string>("US");
@@ -363,6 +365,8 @@ export default function RightRail({ cityName, stateName, countryName, flagAtBott
           cityName={cityName} 
           stateName={stateName || currentState} 
           countryName={countryName || currentCountry} 
+          lat={lat}
+          lon={lon}
           initialFact={initialFact}
           initialAllFacts={initialAllFacts}
         />

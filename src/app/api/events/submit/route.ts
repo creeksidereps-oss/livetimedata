@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
 import { areEventsDuplicates, mergeEventRecords } from "@/lib/events/dedup";
+import { scheduleCityContentProvisioning } from "@/lib/cityContentWorkflow";
 import fs from "fs/promises";
 import path from "path";
 
@@ -273,6 +274,15 @@ export async function POST(request: Request) {
           ${socialUrls || null}, ${finalEventFlyerUrl || null}, 0, ${finalStatus}
         )
       `;
+    }
+
+    if (cityName) {
+      scheduleCityContentProvisioning({
+        cityName,
+        admin1: stateName,
+        country: "United States",
+        countryCode: "US",
+      });
     }
 
     return NextResponse.json({ ok: true });

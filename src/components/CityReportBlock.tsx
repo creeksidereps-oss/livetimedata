@@ -75,6 +75,13 @@ export default function CityReportBlock({
     };
   }, [cityName, stateName, countryName, lat, lng, timezone]);
 
+  useEffect(() => {
+    if (initialReport) {
+      setReport(initialReport);
+      setLoading(false);
+    }
+  }, [initialReport]);
+
   // Listen for navigation clicks to auto-expand
   useEffect(() => {
     const handleScrollToGuide = () => {

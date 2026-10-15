@@ -63,21 +63,22 @@ export default function CitySearch({ onSelectOverride }: { onSelectOverride?: (c
       return;
     }
 
-    // --- SILENT SAVE LOGIC START ---
-    // This sends the city data to your 'save-report' pipe in the background.
-    // We don't 'await' it because we want the user to jump to the page immediately.
-    fetch("/api/admin/save-report", {
+    // Immediately trigger asynchronous generation in the background so content is ready or compiling in transit
+    fetch("/api/generate-report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        city_name: city.name,
-        state_name: city.admin1 || city.country_name || "N/A",
-        report_content: "Initial log entry - full report pending generation.",
+        cityName: city.name,
+        stateName: city.admin1 || "",
+        countryName: city.country_name || (city.country_code === "US" ? "United States" : ""),
+        countryCode: city.country_code || "",
         lat: city.latitude,
-        lng: city.longitude
+        lng: city.longitude,
+        type: "about"
       }),
-    }).catch(err => console.error("Background save failed", err));
-    // --- SILENT SAVE LOGIC END ---
+    }).catch(() => {});
+
+    fetch(`/api/facts/featured?city=${encodeURIComponent(city.name)}&state=${encodeURIComponent(city.admin1 || "")}&country=${encodeURIComponent(city.country_name || (city.country_code === "US" ? "United States" : ""))}&lat=${city.latitude}&lng=${city.longitude}`).catch(() => {});
 
     router.push(city.href);
   };

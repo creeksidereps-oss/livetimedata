@@ -19,11 +19,13 @@ interface FeaturedFactCardProps {
   cityName: string;
   stateName?: string;
   countryName?: string;
+  lat?: number;
+  lon?: number;
   initialFact?: FactItem | null;
   initialAllFacts?: FactItem[];
 }
 
-export default function FeaturedFactCard({ cityName, stateName, countryName, initialFact, initialAllFacts }: FeaturedFactCardProps) {
+export default function FeaturedFactCard({ cityName, stateName, countryName, lat, lon, initialFact, initialAllFacts }: FeaturedFactCardProps) {
   const [featuredFact, setFeaturedFact] = useState<FactItem | null>(initialFact || null);
   const [allFacts, setAllFacts] = useState<FactItem[]>(initialAllFacts || (initialFact ? [initialFact] : []));
   const [loading, setLoading] = useState(!initialFact);
@@ -34,9 +36,16 @@ export default function FeaturedFactCard({ cityName, stateName, countryName, ini
     let isMounted = true;
     async function loadFacts() {
       if (!cityName) return;
+      // If we already have initial facts for this city, no need to refetch
+      if (initialFact && initialFact.title) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
-        const query = `/api/facts/featured?city=${encodeURIComponent(cityName)}&state=${encodeURIComponent(stateName || "")}&country=${encodeURIComponent(countryName || "")}`;
+        const latParam = typeof lat === 'number' && !isNaN(lat) ? `&lat=${lat}` : '';
+        const lonParam = typeof lon === 'number' && !isNaN(lon) ? `&lng=${lon}` : '';
+        const query = `/api/facts/featured?city=${encodeURIComponent(cityName)}&state=${encodeURIComponent(stateName || "")}&country=${encodeURIComponent(countryName || "")}${latParam}${lonParam}`;
         const res = await fetch(query);
         const data = await res.json();
         if (data.ok && isMounted) {
@@ -54,7 +63,7 @@ export default function FeaturedFactCard({ cityName, stateName, countryName, ini
     }
     loadFacts();
     return () => { isMounted = false; };
-  }, [cityName, stateName, countryName]);
+  }, [cityName, stateName, countryName, lat, lon]);
 
   const handleNextFact = (e: React.MouseEvent) => {
     e.stopPropagation();
