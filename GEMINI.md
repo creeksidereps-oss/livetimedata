@@ -24,4 +24,10 @@
   - **Policy:** Never ingest, scrape, approve, or display online events, virtual webinars, Zoom/Webex meetings, remote certificate workshops, or online-only auctions.
   - All yard sales and auctions must have a physical on-site street address.
 
+### Start Time & Curation Requirements (TBD / TBA Policy)
+- **TBD / TBA Start Times:** Never accept or publish events with unconfirmed "TBD" or "TBA" times directly to the live feed.
+- **Curation List (`pending_review`):** Tentative, placeholder, or time-unknown listings must be held in `pending_review` until an official start time is verified.
+- **Public Feed:** Strictly displays events with verified, confirmed start times or explicit full-day schedules.
+
+
 

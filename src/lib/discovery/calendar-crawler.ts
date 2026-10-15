@@ -2294,6 +2294,7 @@ export async function ingestDiscoveredEvents(
       }
 
       if (!isPastEvent) {
+        const isTbdTime = !ev.startTime || /^(tbd|tba)$/i.test(ev.startTime.trim()) || ev.startTime.includes("TBD") || ev.startTime.includes("TBA");
         const [res] = await db
           .insert(events)
           .values({
@@ -2310,7 +2311,7 @@ export async function ingestDiscoveredEvents(
             officialInfoUrl,
             eventFlyerUrl: ev.eventFlyerUrl,
             contactPhone,
-            status: "live",
+            status: isTbdTime ? "pending_review" : "live",
             source: ev.source || "Automated Calendar Crawler",
           })
           .returning({ id: events.id });

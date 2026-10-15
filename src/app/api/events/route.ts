@@ -196,6 +196,13 @@ export async function GET(request: Request) {
       ) {
         return false;
       }
+
+      // Filter out TBD / TBA times (must have a confirmed start time or All Day to appear on live feed)
+      const st = (row.start_time || "").trim().toUpperCase();
+      if (st === "TBD" || st === "TBA" || st.includes("TBD") || st.includes("TBA")) {
+        return false;
+      }
+
       return true;
     });
 
