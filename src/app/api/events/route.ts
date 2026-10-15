@@ -172,8 +172,35 @@ export async function GET(request: Request) {
       rows = result.rows;
     }
 
+    // Filter out online / virtual events (LiveTimeData is exclusively for in-person events)
+    const inPersonRows = rows.filter((row: any) => {
+      const v = (row.venue || "").trim().toLowerCase();
+      if (
+        v === "virtual" ||
+        v === "online" ||
+        v === "zoom" ||
+        v === "internet" ||
+        v.startsWith("virtual ") ||
+        v.includes("online only")
+      ) {
+        return false;
+      }
+      const t = (row.title || "").toLowerCase();
+      const d = (row.details || "").toLowerCase();
+      const u = (row.official_info_url || "").toLowerCase();
+      if (
+        /\b(webinar|online event|virtual event|zoom meeting|zoom call|livestream|virtual workshop|online workshop|virtual seminar|online seminar|play free online|online only auction|virtual auction)\b/i.test(`${t} ${d} ${v} ${u}`) ||
+        /\b(online-seminar|virtual-seminar|zoom\.us|webex\.com|teams\.microsoft\.com)\b/i.test(u) ||
+        /\b(small[- ]business[- ]center.*(?:online|webinar|virtual))\b/i.test(`${t} ${d} ${u}`) ||
+        /\b(build your small bu[siness]* website with ai|small business startup certificate)\b/i.test(t)
+      ) {
+        return false;
+      }
+      return true;
+    });
+
     // Format them correctly for the frontend
-    const rawEvents = rows.map((row: any) => ({
+    const rawEvents = inPersonRows.map((row: any) => ({
       id: row.id,
       title: row.title,
       category: row.category,

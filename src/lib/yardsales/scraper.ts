@@ -415,9 +415,17 @@ export async function scrapeYardSaleTreasureMapForCity(
       let eventDate = new Date().toISOString().slice(0, 10);
       const dateMatch = rawDesc.match(/(\d{1,2})\/(\d{1,2})/);
       if (dateMatch) {
-        const mon = dateMatch[1].padStart(2, "0");
-        const day = dateMatch[2].padStart(2, "0");
-        eventDate = `${new Date().getFullYear()}-${mon}-${day}`;
+        let p1 = parseInt(dateMatch[1], 10);
+        let p2 = parseInt(dateMatch[2], 10);
+        let mon = p1;
+        let day = p2;
+        if (p1 > 12 && p2 <= 12) {
+          mon = p2;
+          day = p1;
+        }
+        if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
+          eventDate = `${new Date().getFullYear()}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        }
       }
 
       // Extract start time

@@ -182,6 +182,44 @@ export function isGenericCalendarHeader(text?: string | null): boolean {
   );
 }
 
+/**
+ * Detects whether an event is an online/virtual seminar, webinar, or remote meeting.
+ * LiveTimeData is exclusively for in-person events; online events are strictly excluded.
+ */
+export function isOnlineOrVirtualEvent(
+  title?: string,
+  details?: string,
+  venue?: string,
+  url?: string
+): boolean {
+  const combined = `${title || ""} ${details || ""} ${venue || ""} ${url || ""}`.toLowerCase();
+  
+  // Explicit online venue
+  const cleanVenue = (venue || "").trim().toLowerCase();
+  if (
+    cleanVenue === "virtual" ||
+    cleanVenue === "online" ||
+    cleanVenue === "zoom" ||
+    cleanVenue === "internet" ||
+    cleanVenue === "virtual meeting" ||
+    cleanVenue.startsWith("virtual ") ||
+    cleanVenue.includes("online only")
+  ) {
+    return true;
+  }
+
+  // Keywords in title, details, venue, or URL
+  if (
+    /\b(webinar|online event|virtual event|zoom meeting|zoom call|livestream|live stream|virtual workshop|online workshop|virtual seminar|online seminar|play free online|virtual conference|online conference|online only auction|virtual auction)\b/i.test(combined) ||
+    /\b(online-seminar|virtual-seminar|online-workshop|virtual-workshop|zoom\.us|webex\.com|teams\.microsoft\.com)\b/i.test(combined) ||
+    /\b(small[- ]business[- ]center.*(?:online|webinar|virtual))\b/i.test(combined) ||
+    /\b(build your small bu[siness]* website with ai|small business startup certificate)\b/i.test(combined)
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Parses a readable 12-hour time string from an ISO or date-time string.
@@ -2248,6 +2286,11 @@ export async function ingestDiscoveredEvents(
             }
           }
         }
+      }
+
+      // STRICT FILTER: LiveTimeData does NOT do online / virtual events, webinars, or Zoom meetings
+      if (isOnlineOrVirtualEvent(ev.title, cleanDetails, venue, officialInfoUrl || ev.source)) {
+        continue;
       }
 
       if (!isPastEvent) {
