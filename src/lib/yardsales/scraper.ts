@@ -18,6 +18,25 @@ export interface ScrapedYardSale {
   source?: string;
 }
 
+export function cleanYardSaleText(raw?: string): string {
+  if (!raw) return "";
+  return raw
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&hellip;/gi, "...")
+    .replace(/&rarr;/gi, "")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#039;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/Read\s*More\s*(\.{3}|…|→)?/gi, "")
+    .replace(/\.\.\.\s*\.\.\./g, "...")
+    .replace(/[\uE000-\uF8FF]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function scrapeYardSaleSearchForCity(
   citySlug: string,
   stateSlug: string
@@ -49,7 +68,7 @@ export async function scrapeYardSaleSearchForCity(
       const titleMatch = chunk.match(/<h2 itemprop="name">\s*<a itemprop="url" href="([^"]+)">([^<]+)<\/a>/i);
       if (!titleMatch) continue;
       const saleUrl = titleMatch[1].trim();
-      const title = titleMatch[2].trim();
+      const title = cleanYardSaleText(titleMatch[2]);
 
       // Coordinates
       const latMatch = chunk.match(/itemprop="latitude" content="([^"]+)"/i);
@@ -61,9 +80,9 @@ export async function scrapeYardSaleSearchForCity(
       const streetMatch = chunk.match(/itemprop="streetAddress">([^<]+)<\/span>/i);
       const cityMatch = chunk.match(/itemprop="addressLocality">([^<]+)<\/span>/i);
       const regionMatch = chunk.match(/itemprop="addressRegion">([^<]+)<\/span>/i);
-      const streetAddress = streetMatch ? streetMatch[1].trim() : undefined;
-      const locality = cityMatch ? cityMatch[1].trim() : citySlug;
-      const region = regionMatch ? regionMatch[1].trim() : stateSlug.toUpperCase();
+      const streetAddress = streetMatch ? cleanYardSaleText(streetMatch[1]) : undefined;
+      const locality = cityMatch ? cleanYardSaleText(cityMatch[1]) : citySlug;
+      const region = regionMatch ? cleanYardSaleText(regionMatch[1]) : stateSlug.toUpperCase();
 
       // Dates
       const startMatch = chunk.match(/itemprop="startDate" content="([^"]+)"/i);
@@ -73,8 +92,9 @@ export async function scrapeYardSaleSearchForCity(
 
       // Description
       const descMatch = chunk.match(/itemprop="description"[^>]*>([\s\S]*?)<\/span>/i);
-      let description = descMatch ? descMatch[1].replace(/<[^>]+>/g, "").trim() : title;
-      description = description.replace(/\s+/g, " ").slice(0, 800);
+      let description = descMatch ? cleanYardSaleText(descMatch[1]) : title;
+      if (!description) description = title;
+      description = description.slice(0, 800);
 
       // Photo
       const photoMatch =
@@ -131,15 +151,15 @@ export async function scrapeGsalrForCity(
     const streetPattern = /\d+\s+([a-zA-Z0-9#.\s]+)/;
 
     $('[itemtype*="Event"]').each((_, el) => {
-      const title = $(el).find('[itemprop="name"]').text().trim();
+      const title = cleanYardSaleText($(el).find('[itemprop="name"]').text());
       const saleUrl = $(el).find('[itemprop="url"]').attr("href") || "";
-      const rawStreet = $(el).find('[itemprop="streetAddress"]').text().replace(/[^\x20-\x7E]/g, "").trim();
-      const locality = $(el).find('[itemprop="addressLocality"]').text().trim();
-      const region = $(el).find('[itemprop="addressRegion"]').text().trim();
+      const rawStreet = cleanYardSaleText($(el).find('[itemprop="streetAddress"]').text());
+      const locality = cleanYardSaleText($(el).find('[itemprop="addressLocality"]').text());
+      const region = cleanYardSaleText($(el).find('[itemprop="addressRegion"]').text());
       const postalCode = $(el).find('[itemprop="postalCode"]').text().trim();
       const startDate = $(el).find('[itemprop="startDate"]').attr("content") || new Date().toISOString().slice(0, 10);
       const photoUrl = $(el).find('img[itemprop="image"]').attr("src");
-      const desc = $(el).find(".sale-desc, .desc").text().trim() || title;
+      const desc = cleanYardSaleText($(el).find(".sale-desc, .desc").text()) || title;
 
       // MANDATORY ADDRESS ENFORCEMENT: Reject listings without a valid street number
       if (!rawStreet || !streetPattern.test(rawStreet)) {
@@ -200,13 +220,13 @@ export async function scrapeEstateSalesForCity(
         if (!raw) return;
         const data = JSON.parse(raw);
         if (data["@type"] === "SaleEvent") {
-          const title = data.name;
+          const title = cleanYardSaleText(data.name);
           const saleUrl = data.url;
           const loc = data.location || {};
           const addr = loc.address || {};
-          const streetAddress = addr.streetAddress;
-          const locality = addr.addressLocality || citySlug;
-          const region = addr.addressRegion || stateSlug.toUpperCase();
+          const streetAddress = cleanYardSaleText(addr.streetAddress);
+          const locality = cleanYardSaleText(addr.addressLocality) || citySlug;
+          const region = cleanYardSaleText(addr.addressRegion) || stateSlug.toUpperCase();
           const postalCode = addr.postalCode;
           const startDate = data.startDate ? data.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
           const endDate = data.endDate ? data.endDate.slice(0, 10) : startDate;
@@ -222,6 +242,9 @@ export async function scrapeEstateSalesForCity(
             }
           }
 
+          const rawDesc = cleanYardSaleText(data.description);
+          const finalDesc = (rawDesc && rawDesc !== "Estate Sale" ? rawDesc : title).slice(0, 800);
+
           sales.push({
             title,
             url: saleUrl,
@@ -231,9 +254,9 @@ export async function scrapeEstateSalesForCity(
             postalCode,
             startDate,
             endDate,
-            description: (data.description && data.description !== "Estate Sale" ? data.description : title).slice(0, 800),
+            description: finalDesc,
             photoUrl,
-            hostingEntity: data.organizer?.name || "Estate Liquidation Specialist",
+            hostingEntity: cleanYardSaleText(data.organizer?.name) || "Estate Liquidation Specialist",
             source: "EstateSales.NET",
           });
         }
@@ -374,16 +397,16 @@ export async function scrapeYardSaleTreasureMapForCity(
 
     $(".grid-item").each((_, el) => {
       const href = $(el).find("a.sale_url").attr("href") || "";
-      const rawTitle = $(el).find(".sale_title").text().replace(/[\uE000-\uF8FF]/g, "").trim();
-      const rawDesc = $(el).find(".sale_desc").text().replace(/\s+/g, " ").replace(/[\uE000-\uF8FF]/g, "").trim();
+      const rawTitle = cleanYardSaleText($(el).find(".sale_title").text());
+      const rawDesc = cleanYardSaleText($(el).find(".sale_desc").text());
 
       // Match /US/{State}/{City}/{Street}/{Id}/
       const urlMatch = href.match(/\/US\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(\d+)\//i);
       if (!urlMatch) return;
 
-      const statePart = urlMatch[1].replace(/-/g, " ");
-      const cityPart = urlMatch[2].replace(/-/g, " ");
-      const streetPart = urlMatch[3].replace(/-/g, " ");
+      const statePart = cleanYardSaleText(urlMatch[1].replace(/-/g, " "));
+      const cityPart = cleanYardSaleText(urlMatch[2].replace(/-/g, " "));
+      const streetPart = cleanYardSaleText(urlMatch[3].replace(/-/g, " "));
 
       // MANDATORY ADDRESS ENFORCEMENT: Reject listings without a valid street number
       if (!streetPattern.test(streetPart)) return;
