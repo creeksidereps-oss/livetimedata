@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { areEventsDuplicates, mergeEventRecords } from "@/lib/events/dedup";
+import { scheduleCityContentProvisioning } from "@/lib/cityContentWorkflow";
 import fs from "fs/promises";
 import path from "path";
 
@@ -282,6 +283,23 @@ export async function POST(request: Request) {
           console.warn("Source lifecycle queue warning:", srcErr);
         }
       }
+    }
+
+    // Non-blocking city content provisioning for all distinct cities in this quick-post batch
+    const distinctCities = new Map<string, { cityName: string; stateName?: string }>();
+    for (const e of incomingEvents) {
+      if (e.cityName) {
+        const k = `${e.cityName.toLowerCase()}|${(e.stateName || "").toLowerCase()}`;
+        if (!distinctCities.has(k)) distinctCities.set(k, { cityName: e.cityName, stateName: e.stateName });
+      }
+    }
+    for (const c of distinctCities.values()) {
+      scheduleCityContentProvisioning({
+        cityName: c.cityName,
+        admin1: c.stateName,
+        country: "United States",
+        countryCode: "US",
+      });
     }
 
     return NextResponse.json({

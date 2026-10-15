@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
+import { scheduleCityContentProvisioning } from "@/lib/cityContentWorkflow";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function GET(req: Request) {
   try {
@@ -43,6 +44,15 @@ export async function POST(req: Request) {
       INSERT INTO webcams (city_name, state_name, country, kind, title, source, status, embed_url, display_order, is_premium)
       VALUES (${city_name}, ${state_name}, ${country}, ${kind}, ${title}, ${source}, ${status}, ${embed_url}, 100, true)
     `;
+
+    if (city_name) {
+      scheduleCityContentProvisioning({
+        cityName: city_name,
+        admin1: state_name,
+        country: country || "United States",
+      });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { sql } from "@vercel/postgres";
+import { scheduleCityContentProvisioning } from "@/lib/cityContentWorkflow";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
     const data = await req.json();
-
-    // In the future, this would be routed through Gemini for security checks first.
-    // For now, it inserts directly into webcams with a 'pending_review' status.
 
     await sql`
       INSERT INTO webcams (
@@ -25,6 +23,14 @@ export async function POST(req: Request) {
         ${data.isPremium || false}
       )
     `;
+
+    if (data.cityName) {
+      scheduleCityContentProvisioning({
+        cityName: data.cityName,
+        admin1: data.stateName,
+        country: data.country || "United States",
+      });
+    }
 
     return NextResponse.json({ ok: true, message: "Webcam submitted successfully for review." });
   } catch (error: any) {
