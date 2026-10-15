@@ -580,6 +580,15 @@ export async function extractEventsFromUrl(
               return;
             }
 
+            // Strict Guard: Exclude academic / administrative deadlines
+            if (
+              /\b(refund|last day to withdraw|withdraw deadline|grades due|session begin|session end|last day to receive|tuition due|payment deadline|add\/drop|drop\/add|census date|grade of ["']?w["']?|withdrawal processing)\b/i.test(
+                title
+              )
+            ) {
+              return;
+            }
+
             const desc = cleanHtmlEntitiesAndTags(obj.description || "");
             const startDateStr = obj.startDate;
             const eventDate = new Date(startDateStr);
@@ -1945,6 +1954,16 @@ export async function ingestDiscoveredEvents(
       // Guard: Exclude operational / business / facility hours (e.g. "Hours of Operation")
       if (
         /\b(hours of operation|operating hours|facility hours|open daily|park hours|visitor center hours|guest services hours|box office hours|business hours)\b/i.test(
+          ev.title
+        )
+      ) {
+        stats.skipped++;
+        continue;
+      }
+
+      // Guard: Exclude academic / administrative calendar deadlines (refunds, withdrawals, grades due, term cutoffs)
+      if (
+        /\b(refund|last day to withdraw|withdraw deadline|grades due|session begin|session end|last day to receive|tuition due|payment deadline|add\/drop|drop\/add|census date|grade of ["']?w["']?|withdrawal processing)\b/i.test(
           ev.title
         )
       ) {
