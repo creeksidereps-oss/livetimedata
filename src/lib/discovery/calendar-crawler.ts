@@ -2150,20 +2150,21 @@ export async function ingestDiscoveredEvents(
 
       // 1. Auto-provision city if not yet in cities table
       const cityCheck = await db
-        .select({ slug: cities.slug })
+        .select({ slug: cities.slug, countryCode: cities.countryCode })
         .from(cities)
         .where(sql`LOWER(${cities.name}) = ${normCity}`)
         .limit(1);
 
       if (cityCheck.length === 0 && ev.cityName) {
         const citySlug = ev.cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        const inferredCountry = (ev as any).countryCode || (ev.stateName && /^[A-Z]{2}$/.test(ev.stateName) ? "US" : null);
         await db
           .insert(cities)
           .values({
             name: ev.cityName,
             slug: citySlug,
             admin1: ev.stateName || null,
-            countryCode: (ev as any).countryCode || null,
+            countryCode: inferredCountry,
             countryName: (ev as any).countryName || null,
             latitude: ev.latitude || null,
             longitude: ev.longitude || null,
@@ -2295,12 +2296,14 @@ export async function ingestDiscoveredEvents(
 
       if (!isPastEvent) {
         const isTbdTime = !ev.startTime || /^(tbd|tba)$/i.test(ev.startTime.trim()) || ev.startTime.includes("TBD") || ev.startTime.includes("TBA");
+        const resolvedCountryCode = (ev as any).countryCode || cityCheck[0]?.countryCode || (context as any)?.countryCode || (stateName && /^[A-Z]{2}$/.test(stateName) ? "US" : null);
         const [res] = await db
           .insert(events)
           .values({
             title: ev.title,
             cityName,
             stateName,
+            countryCode: resolvedCountryCode,
             category: ev.category,
             venue,
             venueAddress,

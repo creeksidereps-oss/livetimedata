@@ -102,6 +102,7 @@ export const events = pgTable("events", {
   title: text("title").notNull(),
   cityName: text("city_name").notNull(),
   stateName: text("state_name"),
+  countryCode: text("country_code"),
   franchiseId: integer("franchise_id"),
   category: text("category").notNull(), 
   venue: text("venue").notNull(),
