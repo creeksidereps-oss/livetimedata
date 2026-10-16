@@ -382,27 +382,57 @@ export function mergeEventRecords<T extends EventLike>(master: T, incoming: T): 
 export function deduplicateEventList<T extends EventLike>(events: T[]): T[] {
   if (!events || events.length <= 1) return events;
 
-  const deduped: T[] = [];
-  const processedIndices = new Set<number>();
+  // 1. Group events by date string (YYYY-MM-DD) so events on different days are never compared
+  const buckets = new Map<string, T[]>();
 
-  for (let i = 0; i < events.length; i++) {
-    if (processedIndices.has(i)) continue;
-
-    let currentMaster = { ...events[i] };
-
-    for (let j = i + 1; j < events.length; j++) {
-      if (processedIndices.has(j)) continue;
-
-      const candidate = events[j];
-      const match = areEventsDuplicates(currentMaster, candidate);
-
-      if (match.isDuplicate) {
-        currentMaster = mergeEventRecords(currentMaster, candidate);
-        processedIndices.add(j);
+  for (const ev of events) {
+    let dateKey = 'no-date';
+    const rawDate = ev.eventDate || ev.event_date;
+    if (rawDate) {
+      if (typeof rawDate === 'string') {
+        dateKey = rawDate.slice(0, 10);
+      } else if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+        dateKey = rawDate.toISOString().slice(0, 10);
       }
     }
 
-    deduped.push(currentMaster);
+    let bucket = buckets.get(dateKey);
+    if (!bucket) {
+      bucket = [];
+      buckets.set(dateKey, bucket);
+    }
+    bucket.push(ev);
+  }
+
+  const deduped: T[] = [];
+
+  // 2. Run pairwise deduplication within each date bucket
+  for (const bucket of buckets.values()) {
+    if (bucket.length <= 1) {
+      deduped.push(...bucket);
+      continue;
+    }
+
+    const processedIndices = new Set<number>();
+    for (let i = 0; i < bucket.length; i++) {
+      if (processedIndices.has(i)) continue;
+
+      let currentMaster = { ...bucket[i] };
+
+      for (let j = i + 1; j < bucket.length; j++) {
+        if (processedIndices.has(j)) continue;
+
+        const candidate = bucket[j];
+        const match = areEventsDuplicates(currentMaster, candidate);
+
+        if (match.isDuplicate) {
+          currentMaster = mergeEventRecords(currentMaster, candidate);
+          processedIndices.add(j);
+        }
+      }
+
+      deduped.push(currentMaster);
+    }
   }
 
   return deduped;

@@ -1060,7 +1060,7 @@ async function ingestCrawlResults(source, crawl) {
               scrape_interval_days, scrape_horizon_months, status,
               next_scrape_due, created_at, updated_at
             ) VALUES (
-              ${ev.performerUrl}, ${`${ev.performerName} Tour`}, 'artist_tour', ${ev.cityName}, ${ev.stateName || 'NC'},
+              ${ev.performerUrl}, ${`${ev.performerName} Tour`}, 'artist_tour', ${ev.cityName || null}, ${ev.stateName || null},
               30, 12, 'active', NOW(), NOW(), NOW()
             )
             ON CONFLICT (url) DO UPDATE SET next_scrape_due = NOW()
@@ -1090,7 +1090,7 @@ async function ingestCrawlResults(source, crawl) {
                   scrape_interval_days, scrape_horizon_months, status,
                   next_scrape_due, created_at, updated_at
                 ) VALUES (
-                  ${tourUrl}, ${`${ev.performerName} Tour`}, 'artist_tour', ${ev.cityName}, ${ev.stateName || 'NC'},
+                  ${tourUrl}, ${`${ev.performerName} Tour`}, 'artist_tour', ${ev.cityName || null}, ${ev.stateName || null},
                   30, 12, 'active', NOW(), NOW(), NOW()
                 )
                 ON CONFLICT (url) DO UPDATE SET next_scrape_due = NOW()
@@ -1120,7 +1120,7 @@ async function ingestCrawlResults(source, crawl) {
           scrape_interval_days, scrape_horizon_months, status,
           next_scrape_due, created_at, updated_at
         ) VALUES (
-          ${childUrl}, ${childName}, 'venue', ${source.city_name || 'Raleigh'}, ${source.state_name || 'NC'},
+          ${childUrl}, ${childName}, 'venue', ${source.city_name || null}, ${source.state_name || null},
           30, 6, 'active', NOW(), NOW(), NOW()
         )
         ON CONFLICT DO NOTHING
@@ -1138,7 +1138,7 @@ async function ingestCrawlResults(source, crawl) {
           email, category, city_name, state_name, country_code,
           status, source, metadata, created_at, updated_at
         ) VALUES (
-          ${em}, 'Venues & Organizers', ${source.city_name || null}, ${source.state_name || 'NC'}, 'US',
+          ${em}, 'Venues & Organizers', ${source.city_name || null}, ${source.state_name || null}, 'US',
           'active', ${source.url}, ${JSON.stringify({ sourceUrl: source.url, venue: source.name })}, NOW(), NOW()
         )
         ON CONFLICT DO NOTHING

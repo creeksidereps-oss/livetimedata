@@ -1559,14 +1559,24 @@ function InlineEventModal({
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "#334155" }}>
                     <span style={{ fontSize: "15px" }}>🌐</span>
                     <span style={{ fontWeight: 700, color: "#0f172a" }}>Official Website:</span>
-                    <a 
-                      href={verifiedHostWebsite} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ color: "#4f46e5", textDecoration: "underline", fontWeight: 700, wordBreak: "break-all" }}
+                    <button
+                      type="button"
+                      onClick={() => setIframeUrl(verifiedHostWebsite)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        color: "#4f46e5",
+                        textDecoration: "underline",
+                        fontWeight: 700,
+                        wordBreak: "break-all",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        fontSize: "13px"
+                      }}
                     >
                       {formatDisplayHostUrl(verifiedHostWebsite)} &rarr;
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>
@@ -3856,10 +3866,9 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                     </div>
                   </div>
                   {searchResults.entity.website_url && (
-                    <a
-                      href={searchResults.entity.website_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => setIframeUrl(searchResults.entity.website_url!)}
                       style={{
                         fontSize: "11px",
                         fontWeight: 700,
@@ -3867,11 +3876,13 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                         textDecoration: "underline",
                         padding: "4px 8px",
                         background: "#dcfce7",
-                        borderRadius: "6px"
+                        borderRadius: "6px",
+                        border: "none",
+                        cursor: "pointer"
                       }}
                     >
                       Official Page ↗
-                    </a>
+                    </button>
                   )}
                 </div>
               )}
