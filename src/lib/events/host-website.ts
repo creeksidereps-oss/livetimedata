@@ -40,12 +40,22 @@ const BLACKLISTED_DOMAINS = [
   "yelp.com", "tripadvisor.com", "foursquare.com", "citysearch.com",
   "thrillist.com", "eventsnearhere.com", "spinbackpromos.com",
 
+  // Yard Sale, Garage Sale & Estate Sale Aggregators (Scraped sources, not official host websites)
+  "estatesales.net", "estatesales.org", "estatesale.com", "estatesales.com",
+  "yardsalesearch.com", "gsalr.com", "garagesalefinder.com", "yardsales.net",
+  "yardsaletreasuremap.com", "storagetreasures.com", "craigslist.org",
+  "consignmentmommies.com", "garagesaletracker.com", "auctionzip.com",
+  "hibid.com", "proxibid.com", "equipmentfacts.com",
+
   // Link Shorteners / Redirectors
   "bit.ly", "tinyurl.com", "goo.gl", "ow.ly", "buff.ly", "is.gd",
   "linktr.ee", "cutt.ly", "rebrand.ly", "qrco.de",
 
   // Internal LiveTimeData
-  "livetimedata.com", "localhost"
+  "livetimedata.com", "localhost",
+
+  // WAF / 403 / Anti-bot Bot Blocking Domains that cannot be proxied in modal
+  "downtownstatesville.com", "statesvillenc.com"
 ];
 
 const BLACKLISTED_PATH_PATTERNS = [
@@ -60,12 +70,21 @@ const BLACKLISTED_PATH_PATTERNS = [
 ];
 
 /**
+ * Master killswitch to hide all official website links site-wide.
+ * Set to true per user directive to hide all official links temporarily.
+ * When ready, toggle to false to unhide and restore official website links.
+ */
+export const HIDE_ALL_OFFICIAL_LINKS = true;
+
+/**
  * Returns true if the given URL is a legitimate official host or venue website
  * and NOT a social media network, ticket broker, calendar aggregator, or link shortener.
  */
 export function isLegitimateHostWebsite(url?: string | null): boolean {
+  if (HIDE_ALL_OFFICIAL_LINKS) return false;
   if (!url || typeof url !== "string") return false;
   const trimmed = url.trim();
+  if (!trimmed || trimmed === "null" || trimmed === "undefined" || trimmed === "NULL") return false;
   if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return false;
 
   try {
@@ -119,14 +138,17 @@ export function isBlacklistedHostName(name?: string | null): boolean {
 /**
  * Formats a verified host URL cleanly for user display (e.g. "usghostadventures.com/charlotte-ghost-tour")
  */
-export function formatDisplayHostUrl(rawUrl: string): string {
+export function formatDisplayHostUrl(rawUrl?: string | null): string {
+  if (!rawUrl || typeof rawUrl !== "string") return "";
+  const trimmed = rawUrl.trim();
+  if (!trimmed || trimmed === "null" || trimmed === "undefined" || trimmed === "NULL") return "";
   try {
-    const u = new URL(rawUrl);
+    const u = new URL(trimmed);
     const domain = u.hostname.replace(/^www\./, "");
     const path = u.pathname === "/" ? "" : u.pathname.replace(/\/$/, "");
     const full = `${domain}${path}`;
     return full.length > 55 ? `${full.slice(0, 52)}...` : full;
   } catch {
-    return rawUrl;
+    return "";
   }
 }

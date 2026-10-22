@@ -6,7 +6,7 @@ import AddToCalendarButton from "./AddToCalendarButton";
 import PremiumEventModal from "./PremiumEventModal";
 import ShareButton from "./ShareButton";
 import { getLocalizedCategoryLabel } from "@/lib/locale-categories";
-import { isLegitimateHostWebsite, formatDisplayHostUrl } from "@/lib/events/host-website";
+import { isLegitimateHostWebsite, formatDisplayHostUrl, HIDE_ALL_OFFICIAL_LINKS } from "@/lib/events/host-website";
 
 type EventsBlockProps = {
   cityName: string;
@@ -1140,10 +1140,21 @@ function InlineEventModal({
     return null;
   })();
 
+  const isYardOrEstateSale = (() => {
+    const cats = ((ev.categories || []) as string[]).join(" ").toLowerCase();
+    const rawCat = (((ev as any).category || "") as string).toLowerCase();
+    const title = (ev.title || "").toLowerCase();
+    const combined = `${cats} ${rawCat} ${title}`;
+    return combined.includes("yard") || combined.includes("garage") || combined.includes("estate sale") || 
+           combined.includes("rummage") || combined.includes("tag sale") || combined.includes("moving sale") ||
+           combined.includes("storage auction");
+  })();
+
   const verifiedHostWebsite = (() => {
+    // Strictly omit official website links on yard/garage/estate sales to keep user traffic in-modal
+    if (isYardOrEstateSale) return null;
     if (isLegitimateHostWebsite(ev.official_info_url)) return ev.official_info_url;
     if (isLegitimateHostWebsite(ev.registration_url)) return ev.registration_url;
-    if (ev.source?.startsWith("http") && isLegitimateHostWebsite(ev.source)) return ev.source;
     return null;
   })();
 
@@ -3865,7 +3876,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                       {(searchResults.entity.entity_type || "performer").toUpperCase()} · {searchResults.entity.city_name ? `${searchResults.entity.city_name}, ${searchResults.entity.state_name}` : "Directory Entity"}
                     </div>
                   </div>
-                  {searchResults.entity.website_url && (
+                  {!HIDE_ALL_OFFICIAL_LINKS && searchResults.entity.website_url && (
                     <button
                       type="button"
                       onClick={() => setIframeUrl(searchResults.entity.website_url!)}
