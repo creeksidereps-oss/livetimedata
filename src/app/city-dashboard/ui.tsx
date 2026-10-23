@@ -107,11 +107,7 @@ export default function Page(props: {
           body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: currentCountry, countryCode: currentCountryCode, lat: currentLat, lng: currentLon, type: 'about' }),
         }).catch(() => {});
         fetch(`/api/facts/featured?city=${encodeURIComponent(currentCity)}&state=${encodeURIComponent(currentState)}&country=${encodeURIComponent(currentCountry)}&lat=${currentLat}&lng=${currentLon}`).catch(() => {});
-        fetch('/api/generate-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: currentCountry, countryCode: currentCountryCode, lat: currentLat, lng: currentLon, type: 'on_this_day', timezone: (sp.timezone as string) }),
-        }).catch(() => {});
+        // On this day pre-fetch temporarily disabled per user request
         // Holiday guide pre-fetch temporarily disabled per user request
       } catch (e) {
         console.error("Background pre-cache loop paused:", e);

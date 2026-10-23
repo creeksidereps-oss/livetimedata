@@ -177,8 +177,8 @@ async function handleGenerate(params: {
     }
 
     // 2. PRODUCTION AI ENGINE AUTONOMOUS GENERATION
-    // Policy Guard: Holiday guide AI pulls are temporarily disabled to conserve resources.
-    if (type === 'holidays') {
+    // Policy Guard: Holiday guide & On This Day AI pulls are temporarily disabled to conserve resources.
+    if (type === 'holidays' || type === 'on_this_day') {
       const fallback = generateFallbackReport(cityName, effectiveState, countryName, type, safeLat, safeLng, timezone);
       return { report: fallback, cached: false, fallback: true };
     }
