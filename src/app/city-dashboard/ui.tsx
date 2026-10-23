@@ -112,11 +112,7 @@ export default function Page(props: {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: currentCountry, countryCode: currentCountryCode, lat: currentLat, lng: currentLon, type: 'on_this_day', timezone: (sp.timezone as string) }),
         }).catch(() => {});
-        fetch('/api/generate-report', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName: currentCity, stateName: currentState, countryName: currentCountry, countryCode: currentCountryCode, lat: currentLat, lng: currentLon, type: 'holidays' }),
-        }).catch(() => {});
+        // Holiday guide pre-fetch temporarily disabled per user request
       } catch (e) {
         console.error("Background pre-cache loop paused:", e);
       }

@@ -177,6 +177,11 @@ async function handleGenerate(params: {
     }
 
     // 2. PRODUCTION AI ENGINE AUTONOMOUS GENERATION
+    // Policy Guard: Holiday guide AI pulls are temporarily disabled to conserve resources.
+    if (type === 'holidays') {
+      const fallback = generateFallbackReport(cityName, effectiveState, countryName, type, safeLat, safeLng, timezone);
+      return { report: fallback, cached: false, fallback: true };
+    }
     const apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_AI_KEY || process.env.GEMINI_KEY || "").trim().replace(/^["']|["']$/g, "");
     const todayStr = getFormattedDate(timezone);
     let prompt = "";
