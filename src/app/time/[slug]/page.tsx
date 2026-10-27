@@ -14,6 +14,7 @@ import {
 } from "@/lib/cityResolver";
 import { isGeographicMatch, normalizeAdminRegion } from "@/lib/geoIdentity";
 import { sql } from "@vercel/postgres";
+import { isIndexableCitySlug } from "@/lib/indexableCities";
 
 function slugify(text: string): string {
   return String(text || "")
@@ -313,6 +314,8 @@ export async function generateMetadata(
     alternates: {
       canonical: canonicalUrl,
     },
+    // Only the curated city set is submitted for indexing; all other city pages stay live but noindex.
+    robots: isIndexableCitySlug(resolved.slug) ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       title,
       description,

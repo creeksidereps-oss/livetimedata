@@ -17,9 +17,18 @@ interface Props {
   variant?: "dark" | "light";
 }
 
+function formatCityTime(timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date());
+  } catch {
+    return "";
+  }
+}
+
 export default function CityGridCard({ city, variant = "light" }: Props) {
-  const [timeStr, setTimeStr] = useState("");
-  const [weatherStr, setWeatherStr] = useState("--°");
+  // Render the time on the server too, so crawlers see real content instead of a loader.
+  const [timeStr, setTimeStr] = useState(() => formatCityTime(city.timezone));
+  const [weatherStr, setWeatherStr] = useState("");
   const cardRef = React.useRef<HTMLAnchorElement>(null);
   const isLight = variant === "light";
 
@@ -71,16 +80,8 @@ export default function CityGridCard({ city, variant = "light" }: Props) {
     return () => observer.disconnect();
   }, [city.latitude, city.longitude]);
 
-  const queryParams = new URLSearchParams({
-    name: city.name,
-    lat: (city.latitude || 0).toString(),
-    lon: (city.longitude || 0).toString(),
-    timezone: city.timezone || "UTC",
-    country: city.country || "",
-    ...(city.admin1 && { admin1: city.admin1 }),
-    ...(city.country_code && { country_code: city.country_code })
-  });
-  const href = `/time/${city.slug}?${queryParams.toString()}`;
+  // Clean, parameter-free URL (query-string variants caused duplicate URLs in Google's index).
+  const href = `/time/${city.slug}`;
 
   return (
     <Link ref={cardRef} href={href} className="group block h-full">
@@ -110,8 +111,8 @@ export default function CityGridCard({ city, variant = "light" }: Props) {
               ? "bg-slate-50 border border-slate-200 group-hover:bg-blue-50 group-hover:border-blue-200 text-slate-900" 
               : "bg-[#1A1A1A] border border-white/10 text-white shadow-inner"
           }`}>
-            <span className="text-xs font-black">
-              {timeStr || "Loading..."}
+            <span className="text-xs font-black" suppressHydrationWarning>
+              {timeStr}
             </span>
           </div>
 

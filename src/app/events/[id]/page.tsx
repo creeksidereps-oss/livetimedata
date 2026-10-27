@@ -15,13 +15,23 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   if (!event) {
     return {
       title: 'Event Not Found | LiveTimeData',
-      description: 'The requested event could not be found.'
+      description: 'The requested event could not be found.',
+      robots: { index: false, follow: false },
     };
   }
 
   return {
     title: `${event.title} - ${event.city_name} | LiveTimeData`,
     description: event.details.substring(0, 160),
+    alternates: {
+      canonical: `https://www.livetimedata.com/events/${event.id}`,
+    },
+    // Only index publicly approved, current/upcoming events (past + pending stay noindex).
+    robots:
+      ['live', 'published', 'approved', 'scheduled'].includes(String(event.status)) &&
+      event.event_date && new Date(event.event_date).getTime() >= Date.now() - 24 * 3600 * 1000
+        ? { index: true, follow: true }
+        : { index: false, follow: true },
     openGraph: {
       title: `${event.title} in ${event.city_name}`,
       description: event.details.substring(0, 160),

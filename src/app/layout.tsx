@@ -17,9 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.livetimedata.com"),
-  alternates: {
-    canonical: "/",
-  },
+  // No site-wide canonical: a root canonical of "/" is inherited by every page that doesn't
+  // override it, telling Google those pages are duplicates of the homepage.
   title: {
     default: "LiveTimeData | Live City Time, Weather, Webcams & Community Events",
     template: "%s | LiveTimeData",

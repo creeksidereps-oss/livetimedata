@@ -1,20 +1,24 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/discover-entities",
-      "schedule": "0 */2 * * *"
-    },
-    {
-      "path": "/api/cron/scrape-yardsales",
-      "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/cron/rescrape-events",
-      "schedule": "30 * * * *"
-    },
-    {
-      "path": "/api/cron/notify-vendors",
-      "schedule": "0 12 * * 1"
-    }
-  ]
+    "crons":  [
+                  {
+                      "path":  "/api/cron/discover-entities",
+                      "schedule":  "0 */2 * * *"
+                  },
+                  {
+                      "path":  "/api/cron/scrape-yardsales",
+                      "schedule":  "0 10 * * *"
+                  },
+                  {
+                      "path":  "/api/cron/rescrape-events",
+                      "schedule":  "30 * * * *"
+                  },
+                  {
+                      "path":  "/api/cron/notify-vendors",
+                      "schedule":  "0 12 * * 1"
+                  },
+                  {
+                      "path":  "/api/cron/event-retention",
+                      "schedule":  "15 4 * * *"
+                  }
+              ]
 }
