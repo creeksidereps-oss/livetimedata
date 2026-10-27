@@ -928,8 +928,10 @@ async function ingestCrawlResults(source, crawl) {
         continue;
       }
 
-      // Check if event date is in the past
-      const isPastEvent = ev.eventDate && new Date(ev.eventDate).getTime() < (Date.now() - 86400000);
+      // Check if event date is in the past (strict start of today floor)
+      const todayFloor = new Date();
+      todayFloor.setHours(0, 0, 0, 0);
+      const isPastEvent = !ev.eventDate || new Date(ev.eventDate).getTime() < todayFloor.getTime();
 
       // MANDATORY ADDRESS ENFORCEMENT: Yard, garage, and estate sales MUST have a valid physical street address with a street number
       const isYardSaleOrAuction = ev.category === 'Yard / Garage Sales' || /\b(yard sale|garage sale|estate sale|estate auction)\b/i.test(ev.title);
