@@ -11,6 +11,10 @@
                   {
                       "path":  "/api/cron/event-retention",
                       "schedule":  "15 4 * * *"
+                  },
+                  {
+                      "path":  "/api/cron/spider-lifecycle",
+                      "schedule":  "*/15 * * * *"
                   }
               ]
 }

@@ -35,6 +35,8 @@ export interface ExtractedEvent {
 export interface CrawlResult {
   events: ExtractedEvent[];
   subUrls: string[];
+  /** Total distinct sub-pages discovered before the 10-page cap (flag for admin review if > 10). */
+  subUrlsTotal?: number;
   extractedEmails: string[];
 }
 
@@ -1018,9 +1020,9 @@ export async function extractEventsFromUrl(
                     if (singleTime) startTime = singleTime[1].toUpperCase();
                   }
 
-                  let rawVenue = parts[parts.length - 1] || "Charlotte Venue";
-                  let eventCity = fallbackCity || "Charlotte";
-                  let eventState = fallbackState || "NC";
+                  let rawVenue = parts[parts.length - 1] || "Local Venue";
+                  let eventCity = fallbackCity || "";
+                  let eventState = fallbackState || "";
                   let venueAddress: string | undefined;
 
                   // Check if venue ends with city name, e.g. "Gibson Mill, Concord"
@@ -1586,8 +1588,11 @@ export async function extractEventsFromUrl(
 
   return {
     events: eventsFound,
-    subUrls: subUrls.slice(0, 10),
-    extractedEmails: Array.from(extractedEmails).slice(0, 10),
+    // Sub-page cap (owner rule): max 10 sub-pages per source. Sources that exceed it are flagged
+    // for admin review (subUrlsTotal) instead of crawling deeper. Emails are uncapped.
+    subUrls: Array.from(new Set(subUrls)).slice(0, 10),
+    subUrlsTotal: new Set(subUrls).size,
+    extractedEmails: Array.from(extractedEmails),
   };
 }
 
@@ -2222,8 +2227,7 @@ export async function ingestDiscoveredEvents(
           venue = "Ovens Auditorium";
           venueAddress = "2700 E Independence Blvd, Charlotte, NC 28205";
         } else if (!venue || isGenericCalendarHeader(venue) || venue === "Local Venue") {
-          venue = "Belk Theater at Blumenthal Arts";
-          venueAddress = "130 N Tryon St, Charlotte, NC 28202";
+          // No default venue: an unknown venue is never guessed (owner rule). Held for curation below.
         }
       }
 
@@ -2296,6 +2300,11 @@ export async function ingestDiscoveredEvents(
 
       if (!isPastEvent) {
         const isTbdTime = !ev.startTime || /^(tbd|tba)$/i.test(ev.startTime.trim()) || ev.startTime.includes("TBD") || ev.startTime.includes("TBA");
+        // Real-location guard: placeholder / defaulted / empty locations never go live (held in pending_review).
+        const hasRealLocation =
+          !!venue && venue.trim() !== "" && venue !== "Local Venue" &&
+          venue !== `${cityName} Venue` && !/^(local|unknown)\b/i.test(venue) && !isGenericCalendarHeader(venue) &&
+          !!cityName && !/^(local|local city|unknown)$/i.test(cityName.trim());
         const resolvedCountryCode = (ev as any).countryCode || cityCheck[0]?.countryCode || (context as any)?.countryCode || (stateName && /^[A-Z]{2}$/.test(stateName) ? "US" : null);
         const [res] = await db
           .insert(events)
@@ -2314,7 +2323,7 @@ export async function ingestDiscoveredEvents(
             officialInfoUrl,
             eventFlyerUrl: ev.eventFlyerUrl,
             contactPhone,
-            status: isTbdTime ? "pending_review" : "live",
+            status: isTbdTime || !hasRealLocation ? "pending_review" : "live",
             source: ev.source || "Automated Calendar Crawler",
           })
           .returning({ id: events.id });
@@ -2393,7 +2402,7 @@ export async function ingestDiscoveredEvents(
               name: `${ev.performerName} Tour`,
               sourceType: "artist_tour",
               cityName: ev.cityName,
-              stateName: ev.stateName || "NC",
+              stateName: ev.stateName || null,
               scrapeIntervalDays: 30,
               scrapeHorizonMonths: 12,
               status: "active",

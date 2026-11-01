@@ -87,7 +87,7 @@ export async function scrapeYardSaleSearchForCity(
       // Dates
       const startMatch = chunk.match(/itemprop="startDate" content="([^"]+)"/i);
       const endMatch = chunk.match(/itemprop="endDate" content="([^"]+)"/i);
-      const startDate = startMatch ? startMatch[1].trim() : new Date().toISOString().slice(0, 10);
+      const startDate = startMatch ? startMatch[1].trim() : ""; // no date = discarded (never default to today)
       const endDate = endMatch ? endMatch[1].trim() : startDate;
 
       // Description
@@ -157,7 +157,7 @@ export async function scrapeGsalrForCity(
       const locality = cleanYardSaleText($(el).find('[itemprop="addressLocality"]').text());
       const region = cleanYardSaleText($(el).find('[itemprop="addressRegion"]').text());
       const postalCode = $(el).find('[itemprop="postalCode"]').text().trim();
-      const startDate = $(el).find('[itemprop="startDate"]').attr("content") || new Date().toISOString().slice(0, 10);
+      const startDate = $(el).find('[itemprop="startDate"]').attr("content") || ""; // no date = discarded
       const photoUrl = $(el).find('img[itemprop="image"]').attr("src");
       const desc = cleanYardSaleText($(el).find(".sale-desc, .desc").text()) || title;
 
@@ -176,7 +176,7 @@ export async function scrapeGsalrForCity(
         startDate: startDate.slice(0, 10),
         description: desc.slice(0, 800),
         photoUrl,
-        hostingEntity: "Community Member",
+        hostingEntity: undefined, // no made-up hosts (owner rule)
         source: "Gsalr Network",
       });
     });
@@ -228,7 +228,7 @@ export async function scrapeEstateSalesForCity(
           const locality = cleanYardSaleText(addr.addressLocality) || citySlug;
           const region = cleanYardSaleText(addr.addressRegion) || stateSlug.toUpperCase();
           const postalCode = addr.postalCode;
-          const startDate = data.startDate ? data.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+          const startDate = data.startDate ? data.startDate.slice(0, 10) : ""; // no date = discarded
           const endDate = data.endDate ? data.endDate.slice(0, 10) : startDate;
           const photoUrl = Array.isArray(data.image) ? data.image[0] : data.image;
 
@@ -256,7 +256,7 @@ export async function scrapeEstateSalesForCity(
             endDate,
             description: finalDesc,
             photoUrl,
-            hostingEntity: cleanYardSaleText(data.organizer?.name) || "Estate Liquidation Specialist",
+            hostingEntity: cleanYardSaleText(data.organizer?.name) || undefined,
             source: "EstateSales.NET",
           });
         }
@@ -313,7 +313,7 @@ export async function scrapeStorageTreasuresLiveAuctions(): Promise<ScrapedYardS
         const cityName = (facility.city || "").trim();
         const stateName = (facility.state || "").trim();
         const postalCode = (facility.zipcode || "").trim();
-        const facilityName = (facility.facility_name || "Self Storage Facility").trim();
+        const facilityName = (facility.facility_name || "").trim(); // no made-up host
         const unitCount = item.unit_count
           ? `${item.unit_count} unit${Number(item.unit_count) > 1 ? "s" : ""}`
           : "Storage units";
@@ -412,7 +412,7 @@ export async function scrapeYardSaleTreasureMapForCity(
       if (!streetPattern.test(streetPart)) return;
 
       // Extract date from desc
-      let eventDate = new Date().toISOString().slice(0, 10);
+      let eventDate = ""; // no date = discarded (never default to today)
       const dateMatch = rawDesc.match(/(\d{1,2})\/(\d{1,2})/);
       if (dateMatch) {
         let p1 = parseInt(dateMatch[1], 10);
@@ -429,14 +429,14 @@ export async function scrapeYardSaleTreasureMapForCity(
       }
 
       // Extract start time
-      let startTime = "08:00 AM";
+      let startTime: string | undefined = undefined; // no made-up times: missing = TBD -> pending_review
       const timeMatch =
         rawDesc.match(/start time:\s*(\d+(?::\d+)?\s*(?:am|pm)?)/i) ||
         rawDesc.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*-\s*/i);
       if (timeMatch) {
         startTime = timeMatch[1].toUpperCase();
         if (!startTime.includes("AM") && !startTime.includes("PM")) {
-          startTime += " AM";
+          startTime = undefined; // no AM/PM given: do not guess
         }
       }
 
@@ -453,7 +453,7 @@ export async function scrapeYardSaleTreasureMapForCity(
         startDate: eventDate,
         startTime,
         description: details.slice(0, 800),
-        hostingEntity: "Community Member",
+        hostingEntity: undefined, // no made-up hosts (owner rule)
         source: "Yard Sale Treasure Map",
       });
     });

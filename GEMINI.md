@@ -48,3 +48,25 @@
 - **No site-wide canonical** in the root layout. Every indexable page declares its own canonical.
 - **Internal links** to city pages must use clean, parameter-free URLs (`/time/{slug}`), never `?lat=&lon=` query strings.
 - **Long-term goal:** keep all city pages as they propagate, and promote them into the index as they gain real content.
+
+## Spider Lifecycle Rules (set by owner, Oct 20 – Nov 1, 2026)
+1. **No paid AI searches in spiders.** Never call Gemini / Google Search Grounding from spiders or crons (~$35 per 1,000 searches). Entities that would need a lookup are logged to `spider_lookup_needed` instead. Spiders run at **$0 Google spend**.
+2. **Never remove `GEMINI_API_KEY`.** The live site uses it in many places.
+3. **One entity per spider:** crawl it, spawn new spiders for what it discovered, die. No waiting. It is a continuous living cycle (`/api/cron/spider-lifecycle`, every 15 min).
+4. **Option A gatekeeper:** a venue/entity only gets a spider if it has a real events/calendar page found on the web. Never fabricate URLs (e.g. `www.{name}.com/events`). No calendar = address only.
+5. **Monthly (30-day) crawl** for all new spiders unless the owner says otherwise.
+6. **No aggregators** (Bandsintown, Seated, etc.).
+7. **League roll-up:** team matches roll up to the league schedule source, not one spider per team.
+8. **No geographic borders.** LiveTimeData is a global site; never filter or default to one country/state.
+9. **No hardcoded seeds in code.** Seeds and sources live in the `sources` table (and `docs/EVENT_CALENDARS_TO_CRAWL.csv` / `NEW_LIFECYCLE_SOURCES.csv`).
+10. **No artificial caps** on events, emails or sub-pages per source/entity.
+11. **Failed task rule:** retry after 1 hour, drop (`status='failed'`) after 5 failures.
+12. **Every job started must finish**; no new job starts that cannot finish before the run ends.
+
+## Sale-Type Listings Cron (separate rules, `/api/cron/scrape-yardsales`)
+- Covers yard sales, garage sales, car boot / boot sales, auctions, storage / lien sales, estate sales, and foreign-language equivalents.
+- **Aggregator exception:** these listings may (and must) come from aggregator sites. Rule 6 of the Spider Lifecycle does not apply here. This is why sale-type listings have their own cron.
+- **No geographic borders:** all cities are rotated daily; never filter by country/state.
+- **True information only:** no date = no listing; no confirmed start time = `pending_review`; never fabricate times, dates or hosts. Host may be empty (time and location are what matter). Real numeric street address required.
+- **Zero-yield report:** per city + platform yield is tracked in `yardsale_city_source_stats` for admin curation (no auto-culling).
+- Runs **daily**; owner will tune per area / aggregator / season once there is data.
