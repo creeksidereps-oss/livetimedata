@@ -100,7 +100,7 @@ async function claimNextSource() {
     `UPDATE sources SET next_scrape_due = NOW() + interval '30 minutes', updated_at = NOW()
      WHERE id = (
        SELECT id FROM sources
-       WHERE status = 'active' AND url LIKE 'http%' AND (next_scrape_due IS NULL OR next_scrape_due <= NOW())
+       WHERE status = 'active' AND url LIKE 'http%' AND (source_type IS NULL OR source_type != 'yardsale_aggregator') AND (next_scrape_due IS NULL OR next_scrape_due <= NOW())
        ORDER BY (last_scraped_at IS NULL) DESC,  -- freshly spawned spiders first
                 next_scrape_due ASC NULLS FIRST
        LIMIT 1
