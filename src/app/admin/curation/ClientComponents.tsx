@@ -642,9 +642,14 @@ export function RowCard({ item, type }: { item: any; type: string }) {
                     <button onClick={handleEditSave} disabled={isProcessing} className="bg-green-600 text-white px-4 py-2 rounded text-xs font-bold">Save Changes</button>
                     <button onClick={async () => {
                       setIsProcessing(true);
-                      const res = await cloneEventAction(editData);
+                      const res: any = await cloneEventAction(editData);
                       setIsProcessing(false);
-                      if (res.success) setIsEditing(false);
+                      if (res.success) {
+                        if (res.message) alert(res.message);
+                        setIsEditing(false);
+                      } else {
+                        alert(res.error || "Clone was not published.");
+                      }
                     }} disabled={isProcessing} className="bg-blue-600 text-white px-4 py-2 rounded text-xs font-bold">Clone to New Date</button>
                     <button onClick={() => setIsEditing(false)} className="bg-gray-400 text-white px-4 py-2 rounded text-xs font-bold">Cancel</button>
                   </div>

@@ -37,6 +37,16 @@ export function cleanYardSaleText(raw?: string): string {
     .trim();
 }
 
+/** Resolve a listing link against the page it was found on (publishEvent needs a crawlable absolute URL). */
+export function absoluteUrl(href: string, base: string): string {
+  if (!href) return "";
+  try {
+    return new URL(href, base).toString();
+  } catch {
+    return "";
+  }
+}
+
 export async function scrapeYardSaleSearchForCity(
   citySlug: string,
   stateSlug: string
@@ -67,7 +77,7 @@ export async function scrapeYardSaleSearchForCity(
       // Title & URL
       const titleMatch = chunk.match(/<h2 itemprop="name">\s*<a itemprop="url" href="([^"]+)">([^<]+)<\/a>/i);
       if (!titleMatch) continue;
-      const saleUrl = titleMatch[1].trim();
+      const saleUrl = absoluteUrl(titleMatch[1].trim(), url);
       const title = cleanYardSaleText(titleMatch[2]);
 
       // Coordinates
@@ -81,8 +91,9 @@ export async function scrapeYardSaleSearchForCity(
       const cityMatch = chunk.match(/itemprop="addressLocality">([^<]+)<\/span>/i);
       const regionMatch = chunk.match(/itemprop="addressRegion">([^<]+)<\/span>/i);
       const streetAddress = streetMatch ? cleanYardSaleText(streetMatch[1]) : undefined;
-      const locality = cityMatch ? cleanYardSaleText(cityMatch[1]) : citySlug;
-      const region = regionMatch ? cleanYardSaleText(regionMatch[1]) : stateSlug.toUpperCase();
+      // Listing's own locality/region only. The searched city is a query, never the listing's location.
+      const locality = cityMatch ? cleanYardSaleText(cityMatch[1]) : "";
+      const region = regionMatch ? cleanYardSaleText(regionMatch[1]) : "";
 
       // Dates
       const startMatch = chunk.match(/itemprop="startDate" content="([^"]+)"/i);
@@ -92,9 +103,8 @@ export async function scrapeYardSaleSearchForCity(
 
       // Description
       const descMatch = chunk.match(/itemprop="description"[^>]*>([\s\S]*?)<\/span>/i);
-      let description = descMatch ? cleanYardSaleText(descMatch[1]) : title;
-      if (!description) description = title;
-      description = description.slice(0, 800);
+      // Real description only (no title-as-description filler).
+      const description = (descMatch ? cleanYardSaleText(descMatch[1]) : "").slice(0, 800);
 
       // Photo
       const photoMatch =
@@ -152,14 +162,14 @@ export async function scrapeGsalrForCity(
 
     $('[itemtype*="Event"]').each((_, el) => {
       const title = cleanYardSaleText($(el).find('[itemprop="name"]').text());
-      const saleUrl = $(el).find('[itemprop="url"]').attr("href") || "";
+      const saleUrl = absoluteUrl($(el).find('[itemprop="url"]').attr("href") || "", url);
       const rawStreet = cleanYardSaleText($(el).find('[itemprop="streetAddress"]').text());
       const locality = cleanYardSaleText($(el).find('[itemprop="addressLocality"]').text());
       const region = cleanYardSaleText($(el).find('[itemprop="addressRegion"]').text());
       const postalCode = $(el).find('[itemprop="postalCode"]').text().trim();
       const startDate = $(el).find('[itemprop="startDate"]').attr("content") || ""; // no date = discarded
       const photoUrl = $(el).find('img[itemprop="image"]').attr("src");
-      const desc = cleanYardSaleText($(el).find(".sale-desc, .desc").text()) || title;
+      const desc = cleanYardSaleText($(el).find(".sale-desc, .desc").text()); // no title-as-description filler
 
       // MANDATORY ADDRESS ENFORCEMENT: Reject listings without a valid street number
       if (!rawStreet || !streetPattern.test(rawStreet)) {
@@ -170,8 +180,8 @@ export async function scrapeGsalrForCity(
         title,
         url: saleUrl,
         streetAddress: rawStreet,
-        cityName: locality || citySlug,
-        stateName: region || stateSlug.toUpperCase(),
+        cityName: locality, // listing's own locality only (never the searched city)
+        stateName: region,
         postalCode,
         startDate: startDate.slice(0, 10),
         description: desc.slice(0, 800),
@@ -221,29 +231,25 @@ export async function scrapeEstateSalesForCity(
         const data = JSON.parse(raw);
         if (data["@type"] === "SaleEvent") {
           const title = cleanYardSaleText(data.name);
-          const saleUrl = data.url;
+          const saleUrl = data.url ? absoluteUrl(String(data.url), url) : "";
           const loc = data.location || {};
           const addr = loc.address || {};
           const streetAddress = cleanYardSaleText(addr.streetAddress);
-          const locality = cleanYardSaleText(addr.addressLocality) || citySlug;
-          const region = cleanYardSaleText(addr.addressRegion) || stateSlug.toUpperCase();
+          // Listing's own locality/region only (never the searched city).
+          const locality = cleanYardSaleText(addr.addressLocality);
+          const region = cleanYardSaleText(addr.addressRegion);
           const postalCode = addr.postalCode;
           const startDate = data.startDate ? data.startDate.slice(0, 10) : ""; // no date = discarded
           const endDate = data.endDate ? data.endDate.slice(0, 10) : startDate;
           const photoUrl = Array.isArray(data.image) ? data.image[0] : data.image;
 
-          // Handle EstateSales.NET practice of releasing exact street addresses on sale morning:
-          let finalStreetAddress = streetAddress;
-          if (!finalStreetAddress || !streetPattern.test(finalStreetAddress)) {
-            if (locality && region) {
-              finalStreetAddress = `${locality}, ${region} ${postalCode || ''} (Address released day of sale)`.trim();
-            } else {
-              return;
-            }
-          }
+          // EstateSales.NET often releases the exact street address only on sale morning.
+          // No numeric street address = no listing (never substitute "City, ST (Address released day of sale)").
+          if (!streetAddress || !streetPattern.test(streetAddress)) return;
+          const finalStreetAddress = streetAddress;
 
           const rawDesc = cleanYardSaleText(data.description);
-          const finalDesc = (rawDesc && rawDesc !== "Estate Sale" ? rawDesc : title).slice(0, 800);
+          const finalDesc = (rawDesc && rawDesc !== "Estate Sale" ? rawDesc : "").slice(0, 800); // no title-as-description filler
 
           sales.push({
             title,
@@ -322,16 +328,16 @@ export async function scrapeStorageTreasuresLiveAuctions(): Promise<ScrapedYardS
           item.expire_date?.user?.date ||
           item.expire_date?.utc?.date ||
           (item.expire_date?.utc?.datetime ? item.expire_date.utc.datetime.slice(0, 10) : "");
-        const expTime =
+        const expTime: string | undefined =
           item.expire_date?.user?.time_formatted ||
           item.expire_date?.user?.time ||
-          "10:00 AM";
+          undefined; // no made-up times: missing = pending_review
 
         if (!expDate) continue;
 
         const auctionUrl = `https://www.storagetreasures.com/facilities/${facility.facility_id || item.facility_id}#live-auctions`;
         const title = `Live Storage Auction (${unitCount}) - ${facilityName}`;
-        const desc = `Live in-person storage lien auction at ${facilityName}. Unit count: ${unitCount}. Address: ${street}, ${cityName}, ${stateName} ${postalCode}. In-person attendance required.`;
+        const desc = ""; // the feed has no description; no templated filler (publishEvent holds it for review)
 
         auctions.push({
           title,
@@ -441,8 +447,8 @@ export async function scrapeYardSaleTreasureMapForCity(
       }
 
       const fullAddress = `${streetPart}, ${cityPart}, ${statePart}`;
-      const title = rawTitle || `Yard Sale - ${streetPart}`;
-      const details = `${rawDesc}\n\nLocation: ${fullAddress}. Sourced via Yard Sale Treasure Map.`;
+      const title = rawTitle; // no templated titles
+      const details = rawDesc; // no templated filler
 
       sales.push({
         title,

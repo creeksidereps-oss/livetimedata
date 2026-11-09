@@ -126,9 +126,11 @@ export async function POST(request: Request) {
       entityType = "church";
     }
 
+    // Location: the city/state in the request is only the page the visitor was browsing (a search hint),
+    // not where the entity is. Never store it, and never default a country.
     const insertedEntity = await sql`
       INSERT INTO entities (name, normalized_name, entity_type, city_name, state_name, country_code, website_url, verification_status, created_at, updated_at)
-      VALUES (${query}, ${qLower}, ${entityType}, ${city || null}, ${state || null}, 'US', ${foundUrl}, 'published', NOW(), NOW())
+      VALUES (${query}, ${qLower}, ${entityType}, NULL, NULL, NULL, ${foundUrl}, 'published', NOW(), NOW())
       ON CONFLICT DO NOTHING
       RETURNING id, name, entity_type, city_name, state_name, website_url;
     `;
@@ -137,7 +139,7 @@ export async function POST(request: Request) {
     try {
       await sql`
         INSERT INTO sources (url, source_type, name, city_name, state_name, is_active, scrape_interval_hours, created_at, updated_at)
-        VALUES (${foundUrl}, 'website', ${query}, ${city || null}, ${state || null}, true, 168, NOW(), NOW())
+        VALUES (${foundUrl}, 'website', ${query}, NULL, NULL, true, 168, NOW(), NOW())
         ON CONFLICT DO NOTHING;
       `;
     } catch (srcErr) {
@@ -151,40 +153,23 @@ export async function POST(request: Request) {
       try {
         await sql`
           INSERT INTO contacts (email, name, entity_name, city_name, state_name, source_url, created_at)
-          VALUES (${email}, ${query}, ${query}, ${city || null}, ${state || null}, ${foundUrl}, NOW())
+          VALUES (${email}, ${query}, ${query}, NULL, NULL, ${foundUrl}, NOW())
           ON CONFLICT DO NOTHING;
         `;
       } catch (cErr) {}
     }
 
-    // 8. Create Discovered Event Listing
-    const category = entityType === "food_truck" ? "Food Trucks" : entityType === "venue" ? "Venues" : "Concerts & Live Music";
-    const nextSaturday = new Date();
-    nextSaturday.setDate(nextSaturday.getDate() + ((6 - nextSaturday.getDay() + 7) % 7 || 7));
-    const eventDateStr = nextSaturday.toISOString().slice(0, 10);
-
-    const eventTitle = `${query} Live Tour Appearance`;
-    const venueName = city ? `${city} Area Stage & Event Center` : "Main Stage";
-    const details = `Official tour date and appearance for ${query}. Discovered via official web channel: ${foundUrl}. Schedule verified and ingested into LiveTimeData directory.`;
-
-    const insertedEvent = await sql`
-      INSERT INTO events (
-        title, category, venue, city_name, state_name, event_date, start_time, details,
-        official_info_url, source, status, created_at, updated_at
-      ) VALUES (
-        ${eventTitle}, ${category}, ${venueName}, ${city || 'Regional'}, ${state || 'NC'},
-        ${eventDateStr}, '7:00 PM', ${details}, ${foundUrl}, 'On-Demand Discovery Spider',
-        'published', NOW(), NOW()
-      )
-      RETURNING id, title, category, venue, city_name, state_name, event_date, start_time, details, official_info_url;
-    `;
-
+    // 8. No event is created here. This route used to fabricate a listing ("{query} Live Tour Appearance",
+    //    next Saturday, 7:00 PM, "{city} Area Stage & Event Center", templated details). Real events only come
+    //    from crawling the registered source, and every crawled event goes through publishEvent().
+    //    discovered:false makes the search UI show this message instead of "Ingested into schedule".
     return NextResponse.json({
       ok: true,
-      discovered: true,
-      message: `Successfully discovered ${query}! Added to entities graph and ingested into LiveTimeData schedule.`,
+      discovered: false,
+      queued: true,
+      message: `Found a website for "${query}" (${foundUrl}). It has been queued for our event spider; dates will appear once they are read from the official schedule.`,
       entity: insertedEntity.rows[0] || { name: query, entity_type: entityType, website_url: foundUrl },
-      event: insertedEvent.rows[0]
+      event: null
     });
 
   } catch (error: any) {

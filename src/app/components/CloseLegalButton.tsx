@@ -12,8 +12,8 @@ export default function CloseLegalButton() {
       router.back();
       return;
     }
-    // Fallback: go to the real app home (dashboard)
-    router.push("/city-dashboard");
+    // Fallback: go to the homepage (the legacy /city-dashboard route no longer renders a default city)
+    router.push("/");
   }
 
   return (

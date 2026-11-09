@@ -1,13 +1,22 @@
 // src/app/api/events/yardsales/submit/route.ts
 import { NextResponse } from 'next/server';
 import { db } from '@/db';
-import { events, emailLogs } from '@/db/schema';
+import { emailLogs } from '@/db/schema';
 import { validateYardSaleSubmission } from '@/lib/yardsales/validator';
-import { eq, sql, and } from 'drizzle-orm';
-import { areEventsDuplicates, mergeEventRecords } from '@/lib/events/dedup';
+import { publishEvent } from '@/lib/events/intake/publishEvent';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Community yard-sale submission.
+ * Moderation (validateYardSaleSubmission) decides approve/reject; approved listings are written by
+ * publishEvent() (origin "user_submission", kind "sale") with exactly the location the submitter typed.
+ * No defaults: no "Local Area", "Local Address", "Weekend Yard Sale", "8:00 AM", filler description,
+ * today's date or "US".
+ *
+ * resubmitToken (legacy): rejected listings are no longer stored, so a resubmission is simply a new
+ * submission that goes through the same checks. Old rejected rows are left untouched.
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -23,16 +32,15 @@ export async function POST(request: Request) {
       details,
       userEmail,
       userName,
-      resubmitToken
     } = body;
 
     // Run 24/7/365 AI fast validation (<500ms)
     const validation = await validateYardSaleSubmission({
-      title: title || 'Yard Sale',
+      title: title || '',
       address: address || '',
       city: city || '',
       state: state || '',
-      countryCode: countryCode || 'US',
+      countryCode: countryCode || undefined,
       eventDate: eventDate,
       startTime: startTime || '',
       endTime: endTime || '',
@@ -41,142 +49,66 @@ export async function POST(request: Request) {
       userName: userName || ''
     });
 
-    const parsedDate = new Date(eventDate);
-    const validDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
-
-    // Check if updating an existing submission via resubmitToken
-    if (resubmitToken) {
-      const existing = await db
-        .select()
-        .from(events)
-        .where(eq(events.resubmitToken, resubmitToken))
-        .limit(1);
-
-      if (existing.length > 0) {
-        await db
-          .update(events)
-          .set({
-            title: title || existing[0].title,
-            venue: address || existing[0].venue,
-            cityName: city || existing[0].cityName,
-            stateName: state || existing[0].stateName,
-            eventDate: validDate,
-            startTime: startTime || existing[0].startTime,
-            details: details || existing[0].details,
-            status: validation.approved ? 'live' : 'rejected',
-            rejectionReason: validation.approved ? null : validation.reason,
-            autoApprovedAt: validation.approved ? new Date() : null,
-            updatedAt: new Date(),
-          })
-          .where(eq(events.id, existing[0].id));
-
-        return NextResponse.json({
-          success: true,
-          status: validation.approved ? 'approved' : 'rejected',
-          message: validation.approved 
-            ? 'Resubmission approved and published live!' 
-            : 'Resubmission still requires corrections.',
-          reason: validation.reason,
-          eventId: existing[0].id
+    if (!validation.approved) {
+      // If rejected, record automated rejection feedback email in email_logs
+      if (validation.rejectionEmailBody && userEmail) {
+        await db.insert(emailLogs).values({
+          contactId: 0,
+          email: userEmail,
+          status: 'sent',
+          errorMessage: `AI Rejection Notice: ${validation.reason}`,
         });
       }
-    }
-
-    // Check for existing candidate yard sales on the same date and address/city
-    const existingCandidates = await db
-      .select()
-      .from(events)
-      .where(
-        and(
-          sql`LOWER(${events.cityName}) = LOWER(${city || 'Local Area'})`,
-          sql`DATE(${events.eventDate}) = DATE(${validDate})`,
-          sql`${events.status} != 'duplicate'`
-        )
-      );
-
-    const incomingCandidate = {
-      title: title || 'Weekend Yard Sale',
-      cityName: city || 'Local Area',
-      stateName: state || '',
-      category: 'Yard / Garage Sales',
-      venue: address || 'Local Address',
-      venue_address: address || null,
-      startTime: startTime || '8:00 AM',
-      eventDate: validDate,
-      details: details || 'Local household goods, furniture, tools, and collectibles.',
-      source: 'Direct Community Submission'
-    };
-
-    let matchedMaster: any = null;
-    for (const cand of existingCandidates) {
-      const check = areEventsDuplicates(cand, incomingCandidate as any);
-      if (check.isDuplicate) {
-        matchedMaster = cand;
-        break;
-      }
-    }
-
-    if (matchedMaster) {
-      const merged = mergeEventRecords(matchedMaster, incomingCandidate as any);
-      await db
-        .update(events)
-        .set({
-          venueAddress: merged.venue_address || merged.venueAddress,
-          details: merged.details,
-          updatedAt: new Date(),
-        })
-        .where(eq(events.id, matchedMaster.id));
-
       return NextResponse.json({
         success: true,
-        status: 'approved',
-        message: 'Yard sale details updated and enriched into existing listing!',
-        eventId: matchedMaster.id
+        status: 'rejected',
+        reason: validation.reason,
+        message: 'Your listing needs a quick fix: ' + (validation.reason || 'please check the details and submit again.'),
       });
     }
 
-    // Insert new yard sale listing
-    const [inserted] = await db
-      .insert(events)
-      .values({
-        title: title || 'Weekend Yard Sale',
-        cityName: city || 'Local Area',
-        stateName: state || '',
-        category: 'Yard / Garage Sales',
-        venue: address || 'Local Address',
-        venueAddress: address || null,
-        startTime: startTime || '8:00 AM',
-        eventDate: validDate,
-        details: details || 'Local household goods, furniture, tools, and collectibles.',
-        userName: userName || null,
-        userEmail: userEmail || null,
-        status: validation.approved ? 'live' : 'rejected',
-        rejectionReason: validation.approved ? null : (validation.reason || null),
-        resubmitToken: validation.approved ? null : (validation.resubmitToken || null),
-        autoApprovedAt: validation.approved ? new Date() : null,
-        source: 'Direct Community Submission',
-      })
-      .returning({ id: events.id });
+    const result = await publishEvent({
+      origin: 'user_submission',
+      kind: 'sale',
+      title: String(title || '').trim(),
+      details: String(details || '').trim(),
+      category: 'Yard / Garage Sales',
+      venue: String(address || '').trim(),
+      venueAddress: String(address || '').trim() || null,
+      startTime: String(startTime || '').trim(),
+      eventDate: eventDate,
+      location: {
+        city: String(city || '').trim() || null,
+        region: String(state || '').trim() || null,
+        country: String(countryCode || '').trim() || null,
+        address: String(address || '').trim() || null,
+      },
+      source: 'Direct Community Submission',
+      userName: userName || null,
+      userEmail: userEmail || null,
+    });
 
-    // If rejected, record automated rejection feedback email in email_logs
-    if (!validation.approved && validation.rejectionEmailBody && userEmail) {
-      await db.insert(emailLogs).values({
-        contactId: 0,
-        email: userEmail,
-        status: 'sent',
-        errorMessage: `AI Rejection Notice: ${validation.reason}`,
+    if (result.outcome === 'rejected' || result.outcome === 'retry') {
+      return NextResponse.json({
+        success: true,
+        status: result.outcome,
+        reason: [result.reasons.join(', '), result.detail].filter(Boolean).join(' - '),
+        message: result.outcome === 'retry'
+          ? "We couldn't verify the sale's city right now. Please try again in a few minutes."
+          : `Your listing could not be accepted: ${result.reasons.join(', ')}${result.detail ? ` (${result.detail})` : ''}`,
       });
     }
 
+    const status = result.outcome === 'published' ? 'approved' : result.outcome; // 'pending_review' | 'duplicate'
     return NextResponse.json({
       success: true,
-      status: validation.approved ? 'approved' : 'rejected',
-      eventId: inserted?.id,
-      reason: validation.reason,
-      resubmitToken: validation.resubmitToken,
-      message: validation.approved 
-        ? 'Your yard sale has been verified and is LIVE on LiveTimeData!'
-        : 'Your listing needs a quick fix. We have sent an email with an instant resubmit link.'
+      status,
+      eventId: result.id,
+      reason: result.reasons.length ? result.reasons.join(', ') : undefined,
+      message:
+        result.outcome === 'published' ? 'Your yard sale has been verified and is LIVE on LiveTimeData!'
+        : result.outcome === 'duplicate' ? 'Yard sale details updated and enriched into existing listing!'
+        : `Your yard sale was received and is held for a quick review (${result.reasons.join(', ')}).`,
     });
 
   } catch (error: any) {

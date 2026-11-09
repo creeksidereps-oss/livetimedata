@@ -44,9 +44,18 @@
   - **All other events:** keep for **18 months** after the event date, then delete.
 
 ## SEO / Indexing Rules
-- **Curated index set:** Only cities in `src/data/indexableCities.json` (+ homepage top-100) go in `sitemap.xml` and are served `index`. All other city pages stay live but `noindex` until they have real content (report / facts). Regenerate with `node scripts/build-indexable-cities.js` after importing new reports/facts.
+- **Growing index (set by owner, Nov 8 2026):** a city page becomes indexable and enters the sitemap **automatically once it has real content**: a verified upcoming event, a city report, approved fun facts, live photos, or live webcams (`src/lib/seo/cityIndexability.ts`). The curated set (`src/data/indexableCities.json` + homepage top-100) is always indexable. City pages without content stay live but `noindex`. Page robots tags and the sitemap use the same rule.
+- **Sitemap:** `/sitemap.xml` is a sitemap index that grows automatically (`/sitemaps/static.xml`, `/sitemaps/cities-N.xml`, `/sitemaps/events-N.xml`, max 40k URLs each).
+- **Events in the sitemap:** every verified, public, upcoming event is added as soon as it is published. After its date passes it leaves the sitemap and becomes `noindex` (page stays live until the 18-month retention delete).
+- **Sale-type listings** (yard/garage/boot/estate sales, auctions, flea markets) are **never** in the sitemap and always `noindex`, because they are deleted 7 days after the event.
 - **No site-wide canonical** in the root layout. Every indexable page declares its own canonical.
-- **Internal links** to city pages must use clean, parameter-free URLs (`/time/{slug}`), never `?lat=&lon=` query strings.
+- **Internal links** to city pages must use clean, parameter-free URLs (`/time/{slug}`), never `?lat=&lon=` query strings. The legacy `/city-dashboard?slug=` route only 301-redirects to `/time/{slug}` (unknown city = 404). Event links are `https://www.livetimedata.com/events/{id}`.
+
+## Location Integrity Rules (set by owner, Nov 8 2026)
+- **No location defaults anywhere:** never inherit a parent source's city/state, never `|| 'NC'` / `|| 'US'` / `|| "United States"`, never assume a 2-letter region is a US state, never fall back to Statesville / Raleigh / Greenwich / "Local". No DB column may default a country.
+- **Single intake gate:** every new event row is written only by `publishEvent()` (`src/lib/events/intake/publishEvent.ts`). Location comes only from what the source itself states, verified by `resolveLocation()` (Open-Meteo first, GeoNames backup, same strategy as City Search). Ambiguous or unverifiable location: automated sources are rejected, human submissions are held in `pending_review`.
+- **No AI-fabricated event content:** no generated events, descriptions, times, venues, or addresses. AI may only moderate/classify human submissions.
+- **City Search is protected:** never modify `src/app/api/search/route.ts`, `CitySearch.tsx`, `ModalCitySearch.tsx`, `HomeSearch.tsx`, `api/cities/search`, `api/geocode/**`, or the search-landing section of `time/[slug]` and `weather/[slug]`. Verify with `node scripts/guards/protected-zone.cjs`.
 - **Long-term goal:** keep all city pages as they propagate, and promote them into the index as they gain real content.
 
 ## Spider Lifecycle Rules (set by owner, Oct 20 – Nov 1, 2026)

@@ -1,245 +1,32 @@
 // src/app/api/events/route.ts
+// City events feed for the EventsBlock UI. Verified events only, matched by coordinates
+// (see src/lib/events/query.ts). No city-name guessing, no state-abbreviation heuristics.
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db";
 import { deduplicateEventList } from "@/lib/events/dedup";
+import { findPublicEvents, toEventDTO } from "@/lib/events/query";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const US_STATE_ABBREVIATIONS: Record<string, string> = {
-  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
-  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
-  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
-  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
-  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
-  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
-  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
-  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
-  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
-  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
-  DC: "District of Columbia", PR: "Puerto Rico", VI: "Virgin Islands", GU: "Guam"
-};
-
-function getStateVariations(stateInput: string): string[] {
-  if (!stateInput) return [];
-  const cleaned = stateInput.trim();
-  const lower = cleaned.toLowerCase();
-  const variations = new Set<string>([lower]);
-
-  if (cleaned.length === 2) {
-    const full = US_STATE_ABBREVIATIONS[cleaned.toUpperCase()];
-    if (full) variations.add(full.toLowerCase());
-  } else {
-    for (const [abbr, full] of Object.entries(US_STATE_ABBREVIATIONS)) {
-      if (full.toLowerCase() === lower) {
-        variations.add(abbr.toLowerCase());
-        break;
-      }
-    }
-  }
-  return Array.from(variations);
-}
+const num = (v: string | null) => (v === null || v.trim() === "" || !Number.isFinite(Number(v)) ? null : Number(v));
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const city = searchParams.get("city");
-    const state = searchParams.get("state") || "";
-    const nearby = searchParams.get("nearby") === "true";
-
-    if (!city) {
-      return NextResponse.json({ ok: false, error: "City parameter is required." }, { status: 400 });
-    }
-
-    const stateVars = getStateVariations(state);
-    const stateMapJson = JSON.stringify(US_STATE_ABBREVIATIONS);
-    const latParam = searchParams.get("lat") ? parseFloat(searchParams.get("lat")!) : null;
-    const lonParam = searchParams.get("lon") ? parseFloat(searchParams.get("lon")!) : null;
-    const hasCoords = latParam !== null && !isNaN(latParam) && lonParam !== null && !isNaN(lonParam);
-
-    let rows: any[] = [];
-
-    if (nearby) {
-      // Haversine Radius Search (30 miles)
-      try {
-        if (hasCoords) {
-          const result = await sql`
-            SELECT DISTINCT e.* 
-            FROM events e
-            JOIN cities c ON LOWER(e.city_name) = LOWER(c.name)
-            WHERE e.status NOT IN ('pending', 'pending_review', 'legal_hold')
-              AND (e.event_date >= CURRENT_DATE - INTERVAL '1 day' OR e.event_date IS NULL)
-              AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
-              AND (
-                e.state_name IS NULL 
-                OR c.admin1 IS NULL 
-                OR LOWER(e.state_name) = LOWER(c.admin1)
-                OR c.country_code != 'US'
-                OR c.country_name != 'United States'
-                OR EXISTS (
-                  SELECT 1 FROM jsonb_each_text(${stateMapJson}::jsonb) AS states(abbr, full_name)
-                  WHERE (
-                    (LOWER(e.state_name) = LOWER(states.abbr) OR LOWER(e.state_name) = LOWER(states.full_name))
-                    AND
-                    (LOWER(c.admin1) = LOWER(states.abbr) OR LOWER(c.admin1) = LOWER(states.full_name))
-                  )
-                )
-              )
-              AND 3959 * acos(
-                    LEAST(1.0, GREATEST(-1.0,
-                      cos(radians(${latParam})) * cos(radians(c.latitude)) * 
-                      cos(radians(c.longitude) - radians(${lonParam})) + 
-                      sin(radians(${latParam})) * sin(radians(c.latitude))
-                    ))
-                  ) <= 30
-            ORDER BY e.event_date ASC
-          `;
-          rows = result.rows;
-        } else {
-          const result = await sql`
-            WITH target_city AS (
-              SELECT latitude, longitude FROM cities 
-              WHERE LOWER(name) = LOWER(${city})
-                AND latitude IS NOT NULL AND longitude IS NOT NULL
-              ORDER BY CASE WHEN LOWER(admin1) = LOWER(${state}::text) THEN 0 ELSE 1 END ASC
-              LIMIT 1
-            )
-            SELECT DISTINCT e.* 
-            FROM events e
-            JOIN cities c ON LOWER(e.city_name) = LOWER(c.name)
-            CROSS JOIN target_city tc
-            WHERE e.status NOT IN ('pending', 'pending_review', 'legal_hold')
-              AND (e.event_date >= CURRENT_DATE - INTERVAL '1 day' OR e.event_date IS NULL)
-              AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL
-              AND tc.latitude IS NOT NULL AND tc.longitude IS NOT NULL
-              AND (
-                e.state_name IS NULL 
-                OR c.admin1 IS NULL 
-                OR LOWER(e.state_name) = LOWER(c.admin1)
-                OR c.country_code != 'US'
-                OR c.country_name != 'United States'
-                OR EXISTS (
-                  SELECT 1 FROM jsonb_each_text(${stateMapJson}::jsonb) AS states(abbr, full_name)
-                  WHERE (
-                    (LOWER(e.state_name) = LOWER(states.abbr) OR LOWER(e.state_name) = LOWER(states.full_name))
-                    AND
-                    (LOWER(c.admin1) = LOWER(states.abbr) OR LOWER(c.admin1) = LOWER(states.full_name))
-                  )
-                )
-              )
-              AND 3959 * acos(
-                    LEAST(1.0, GREATEST(-1.0,
-                      cos(radians(tc.latitude)) * cos(radians(c.latitude)) * 
-                      cos(radians(c.longitude) - radians(tc.longitude)) + 
-                      sin(radians(tc.latitude)) * sin(radians(c.latitude))
-                    ))
-                  ) <= 30
-            ORDER BY e.event_date ASC
-          `;
-          rows = result.rows;
-        }
-      } catch (dbErr) {
-        console.error("Nearby search failed (likely missing lat/lon columns):", dbErr);
-        rows = [];
-      }
-    } else {
-      // Standard Exact City Match
-      let result;
-      if (state) {
-        result = await sql`
-          SELECT * FROM events 
-          WHERE LOWER(city_name) LIKE LOWER(${city} || '%')
-          AND (
-            LOWER(state_name) = ANY(${stateVars})
-            OR LOWER(state_name) LIKE LOWER('%' || ${state} || '%')
-            OR LOWER(${state}) LIKE LOWER('%' || state_name || '%')
-            OR state_name IS NULL 
-            OR state_name = ''
-          )
-          AND status NOT IN ('pending', 'pending_review', 'legal_hold')
-          AND (event_date >= CURRENT_DATE - INTERVAL '1 day' OR event_date IS NULL)
-          ORDER BY event_date ASC
-        `;
-      } else {
-        result = await sql`
-          SELECT * FROM events 
-          WHERE LOWER(city_name) LIKE LOWER(${city} || '%')
-          AND status NOT IN ('pending', 'pending_review', 'legal_hold')
-          AND (event_date >= CURRENT_DATE - INTERVAL '1 day' OR event_date IS NULL)
-          ORDER BY event_date ASC
-        `;
-      }
-      rows = result.rows;
-    }
-
-    // Filter out online / virtual events (LiveTimeData is exclusively for in-person events)
-    const inPersonRows = rows.filter((row: any) => {
-      const v = (row.venue || "").trim().toLowerCase();
-      if (
-        v === "virtual" ||
-        v === "online" ||
-        v === "zoom" ||
-        v === "internet" ||
-        v.startsWith("virtual ") ||
-        v.includes("online only")
-      ) {
-        return false;
-      }
-      const t = (row.title || "").toLowerCase();
-      const d = (row.details || "").toLowerCase();
-      const u = (row.official_info_url || "").toLowerCase();
-      if (
-        /\b(webinar|online event|virtual event|zoom meeting|zoom call|livestream|virtual workshop|online workshop|virtual seminar|online seminar|play free online|online only auction|virtual auction)\b/i.test(`${t} ${d} ${v} ${u}`) ||
-        /\b(online-seminar|virtual-seminar|zoom\.us|webex\.com|teams\.microsoft\.com)\b/i.test(u) ||
-        /\b(small[- ]business[- ]center.*(?:online|webinar|virtual))\b/i.test(`${t} ${d} ${u}`) ||
-        /\b(build your small bu[siness]* website with ai|small business startup certificate)\b/i.test(t)
-      ) {
-        return false;
-      }
-
-      // Filter out TBD / TBA times (must have a confirmed start time or All Day to appear on live feed)
-      const st = (row.start_time || "").trim().toUpperCase();
-      if (st === "TBD" || st === "TBA" || st.includes("TBD") || st.includes("TBA")) {
-        return false;
-      }
-
-      return true;
+    const rows = await findPublicEvents({
+      lat: num(searchParams.get("lat")),
+      lon: num(searchParams.get("lon")),
+      citySlug: searchParams.get("slug"),
+      nearby: searchParams.get("nearby") === "true",
     });
-
-    // Format them correctly for the frontend
-    const rawEvents = inPersonRows.map((row: any) => ({
-      id: row.id,
-      title: row.title,
-      category: row.category,
-      venue: row.venue,
-      source: row.source,
-      startTime: row.start_time,
-      eventDate: row.event_date,
-      details: row.details,
-      affiliateUrl: row.affiliate_url,
-      venue_address: row.venue_address,
-      hosting_entity: row.hosting_entity,
-      contact_email: row.contact_email || row.user_email || null,
-      contact_phone: row.contact_phone || row.user_phone || null,
-      official_info_url: row.official_info_url,
-      social_urls: row.social_urls,
-      registration_url: row.registration_url,
-      event_flyer_url: row.event_flyer_url,
-      cityName: row.city_name,
-      stateName: row.state_name,
-      countryCode: row.country_code,
-    }));
-
-    // Multi-signal deduplication & Golden Record merge (respects 30-min threshold)
-    const events = deduplicateEventList(rawEvents);
-
+    const events = deduplicateEventList(rows.map(toEventDTO));
     return NextResponse.json({ ok: true, events }, {
       headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-        'Surrogate-Control': 'no-store'
-      }
+        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+        "Surrogate-Control": "no-store",
+      },
     });
   } catch (error: any) {
     console.error("GET Events Error:", error);

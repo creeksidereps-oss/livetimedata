@@ -29,8 +29,9 @@ export default function PremiumEventModal({ event, citySegment, stateSegment, on
     }
   }, [event.event_flyer_url, event.official_info_url]);
 
-  const slug = `${citySegment.toLowerCase().replace(/\s+/g, '-')}${stateSegment && stateSegment !== 'N/A' ? `-${stateSegment.toLowerCase().replace(/\s+/g, '-')}` : ''}`;
-  const shareUrl = `https://livetimedata.com/city-dashboard?slug=${slug}&eventId=${event.id}`;
+  // Canonical, parameter-free event URL (www host). Also usable as a future app deep link.
+  const shareUrl = `https://www.livetimedata.com/events/${event.id}`;
+  void citySegment; void stateSegment;
   const displayDate = new Date(event.eventDate || Date.now()).toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const allFooterActions = (

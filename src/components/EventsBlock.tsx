@@ -1186,7 +1186,7 @@ function InlineEventModal({
             }}
             title={ev.title} 
             text={`Check out ${ev.title} in ${cityName}!`} 
-            url={`https://livetimedata.com/events/${ev.id}`} 
+            url={`https://www.livetimedata.com/events/${ev.id}`} 
           />
 
           <AddToCalendarButton 
@@ -3753,7 +3753,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
               <ShareButton 
                 title={ev.title} 
                 text={`Check out ${ev.title} in ${cityName}!`} 
-                url={`https://livetimedata.com/events/${ev.id}`} 
+                url={`https://www.livetimedata.com/events/${ev.id}`} 
               />
               <AddToCalendarButton 
                 event={{

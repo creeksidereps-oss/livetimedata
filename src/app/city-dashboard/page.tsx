@@ -1,52 +1,37 @@
-import CityDashboardClient from "./ui";
-import CityJsonLd from "@/components/CityJsonLd";
+// src/app/city-dashboard/page.tsx
+//
+// LEGACY ROUTE. City pages live at the canonical /time/{slug}. Old /city-dashboard?slug=... links
+// (and their trailing-hyphen variants like "stockholm-") are permanently redirected there.
+// An unknown city returns 404. It never falls back to a default city.
+import { notFound, permanentRedirect } from "next/navigation";
 import { resolveCityFromSlug } from "@/lib/cityResolver";
+import { sql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-export default async function CityDashboardPage(props: {
-  params: Promise<{ slug: string }>;
+export default async function CityDashboardLegacyPage(props: {
+  params: Promise<{ slug?: string }>;
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const p = await props.params;
   const sp = await props.searchParams;
-  const resolved = resolveCityFromSlug(p?.slug || (sp?.slug as string) || (sp?.name as string));
 
-  const cityName = (sp?.name as string) || resolved.name;
-  const stateName = sp?.admin1 !== undefined ? (sp.admin1 as string) : resolved.admin1;
-  const country = (sp?.country as string) || resolved.country;
-  const country_code = (sp?.country_code as string) || resolved.country_code;
-  const lat = parseFloat(sp?.lat as string) || resolved.lat;
-  const lon = parseFloat(sp?.lon as string) || resolved.lon;
-  const timezone = (sp?.timezone as string) || resolved.timezone || "auto";
+  // Old shared event links: /city-dashboard?slug=...&eventId=123 -> the event's own page.
+  const eventId = typeof sp?.eventId === "string" && /^\d+$/.test(sp.eventId) ? sp.eventId : null;
+  if (eventId) permanentRedirect(`/events/${eventId}`);
 
-  const initialData = {
-    ...sp,
-    name: cityName,
-    admin1: stateName,
-    country,
-    country_code,
-    lat,
-    lon,
-    timezone,
-  };
+  const raw = String(p?.slug || sp?.slug || "").trim();
+  if (!raw) permanentRedirect("/");
+  const slug = decodeURIComponent(raw).toLowerCase().replace(/^-+|-+$/g, "");
 
-  return (
-    <div className="flex flex-col min-h-screen bg-[#f8fafc]">
-      <CityDashboardClient 
-        params={props.params} 
-        searchParams={props.searchParams} 
-        initialData={initialData} 
-      />
-      <CityJsonLd 
-        cityName={cityName} 
-        stateName={stateName} 
-        countryName={country} 
-        lat={lat} 
-        lon={lon} 
-        pageType="dashboard" 
-      />
-    </div>
-  );
+  const memory = resolveCityFromSlug(slug, false);
+  if (memory?.slug) permanentRedirect(`/time/${memory.slug}`);
+
+  const { rows } = await sql`
+    SELECT slug FROM cities
+    WHERE LOWER(slug) = ${slug} AND latitude IS NOT NULL AND longitude IS NOT NULL
+    LIMIT 1`;
+  if (rows[0]?.slug) permanentRedirect(`/time/${rows[0].slug}`);
+
+  notFound();
 }

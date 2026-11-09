@@ -1,8 +1,7 @@
 // src/app/api/cron/discover-entities/route.ts
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { sources, entities, entityRelationships, appearances } from "@/db/schema";
-import { MASTER_DISCOVERY_HUBS } from "@/lib/discovery/seed-sources";
+import { entities, entityRelationships, appearances } from "@/db/schema";
 import { runRecursiveSpider } from "@/lib/discovery/spider";
 import { sql } from "drizzle-orm";
 
@@ -15,40 +14,10 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   try {
-    const results: any[] = [];
+    // Seeds live in the `sources` table (GEMINI.md rule 9) - no hardcoded seed list here.
 
-    // 1. Ensure master discovery hubs are registered in sources table
-    for (const hub of MASTER_DISCOVERY_HUBS) {
-      await db
-        .insert(sources)
-        .values({
-          url: hub.url,
-          sourceType: "discovery_hub",
-          name: hub.name,
-          scrapeIntervalDays: 7,
-          scrapeHorizonMonths: 6,
-          lastScrapedAt: new Date(),
-          nextScrapeDue: sql`NOW() + interval '7 days'`,
-          status: "active",
-        })
-        .onConflictDoUpdate({
-          target: sources.url,
-          set: {
-            lastScrapedAt: new Date(),
-            nextScrapeDue: sql`NOW() + interval '7 days'`,
-            updatedAt: new Date(),
-          },
-        });
-
-      results.push({
-        name: hub.name,
-        scope: hub.scope,
-        category: hub.category,
-        url: hub.url,
-      });
-    }
-
-    // 2. Feed unlinked venues and hosts from events into entities graph
+    // 1. Feed unlinked venues from VERIFIED events into the entities graph.
+    //    City/state/country come from the event's verified location (publishEvent); nothing is defaulted.
     await db.execute(sql`
       INSERT INTO entities (
         name,
@@ -68,11 +37,12 @@ export async function GET(request: Request) {
         'venue' AS subtype,
         e.city_name,
         e.state_name,
-        'US' AS country_code,
+        e.country_code,
         'discovered' AS verification_status,
         NOW() AS created_at
       FROM events e
-      WHERE e.venue IS NOT NULL
+      WHERE e.city_slug IS NOT NULL
+        AND e.venue IS NOT NULL
         AND TRIM(e.venue) != ''
         AND TRIM(e.venue) != 'Local Venue'
         AND TRIM(e.venue) != 'Unknown Venue'
@@ -88,7 +58,7 @@ export async function GET(request: Request) {
       LIMIT 100;
     `);
 
-    // 3. Execute the Recursive Spider Cycle
+    // 2. Execute the Recursive Spider Cycle
     const spiderStats = await runRecursiveSpider(25);
 
     const totalEntities = await db.select({ count: sql`count(*)` }).from(entities);
@@ -99,7 +69,6 @@ export async function GET(request: Request) {
       success: true,
       message: "Discovery Lifecycle spider active and expanding.",
       spiderStats,
-      activeHubs: results,
       totalEntitiesInGraph: Number(totalEntities[0]?.count || 0),
       totalRelationshipsInGraph: Number(totalRelationships[0]?.count || 0),
       totalAppearancesInGraph: Number(totalAppearances[0]?.count || 0),

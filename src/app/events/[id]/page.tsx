@@ -7,12 +7,30 @@ import AddToCalendarButton from '@/components/AddToCalendarButton';
 
 export const dynamic = "force-dynamic";
 
+const PUBLIC_STATUSES = ['live', 'published', 'approved', 'scheduled'];
+const SALE_RE = /yard sale|garage sale|estate sale|car boot|boot sale|rummage sale|tag sale|moving sale|flea market|auction|vide[- ]grenier|brocante/i;
+
+/** Sale-type listings are deleted 7 days after the event, so they are never indexed. */
+function isSaleListing(event: any): boolean {
+  return event.listing_kind === 'sale' || SALE_RE.test(`${event.category || ''} ${event.title || ''}`);
+}
+
+/** Index only verified, public, upcoming, non-sale events (date compared at day level, UTC). */
+function isIndexableEvent(event: any): boolean {
+  if (!PUBLIC_STATUSES.includes(String(event.status))) return false;
+  if (!event.city_slug || isSaleListing(event)) return false;
+  const d = new Date(event.event_date);
+  if (isNaN(d.getTime())) return false;
+  return d.toISOString().slice(0, 10) >= new Date().toISOString().slice(0, 10);
+}
+
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
+  if (!/^\d+$/.test(resolvedParams.id)) return { title: 'Event Not Found | LiveTimeData', robots: { index: false, follow: false } };
   const { rows } = await sql`SELECT * FROM events WHERE id = ${resolvedParams.id} LIMIT 1`;
   const event = rows[0];
 
-  if (!event) {
+  if (!event || !PUBLIC_STATUSES.includes(String(event.status))) {
     return {
       title: 'Event Not Found | LiveTimeData',
       description: 'The requested event could not be found.',
@@ -21,20 +39,17 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 
   return {
-    title: `${event.title} - ${event.city_name} | LiveTimeData`,
-    description: event.details.substring(0, 160),
+    title: `${event.title} - ${event.city_name}`,
+    description: String(event.details || event.title || '').substring(0, 160),
     alternates: {
       canonical: `https://www.livetimedata.com/events/${event.id}`,
     },
-    // Only index publicly approved, current/upcoming events (past + pending stay noindex).
-    robots:
-      ['live', 'published', 'approved', 'scheduled'].includes(String(event.status)) &&
-      event.event_date && new Date(event.event_date).getTime() >= Date.now() - 24 * 3600 * 1000
-        ? { index: true, follow: true }
-        : { index: false, follow: true },
+    // Index only verified, public, upcoming, non-sale events. Past events stay live for history but noindex.
+    robots: isIndexableEvent(event) ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       title: `${event.title} in ${event.city_name}`,
-      description: event.details.substring(0, 160),
+      description: String(event.details || event.title || '').substring(0, 160),
+      url: `https://www.livetimedata.com/events/${event.id}`,
       images: [
         {
           url: event.event_flyer_url || '/default-event-fallback.jpg', 
@@ -48,7 +63,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     twitter: {
       card: 'summary_large_image',
       title: `${event.title} in ${event.city_name}`,
-      description: event.details.substring(0, 160),
+      description: String(event.details || event.title || '').substring(0, 160),
       images: [event.event_flyer_url || '/default-event-fallback.jpg'],
     },
   };
@@ -56,10 +71,14 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function EventPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
+  if (!/^\d+$/.test(resolvedParams.id)) return notFound();
   const { rows } = await sql`SELECT * FROM events WHERE id = ${resolvedParams.id}`;
-  if (rows.length === 0) return notFound();
+  // Pending / rejected events are never public.
+  if (rows.length === 0 || !PUBLIC_STATUSES.includes(String(rows[0].status))) return notFound();
   
   const event = rows[0];
+  // Canonical city page for this event (verified slug only; never a guessed /city-dashboard?slug=...).
+  const cityHref = event.city_slug ? `/time/${event.city_slug}` : null;
 
   const isSale = Boolean(
     /yard|garage|estate|auction|boot|brocante|vide[- ]grenier|rummage|consignment/i.test(event.category || "") ||
@@ -106,7 +125,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
   }
 
   const mapQuery = event.venue_address || (event.venue ? `${event.venue}, ${event.city_name}` : event.city_name);
-  const shareUrl = `https://livetimedata.com/events/${event.id}`;
+  const shareUrl = `https://www.livetimedata.com/events/${event.id}`;
   const displayDate = new Date(event.event_date).toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
@@ -121,9 +140,11 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
         </div>
 
         <div className="max-w-4xl mx-auto relative z-10">
-          <Link href={`/city-dashboard?slug=${event.city_name.toLowerCase().replace(/\s+/g, '-')}-${(event.state_name || '').toLowerCase()}`} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full text-sm font-bold text-white uppercase tracking-wider backdrop-blur-md transition-all mb-8 shadow-sm">
-            &larr; Back to {event.city_name} Calendar
-          </Link>
+          {cityHref && (
+            <Link href={cityHref} className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full text-sm font-bold text-white uppercase tracking-wider backdrop-blur-md transition-all mb-8 shadow-sm">
+              &larr; Back to {event.city_name} Calendar
+            </Link>
+          )}
           
           <div className="flex flex-wrap gap-2 mb-4">
             {event.category?.split(',').map((cat: string) => (

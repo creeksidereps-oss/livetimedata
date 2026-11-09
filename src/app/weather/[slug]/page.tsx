@@ -283,6 +283,10 @@ async function resolveCityWithDb(
   return null;
 }
 
+// Indexability = curated set OR the city has real content (events, report, facts, photos, webcams).
+// (Imported here, below the protected search-landing section, so that section stays byte-identical.)
+import { isCityIndexable } from "@/lib/seo/cityIndexability";
+
 export async function generateMetadata(
   { params, searchParams }: { 
     params: Promise<{ slug: string }>;
@@ -314,8 +318,8 @@ export async function generateMetadata(
     alternates: {
       canonical: canonicalUrl,
     },
-    // Only the curated city set is submitted for indexing; all other city pages stay live but noindex.
-    robots: isIndexableCitySlug(resolved.slug) ? { index: true, follow: true } : { index: false, follow: true },
+    // Indexable once the city has real content (or is curated); otherwise live but noindex. Same rule as sitemap.xml.
+    robots: (isIndexableCitySlug(resolved.slug) || (await isCityIndexable(resolved.slug))) ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       title,
       description,

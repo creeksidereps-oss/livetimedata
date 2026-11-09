@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
 import { GoogleGenAI } from '@google/genai';
+import { publishEvent } from '@/lib/events/intake/publishEvent';
 
 export const runtime = 'nodejs'; // Node runtime needed for heavier API work
 
@@ -9,7 +9,9 @@ const ai = new GoogleGenAI({});
 
 export async function POST(request: Request) {
   try {
-    const { base64Image, mimeType, cityName, stateName } = await request.json();
+    // cityName/stateName are accepted for backward compatibility but are only the page the uploader was on.
+    // The event's location comes from the flyer itself (or stays empty and the event is held for review).
+    const { base64Image, mimeType } = await request.json();
 
     if (!base64Image) {
       return NextResponse.json({ ok: false, error: "No image payload provided" }, { status: 400 });
@@ -22,20 +24,25 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Send the image to Gemini Vision to extract event data as JSON
+    // 1. Send the image to Gemini Vision to TRANSCRIBE the flyer (read only; never write or guess content)
     const prompt = `
-      You are an expert event data extraction engine. 
-      Analyze this event poster/flyer and extract the exact details into the following strict JSON schema. 
-      
+      You are an event flyer transcription engine.
+      Read this event poster/flyer and copy the details that are actually printed on it into the strict JSON schema below.
+      Never invent, infer, summarize or embellish. If something is not printed on the flyer, return an empty string for it.
+
       Requirements:
-      1. title: The name of the event
+      1. title: The name of the event, as printed
       2. category: Must be one of: Festivals, Concerts, Sports, Venues, Tours, Lectures, Local, Clubs / Groups, Conventions, Holiday, Arts, Kids, Seniors, Other.
-      3. venue: Name of the venue or location
-      4. start_time: The start time, formatted perfectly like "6:30 PM" or "10:00 AM".
-      5. event_date: The date of the event in standard YYYY-MM-DD format.
-      6. details: A comprehensive description of the event.
-      7. safety_flag: If this poster contains adult content, severe violence, or spam, set this to true. Otherwise false.
-      8. confidence: A number from 0 to 1 representing how confident you are in your extraction.
+      3. venue: Name of the venue, as printed
+      4. venue_address: Street address, as printed
+      5. city: City / town, as printed
+      6. region: State / province / region, as printed
+      7. country: Country, as printed
+      8. start_time: The start time as printed, formatted like "6:30 PM" or "10:00 AM". Empty if not printed.
+      9. event_date: The date of the event in YYYY-MM-DD format. Empty if no date is printed.
+      10. details: The descriptive text printed on the flyer, copied verbatim. Empty if there is none.
+      11. safety_flag: If this poster contains adult content, severe violence, or spam, set this to true. Otherwise false.
+      12. confidence: A number from 0 to 1 representing how confident you are in your transcription.
 
       Output ONLY raw JSON. No markdown formatting blocks.
     `;
@@ -65,50 +72,44 @@ export async function POST(request: Request) {
     if (!resultText) throw new Error("AI returned empty data.");
 
     const extracted = JSON.parse(resultText);
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
-    // 2. Autonomous Decision Engine (AI Auto-Approval Logic)
-    // If confidence is high and there are no safety flags, it bypasses human curation.
-    let status = 'pending_review';
-    let source = 'AI Ingestion - Pending';
-
-    if (extracted.confidence > 0.85 && extracted.safety_flag === false) {
-      status = 'live';
-      source = 'AI Auto-Approval';
+    if (!str(extracted.event_date)) {
+      // No date on the flyer = no listing (never default to today).
+      return NextResponse.json({ ok: false, extracted, finalStatus: 'rejected', reasons: ['date_missing'], error: 'No event date could be read from the flyer.' }, { status: 422 });
     }
 
-    // 3. Inject directly into the Postgres Database
-    await sql`
-      INSERT INTO events (
-        title,
-        city_name,
-        state_name,
-        category,
-        venue,
-        source,
-        start_time,
-        event_date,
-        details,
-        status,
-        view_count
-      ) VALUES (
-        ${extracted.title || 'Unknown Event'},
-        ${cityName || 'Unknown City'},
-        ${stateName || ''},
-        ${extracted.category || 'Other'},
-        ${extracted.venue || 'Unknown Venue'},
-        ${source},
-        ${extracted.start_time || 'TBD'},
-        ${extracted.event_date ? extracted.event_date + '::timestamp' : new Date().toISOString() + '::timestamp'},
-        ${extracted.details || ''},
-        ${status},
-        0
-      )
-    `;
+    // 2. AI moderation only: low confidence or a safety flag forces human review. publishEvent() decides the rest.
+    const forcePending = !(Number(extracted.confidence) > 0.85 && extracted.safety_flag === false);
 
-    return NextResponse.json({ 
-      ok: true, 
-      extracted, 
-      finalStatus: status 
+    // 3. Publish through the single intake gate (location verification, date/time rules, dedup)
+    const result = await publishEvent({
+      origin: 'vision',
+      title: str(extracted.title),
+      details: str(extracted.details),
+      category: str(extracted.category) || 'Other',
+      venue: str(extracted.venue),
+      venueAddress: str(extracted.venue_address) || null,
+      startTime: str(extracted.start_time),
+      eventDate: str(extracted.event_date),
+      location: {
+        city: str(extracted.city) || null,
+        region: str(extracted.region) || null,
+        country: str(extracted.country) || null,
+        address: str(extracted.venue_address) || null,
+      },
+      source: forcePending ? 'AI Ingestion - Pending' : 'AI Flyer Transcription',
+      forcePending,
+    });
+
+    const finalStatus = result.outcome === 'published' ? 'live' : result.outcome;
+    return NextResponse.json({
+      ok: result.outcome !== 'rejected' && result.outcome !== 'retry',
+      extracted,
+      finalStatus,
+      id: result.id,
+      reasons: result.reasons,
+      detail: result.detail,
     });
 
   } catch (error: any) {

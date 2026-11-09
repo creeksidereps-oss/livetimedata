@@ -2,6 +2,7 @@
 
 import { sql } from '@vercel/postgres';
 import { revalidatePath } from 'next/cache';
+import { publishEvent, type IntakeResult } from '@/lib/events/intake/publishEvent';
 
 // Mock Amazon SES Wrapper
 async function sendSesNotification(email: string, title: string) {
@@ -195,24 +196,44 @@ export async function syndicateWebcamToCitiesAction(webcamData: any, citiesList:
   }
 }
 
+/** Human-readable summary of a publishEvent() result for admin alerts. */
+function describeIntake(r: IntakeResult): string {
+  const why = r.reasons.length ? ` (${r.reasons.join(', ')})` : '';
+  return `${r.outcome}${why}${r.detail ? `: ${r.detail}` : ''}`;
+}
+
 export async function cloneEventAction(updates: any) {
   try {
-    await sql`
-      INSERT INTO events (
-        title, city_name, state_name, category, venue, venue_address,
-        hosting_entity, start_time, event_date, details, affiliate_url,
-        registration_url, contact_email,
-        contact_phone, official_info_url, social_urls, event_flyer_url, view_count, status
-      ) VALUES (
-        ${updates.title}, ${updates.city_name}, ${updates.state_name}, ${updates.category},
-        ${updates.venue}, ${updates.venue_address}, ${updates.hosting_entity}, 
-        ${updates.start_time}, ${updates.event_date}::timestamp, ${updates.details}, ${updates.affiliate_url},
-        ${updates.registration_url}, ${updates.contact_email}, ${updates.contact_phone}, ${updates.official_info_url},
-        ${updates.social_urls}, ${updates.event_flyer_url}, 0, 'approved'
-      )
-    `;
+    // Location = exactly what the admin has in the edit form. No defaults.
+    const result = await publishEvent({
+      origin: 'admin_curation',
+      title: updates.title,
+      details: updates.details,
+      category: updates.category,
+      venue: updates.venue,
+      venueAddress: updates.venue_address,
+      hostingEntity: updates.hosting_entity,
+      startTime: updates.start_time,
+      eventDate: updates.event_date,
+      location: {
+        city: updates.city_name || null,
+        region: updates.state_name || null,
+        address: updates.venue_address || null,
+      },
+      source: 'Admin Clone',
+      affiliateUrl: updates.affiliate_url,
+      registrationUrl: updates.registration_url,
+      contactEmail: updates.contact_email,
+      contactPhone: updates.contact_phone,
+      officialInfoUrl: updates.official_info_url,
+      socialUrls: updates.social_urls,
+      eventFlyerUrl: updates.event_flyer_url,
+    });
     revalidatePath('/admin/curation');
-    return { success: true };
+    if (result.outcome === 'rejected' || result.outcome === 'retry') {
+      return { success: false, error: `Clone not saved: ${describeIntake(result)}`, outcome: result.outcome, reasons: result.reasons };
+    }
+    return { success: true, id: result.id, outcome: result.outcome, reasons: result.reasons, message: `Clone ${describeIntake(result)}` };
   } catch (error: any) {
     console.error('Clone Action Failed:', error);
     return { success: false, error: error.message || 'Database error' };
@@ -330,31 +351,55 @@ export async function adminOverrideMassPublishAction(eventId: number, franchiseI
       throw new Error(`Cannot mass publish: Zero locations found in the franchise library (ID: ${franchiseId}). Please rebuild the Franchise in the Franchises tab.`);
     }
 
+    const counts = { published: 0, pending_review: 0, duplicate: 0, rejected: 0, retry: 0 };
+    const problems: string[] = [];
     for (const loc of locations) {
       if (loc.city_name === originalEvent.city_name && loc.state_name === originalEvent.state_name) continue;
-      
-      await sql`
-        INSERT INTO events (
-          title, city_name, state_name, franchise_id, category, venue, venue_address,
-          hosting_entity, source, start_time, event_date, details, affiliate_url,
-          registration_url, user_name, user_email, user_phone, contact_email,
-          contact_phone, official_info_url, social_urls, event_flyer_url, status, updated_at
-        ) VALUES (
-          ${originalEvent.title}, ${loc.city_name}, ${loc.state_name}, ${franchiseId},
-          ${originalEvent.category}, ${originalEvent.venue}, ${loc.local_address},
-          ${originalEvent.hosting_entity}, 'Corporate Franchise Fan Out', ${originalEvent.start_time},
-          ${originalEvent.event_date}, ${originalEvent.details}, ${originalEvent.affiliate_url},
-          ${originalEvent.registration_url}, ${originalEvent.user_name}, ${originalEvent.user_email},
-          ${originalEvent.user_phone}, ${originalEvent.contact_email}, ${originalEvent.contact_phone},
-          ${originalEvent.official_info_url}, ${originalEvent.social_urls}, ${originalEvent.event_flyer_url},
-          'approved', NOW()
-        )
-      `;
+
+      // Location = the franchise location row exactly as entered (no defaults).
+      const localAddress = loc.local_address ? String(loc.local_address).replace(/\s*\|\s*/g, ', ') : null;
+      const result = await publishEvent({
+        origin: 'admin_curation',
+        title: originalEvent.title,
+        details: originalEvent.details,
+        category: originalEvent.category,
+        venue: originalEvent.venue,
+        venueAddress: localAddress,
+        hostingEntity: originalEvent.hosting_entity,
+        startTime: originalEvent.start_time,
+        eventDate: originalEvent.event_date,
+        location: {
+          city: loc.city_name || null,
+          region: loc.state_name || null,
+          address: localAddress,
+        },
+        source: 'Corporate Franchise Fan Out',
+        franchiseId,
+        affiliateUrl: originalEvent.affiliate_url,
+        registrationUrl: originalEvent.registration_url,
+        userName: originalEvent.user_name,
+        userEmail: originalEvent.user_email,
+        userPhone: originalEvent.user_phone,
+        contactEmail: originalEvent.contact_email,
+        contactPhone: originalEvent.contact_phone,
+        officialInfoUrl: originalEvent.official_info_url,
+        socialUrls: originalEvent.social_urls,
+        eventFlyerUrl: originalEvent.event_flyer_url,
+      });
+      counts[result.outcome]++;
+      if (result.outcome !== 'published' && result.outcome !== 'duplicate') {
+        problems.push(`${loc.city_name || '?'}${loc.state_name ? ', ' + loc.state_name : ''}: ${describeIntake(result)}`);
+      }
     }
 
     await sql`UPDATE events SET status = 'approved', updated_at = NOW() WHERE id = ${eventId}`;
     revalidatePath('/admin/curation');
-    return { success: true };
+    const summary = `Fan-out: ${counts.published} published, ${counts.pending_review} pending review, ${counts.duplicate} duplicates, ${counts.rejected} rejected, ${counts.retry} retry later.`;
+    if (counts.rejected || counts.retry) {
+      // success:false makes the curation UI alert the admin with the per-location reasons.
+      return { success: false, error: `${summary}\n${problems.join('\n')}`, counts };
+    }
+    return { success: true, counts, message: problems.length ? `${summary}\n${problems.join('\n')}` : summary };
   } catch (error: any) {
     console.error('Admin Override Failed:', error);
     return { success: false, error: error.message || 'Database error' };

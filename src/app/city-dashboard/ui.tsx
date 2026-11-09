@@ -53,14 +53,16 @@ export default function Page(props: {
       if (!sp) {
         const rawSp = props.searchParams ? await props.searchParams : {};
         const p = props.params ? await props.params : undefined;
-        const resolved = resolveCityFromSlug(p?.slug);
-        const cName = (rawSp?.name as string) || resolved.name;
-        const sName = rawSp?.admin1 !== undefined ? (rawSp.admin1 as string) : resolved.admin1;
-        const cCountry = (rawSp?.country as string) || resolved.country;
-        const cCountryCode = (rawSp?.country_code as string) || resolved.country_code;
-        const cLat = parseFloat(rawSp?.lat as string) || resolved.lat;
-        const cLon = parseFloat(rawSp?.lon as string) || resolved.lon;
-        const cTimezone = (rawSp?.timezone as string) || resolved.timezone || "auto";
+        // allowDefault=false: an unknown slug must never turn into a different (default) city.
+        const resolved = resolveCityFromSlug(p?.slug, false);
+        const num = (v: any) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v));
+        const cName = (rawSp?.name as string) || resolved?.name || "";
+        const sName = rawSp?.admin1 !== undefined ? (rawSp.admin1 as string) : resolved?.admin1 || "";
+        const cCountry = (rawSp?.country as string) || resolved?.country || "";
+        const cCountryCode = (rawSp?.country_code as string) || resolved?.country_code || "";
+        const cLat = num(rawSp?.lat) ?? resolved?.lat;
+        const cLon = num(rawSp?.lon) ?? resolved?.lon;
+        const cTimezone = (rawSp?.timezone as string) || resolved?.timezone || "auto";
 
         sp = { 
           ...rawSp, 
@@ -75,10 +77,13 @@ export default function Page(props: {
         setSearchParams(sp);
       }
 
-      const currentLat = parseFloat(sp.lat) || 35.7826;
-      const currentLon = parseFloat(sp.lon) || -80.8873;
-      const currentCity = sp.name || "Statesville";
-      const currentState = sp.admin1 || "";
+      // No defaults: a missing value stays missing (0 is a valid coordinate, e.g. Greenwich).
+      const toCoord = (v: any) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+      const currentLat = toCoord(sp.lat);
+      const currentLon = toCoord(sp.lon);
+      const currentCity = (sp.name as string) || "";
+      const currentState = (sp.admin1 as string) || "";
+      if (!currentCity || currentLat === null || currentLon === null) return; // unresolved city: nothing to fetch or generate
 
       // 1. Fetch Current Weather Forecast (if not provided via SSR)
       if (!props.initialWeather) {
@@ -87,19 +92,15 @@ export default function Page(props: {
       }
 
       // 2. Immediate Library Pre-Caching Runner
+      // (Event discovery is no longer triggered by page visits: events only enter through publishEvent().)
       try {
-        fetch('/api/admin/scraper', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cityName: currentCity, stateName: currentState, lat: currentLat, lng: currentLon }),
-        }).catch(() => {});
         fetch('/api/admin/scraper/webcams', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ cityName: currentCity, stateName: currentState }),
         }).catch(() => {});
-        const currentCountry = (sp.country as string) || "United States";
-        const currentCountryCode = (sp.country_code as string) || "US";
+        const currentCountry = (sp.country as string) || "";
+        const currentCountryCode = (sp.country_code as string) || "";
 
         fetch('/api/generate-report', {
           method: 'POST',
@@ -117,9 +118,23 @@ export default function Page(props: {
   }, [props.searchParams, props.initialData]);
 
   if (!searchParams) return null;
-  const cityName = (searchParams.name as string) || "Statesville";
-  const lat = parseFloat(searchParams.lat as string) || 35.7826;
-  const lon = parseFloat(searchParams.lon as string) || -80.8873;
+  const cityName = (searchParams.name as string) || "";
+  const toCoordVal = (v: any) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  const latOrNull = toCoordVal(searchParams.lat);
+  const lonOrNull = toCoordVal(searchParams.lon);
+
+  // Never render a different (default) city: an unresolved city gets an honest not-found state.
+  if (!cityName || latOrNull === null || lonOrNull === null) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] bg-[#f8fafc] text-slate-900 px-6 text-center gap-4">
+        <h1 className="text-2xl font-black uppercase tracking-tight">City not found</h1>
+        <p className="text-slate-500 max-w-md">We couldn&apos;t identify this location. Use the search box to find the city you&apos;re looking for.</p>
+        <div className="w-full max-w-md"><CitySearch /></div>
+      </div>
+    );
+  }
+  const lat: number = latOrNull;
+  const lon: number = lonOrNull;
 
   return (
     <div className="flex flex-col min-h-screen bg-[#f8fafc] w-full max-w-[100vw] overflow-x-clip relative">

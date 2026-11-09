@@ -9,6 +9,7 @@ import {
   scrapeStorageTreasuresLiveAuctions,
   ScrapedYardSale,
 } from "@/lib/yardsales/scraper";
+import { publishEvent, hasStreetAddress, type IntakeOutcome } from "@/lib/events/intake/publishEvent";
 
 export const dynamic = "force-dynamic";
 // Vercel Pro max (~13 min). New cities stop starting at 8 min so the city in progress always finishes.
@@ -22,12 +23,13 @@ export const maxDuration = 800;
  *  - Every listing needs a real numeric street address and a real date.
  *  - No made-up start times or hosts. A listing without a confirmed start time goes to `pending_review`.
  *  - Past listings are discarded before insert.
+ *  - Every listing goes through publishEvent() (origin "yardsale", kind "sale"), which enforces the rules above.
+ *  - The city being searched is only a query. A listing's location is only what the listing itself states.
  *  - Per city + per platform yield is tracked in `yardsale_city_source_stats`. Pairs with no listings for
  *    30 days show up in the admin report query (see bottom of file); nothing is auto-culled.
  *
  * Query params: ?city=&state= for a single on-demand city. ?auctions=false to skip StorageTreasures.
  */
-const STREET_RE = /\d+\s+([a-zA-Z0-9#.\s]+)/;
 const START_WINDOW_MS = 8 * 60_000;
 const SPIDERS = 12; // parallel spiders per run (each works one city at a time)
 
@@ -53,46 +55,51 @@ async function ensureSchema() {
     )`);
 }
 
-function isFutureOrToday(dateStr: string): boolean {
-  if (!dateStr || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return false;
-  const today = new Date().toISOString().slice(0, 10);
-  return dateStr.slice(0, 10) >= today;
+/** Cheap pre-filter only (saves geocoder calls). publishEvent() makes the real date check in the event's timezone. */
+function isPossiblyFutureOrToday(dateStr: string): boolean {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return false; // no date = no listing
+  const yesterdayUtc = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  return dateStr.slice(0, 10) >= yesterdayUtc;
 }
 
-function hasConfirmedTime(t?: string): boolean {
-  return !!t && /\d/.test(t) && /(am|pm)|^\d{1,2}:\d{2}$/i.test(t.trim()) && !/tbd|tba/i.test(t);
-}
-
-/** Insert one listing. Returns 'inserted' | 'duplicate' | 'rejected'. */
-async function insertListing(s: ScrapedYardSale, category: string, fallbackSource: string) {
-  if (!s.streetAddress || !STREET_RE.test(s.streetAddress)) return "rejected";
-  if (!s.cityName || !s.title) return "rejected";
-  if (!isFutureOrToday(s.startDate)) return "rejected"; // no date / past date = discard
+/**
+ * Hand one listing to publishEvent(). Location = only what the listing itself states
+ * (its own street, locality, region, postal code, coordinates). The city being searched is never used.
+ * publishEvent enforces: real numeric street address (else rejected), verified city, date today or later,
+ * confirmed start time (else pending_review), real description (else pending_review), duplicates.
+ */
+async function insertListing(s: ScrapedYardSale, category: string, fallbackSource: string): Promise<IntakeOutcome> {
+  if (!s.title || !isPossiblyFutureOrToday(s.startDate)) return "rejected"; // no date / past date = discard
+  if (!hasStreetAddress(s.streetAddress)) return "rejected";                // no numeric street address = discard
 
   const fullAddress = [s.streetAddress, s.cityName, [s.stateName, s.postalCode].filter(Boolean).join(" ")]
     .filter(Boolean).join(", ");
 
-  const dup = await sql.query(
-    `SELECT id FROM events WHERE title = $1 AND city_name = $2 AND DATE(event_date) = $3::date LIMIT 1`,
-    [s.title, s.cityName, s.startDate.slice(0, 10)]
-  );
-  if (dup.rows.length) return "duplicate";
-
-  const confirmed = hasConfirmedTime(s.startTime);
-  await sql.query(
-    `INSERT INTO events (title, city_name, state_name, category, venue, venue_address, hosting_entity, source,
-       start_time, event_date, details, official_info_url, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11, $12, $13)`,
-    [
-      s.title, s.cityName, s.stateName || null, category, s.streetAddress, fullAddress,
-      s.hostingEntity || null, s.source || fallbackSource,
-      confirmed ? s.startTime : "TBD",
-      `${s.startDate.slice(0, 10)}T12:00:00Z`,
-      s.description || null, s.url || null,
-      confirmed ? "live" : "pending_review",
-    ]
-  );
-  return "inserted";
+  const result = await publishEvent({
+    origin: "yardsale",
+    kind: "sale",
+    title: s.title,
+    details: s.description || "",
+    category,
+    venue: s.streetAddress || "",
+    venueAddress: fullAddress,
+    hostingEntity: s.hostingEntity || null,
+    startTime: s.startTime || null,
+    eventDate: s.startDate.slice(0, 10),
+    location: {
+      city: s.cityName || null,
+      region: s.stateName || null,
+      address: fullAddress,
+      lat: s.latitude ?? null,
+      lon: s.longitude ?? null,
+      sourceUrl: s.url || null,
+    },
+    source: s.source || fallbackSource,
+    sourceUrl: s.url || null,
+    officialInfoUrl: s.url || null,
+    eventFlyerUrl: s.photoUrl || null,
+  });
+  return result.outcome;
 }
 
 async function recordYield(city: { slug: string; name: string; admin1: string | null; country_code: string | null }, platform: string, found: number) {
@@ -132,15 +139,19 @@ export async function GET(request: Request) {
       );
     }
 
-    const totals = { inserted: 0, pendingReview: 0, duplicates: 0, rejected: 0, auctionsInserted: 0, citiesProcessed: 0, citiesRemainingInCycle: 0 };
+    const totals = { inserted: 0, pendingReview: 0, duplicates: 0, rejected: 0, retry: 0, auctionsInserted: 0, citiesProcessed: 0, citiesRemainingInCycle: 0 };
 
     // 1. Live in-person storage auctions (one global feed per run)
     if (includeAuctions) {
       const auctions = await scrapeStorageTreasuresLiveAuctions().catch(() => [] as ScrapedYardSale[]);
       for (const a of auctions) {
         const r = await insertListing(a, "Yard / Garage Sales", "StorageTreasures");
-        if (r === "inserted") totals.auctionsInserted++;
+        if (r === "published" || r === "pending_review") {
+          totals.auctionsInserted++;
+          if (r === "pending_review") totals.pendingReview++;
+        }
         else if (r === "duplicate") totals.duplicates++;
+        else if (r === "retry") totals.retry++;
         else totals.rejected++;
       }
     }
@@ -169,11 +180,12 @@ export async function GET(request: Request) {
         let accepted = 0;
         for (const s of list) {
           const r = await insertListing(s, "Yard / Garage Sales", platform);
-          if (r === "inserted") {
+          if (r === "published" || r === "pending_review") {
             accepted++;
             totals.inserted++;
-            if (!hasConfirmedTime(s.startTime)) totals.pendingReview++;
+            if (r === "pending_review") totals.pendingReview++;
           } else if (r === "duplicate") { accepted++; totals.duplicates++; }
+          else if (r === "retry") totals.retry++;
           else totals.rejected++;
         }
         if (!targetCity) await recordYield(c, platform, accepted);

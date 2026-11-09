@@ -1,26 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/db';
-import { events } from '@/db/schema';
 import { GoogleGenAI } from '@google/genai';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
+import { publishEvent } from '@/lib/events/intake/publishEvent';
 
 // Initialize the new Gemini SDK
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// System instructions to enforce the JSON schema
+// System instructions to enforce the JSON schema.
+// Transcription only: the model copies what the flyer/email says and never invents, infers or embellishes.
 const SYSTEM_INSTRUCTION = `
-You are an expert event data extraction assistant. Your job is to extract event details from flyers, posters, or email text.
+You are an event data transcription assistant. Your job is to copy event details exactly as they appear in flyers, posters, or email text.
+Never invent, infer, summarize or embellish. If a detail is not written in the material, return null for it.
 You must return a raw JSON object (do not wrap in markdown code blocks) with the following strict structure:
 {
-  "title": "String - The name of the event",
-  "cityName": "String - City where it takes place (infer from venue if not explicit)",
-  "stateName": "String - State (optional)",
+  "title": "String - The name of the event, as written",
+  "venueAddress": "String - Street address, as written",
+  "cityName": "String - City where it takes place, as written (do NOT infer it)",
+  "stateName": "String - State / province / region, as written (optional)",
+  "countryName": "String - Country, as written (optional)",
   "category": "String - (e.g. Music, Sports, Theater, Festival, Charity)",
-  "venue": "String - Name of the venue or location",
-  "startTime": "String - Time (e.g. '7:00 PM', 'Doors open 6pm')",
+  "venue": "String - Name of the venue or location, as written",
+  "startTime": "String - Start time as written (e.g. '7:00 PM')",
   "eventDate": "String - ISO Date YYYY-MM-DD",
-  "details": "String - A nice paragraph describing the event",
+  "details": "String - The descriptive text from the material, copied verbatim (do NOT write your own)",
   "confidenceScore": "Number - 0 to 100. Rate how confident you are that all details are accurate."
 }
 If a field is completely missing, return null for that field, but keep the key.
@@ -89,35 +92,65 @@ export async function POST(req: NextRequest) {
       throw new Error("AI returned invalid JSON: " + response.text);
     }
 
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    if (!str(aiData.eventDate)) {
+      // No date = no listing (never default to today).
+      return NextResponse.json({ error: 'No event date could be read from the material, so nothing was saved.', aiConfidence: aiData.confidenceScore }, { status: 422 });
+    }
+
     // 4. Smart Routing Logic
-    // If the AI is highly confident AND we have the core fields, mark it live. Otherwise, send to admin queue.
+    // If the AI is highly confident AND we have the core fields, it may go live (if publishEvent's rules pass).
+    // Otherwise it is held for the admin queue.
     const isHighConfidence = aiData.confidenceScore && aiData.confidenceScore >= 90;
     const hasCoreFields = aiData.title && aiData.cityName && aiData.eventDate && aiData.venue;
-    const status = (isHighConfidence && hasCoreFields) ? 'live' : 'pending_review';
 
-    // 5. Insert into Database
-    // Convert YYYY-MM-DD string to Date object
-    const parsedDate = aiData.eventDate ? new Date(aiData.eventDate) : new Date();
-
-    const result = await db.insert(events).values({
-      title: aiData.title || 'Untitled Event',
-      cityName: aiData.cityName || 'Unknown City',
-      stateName: aiData.stateName || null,
-      category: aiData.category || 'General',
-      venue: aiData.venue || 'TBD',
-      startTime: aiData.startTime || 'TBD',
-      eventDate: parsedDate,
-      details: aiData.details || 'No details provided.',
-      eventFlyerUrl: eventFlyerUrl,
+    // 5. Insert through the single intake gate. Location = only what the material states; no defaults.
+    const result = await publishEvent({
+      origin: 'admin_curation',
+      title: str(aiData.title),
+      details: str(aiData.details),
+      category: str(aiData.category) || 'General',
+      venue: str(aiData.venue),
+      venueAddress: str(aiData.venueAddress) || null,
+      startTime: str(aiData.startTime),
+      eventDate: str(aiData.eventDate),
+      location: {
+        city: str(aiData.cityName) || null,
+        region: str(aiData.stateName) || null,
+        country: str(aiData.countryName) || null,
+        address: str(aiData.venueAddress) || null,
+      },
+      eventFlyerUrl,
       source: 'AI Ingestion Pipeline',
-      status: status
-    }).returning();
+      forcePending: !(isHighConfidence && hasCoreFields),
+    });
 
+    if (result.outcome === 'rejected' || result.outcome === 'retry') {
+      return NextResponse.json({
+        error: `Event not saved (${result.outcome}): ${result.reasons.join(', ')}${result.detail ? ` - ${result.detail}` : ''}`,
+        aiConfidence: aiData.confidenceScore,
+        reasons: result.reasons,
+      }, { status: result.outcome === 'retry' ? 503 : 422 });
+    }
+
+    const status = result.outcome === 'published' ? 'live' : result.outcome;
     return NextResponse.json({
       success: true,
-      message: `Event ingested and routed to ${status}`,
+      message: `Event ingested and routed to ${status}${result.reasons.length ? ` (${result.reasons.join(', ')})` : ''}`,
       aiConfidence: aiData.confidenceScore,
-      event: result[0]
+      reasons: result.reasons,
+      event: {
+        id: result.id,
+        status,
+        title: str(aiData.title),
+        eventDate: str(aiData.eventDate),
+        startTime: str(aiData.startTime),
+        venue: str(aiData.venue),
+        cityName: result.location?.cityName || str(aiData.cityName),
+        category: str(aiData.category) || 'General',
+        details: str(aiData.details),
+        eventFlyerUrl,
+      }
     });
 
   } catch (error: any) {

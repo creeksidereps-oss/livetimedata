@@ -1,98 +1,70 @@
 // src/lib/discovery/spider.ts
 import { db } from "@/db";
-import { entities, entityRelationships, appearances, cities, sources } from "@/db/schema";
+import { entities, entityRelationships, appearances, sources } from "@/db/schema";
 import { eq, and, sql, asc, or, isNull, lte } from "drizzle-orm";
 import { recordRelationship } from "./lifecycle";
-import { extractEventsFromUrl, ingestDiscoveredEvents, isValidCalendarSourceUrl } from "./calendar-crawler";
-import { GoogleGenAI } from "@google/genai";
+import { extractEventsFromUrl, ingestCrawledEvents, isValidCalendarSourceUrl } from "@/lib/events/crawl";
 
 export interface SpiderResult {
   entitiesProcessed: number;
   sourcesProcessed: number;
-  entitiesWebSearched: number;
-  newVenuesDiscovered: number;
+  /** Entities skipped because they have no website on record ($0 rule: no paid web search). */
+  entitiesWithoutWebsite: number;
   newEntitiesDiscovered: number;
   newEventsIngested: number;
-  newCitiesBirthed: number;
   emailsIngested: number;
+  /** publishEvent() outcomes across all crawls in this batch. */
+  outcomes: Record<string, number>;
 }
 
-/**
- * Autonomous Web Search: When an entity (venue, artist, brewery, food truck)
- * enters the graph WITHOUT a website or calendar URL, the spider searches the open
- * web using Google Search grounding to discover its official website and calendar!
- */
-export async function resolveEntityWebsiteAndCalendar(
-  name: string,
-  entityType: string,
-  cityName?: string | null,
-  stateName?: string | null
-): Promise<{ officialWebsite?: string; calendarUrl?: string } | null> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  // Guard: Protect Gemini spend cap from autonomous loops. Only fire Google Search Grounding if explicitly enabled.
-  if (!apiKey || process.env.ENABLE_GEMINI_SEARCH_GROUNDING !== "true") return null;
+// resolveEntityWebsiteAndCalendar() (Gemini + Google Search Grounding) was removed:
+// spiders run at $0 Google spend (GEMINI.md spider rule 1). Entities without a website are skipped;
+// the spider-lifecycle engine logs such entities to `spider_lookup_needed` for the owner.
 
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const locationStr = [cityName, stateName].filter(Boolean).join(", ");
-    const prompt = `
-      Search Google to find the official website and the events/calendar/tour page for this entity:
-      Name: ${name}
-      Type: ${entityType}
-      ${locationStr ? `Location: ${locationStr}` : ""}
+const isCrawlableUrl = (u?: string | null): u is string =>
+  !!u && u.startsWith("http") && !/\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i.test(u);
 
-      Return ONLY a JSON object with:
-      {
-        "officialWebsite": "https://...",
-        "calendarUrl": "https://..."
-      }
-      Do not use markdown formatting or backticks.
-    `;
+function addOutcomes(into: Record<string, number>, from: Record<string, number>) {
+  for (const [k, v] of Object.entries(from)) into[k] = (into[k] || 0) + v;
+}
 
-    const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-    const res = await ai.models.generateContent({
-      model: modelName,
-      contents: prompt,
-      config: { responseMimeType: "application/json" },
-    });
-
-    if (!res.text) return null;
-    const clean = res.text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const data = JSON.parse(clean);
-    return {
-      officialWebsite: data.officialWebsite?.startsWith("http")
-        ? data.officialWebsite
-        : undefined,
-      calendarUrl: data.calendarUrl?.startsWith("http")
-        ? data.calendarUrl
-        : undefined,
-    };
-  } catch (err: any) {
-    console.error(
-      `[SPIDER_SEARCH] Error searching web for entity ${name}:`,
-      err.message
-    );
-    return null;
+/** Register sub-calendar URLs as new sources. Spawned sources never inherit a city/state. */
+async function spawnSubSources(subUrls: string[], baseName: string, suffix: string) {
+  const cleanBaseName = (baseName || "Discovered").replace(/(\s+(Sub-Event|Calendar Hub))+$/i, "").trim();
+  for (const subUrl of subUrls) {
+    if (!isValidCalendarSourceUrl(subUrl)) continue;
+    await db
+      .insert(sources)
+      .values({
+        url: subUrl,
+        name: `${cleanBaseName} ${suffix}`,
+        sourceType: "venue",
+        cityName: null,
+        stateName: null,
+        scrapeIntervalDays: 30,
+        scrapeHorizonMonths: 6,
+        status: "active",
+        nextScrapeDue: sql`NOW()`,
+      })
+      .onConflictDoNothing();
   }
 }
 
 /**
  * Universal Recursive Spider Engine:
- * Follows the infinite recursive graph:
- * Entity (without website) -> Search Google Web for Official Calendar ->
- * Update Entity -> Add to Sources -> Crawl Calendar -> Ingest Events ->
- * Extract Co-Entities (Performers, Venues, Hosts) -> Repeat Forever!
+ * Follows the recursive graph:
+ * Entity (with a website on record) -> Crawl its calendar (URL only) -> publishEvent() each event ->
+ * Extract Co-Entities (Performers, Venues, Hosts) -> Repeat.
  */
 export async function runRecursiveSpider(batchSize: number = 10): Promise<SpiderResult> {
   const result: SpiderResult = {
     entitiesProcessed: 0,
     sourcesProcessed: 0,
-    entitiesWebSearched: 0,
-    newVenuesDiscovered: 0,
+    entitiesWithoutWebsite: 0,
     newEntitiesDiscovered: 0,
     newEventsIngested: 0,
-    newCitiesBirthed: 0,
     emailsIngested: 0,
+    outcomes: {},
   };
 
   // 1. Fetch next batch of entities needing spidering (least recently updated first, business/cultural venues only)
@@ -106,7 +78,6 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
           eq(entities.verificationStatus, "verified"),
           isNull(entities.updatedAt)
         ),
-        sql`${entities.cityName} IS NOT NULL AND ${entities.cityName} != ''`,
         sql`TRIM(${entities.name}) !~ '^[0-9]+\\s+[A-Za-z]'`,
         sql`TRIM(${entities.name}) !~ '^#[0-9]+'`
       )
@@ -114,114 +85,34 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
     .orderBy(asc(entities.updatedAt))
     .limit(batchSize);
 
-  let searchBudget = 3; // Limit live AI web searches per batch to keep execution fast
-
   for (const entity of candidateEntities) {
     result.entitiesProcessed++;
+    const targetUrl = entity.websiteUrl;
 
-    let targetUrl: string | null = entity.websiteUrl;
-    const isMissingOrImage =
-      !targetUrl ||
-      !targetUrl.startsWith("http") ||
-      Boolean(targetUrl.match(/\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i));
-
-    // 2. Proactive Web Search: If entity lacks a website/calendar, search Google for it!
-    if (isMissingOrImage && searchBudget > 0) {
-      searchBudget--;
-      result.entitiesWebSearched++;
-      console.log(
-        `[SPIDER_SEARCH] Searching web for official calendar of: ${entity.name} (${entity.entityType}) in ${entity.cityName || "NC"}`
-      );
-
-      const found = await resolveEntityWebsiteAndCalendar(
-        entity.name,
-        entity.entityType,
-        entity.cityName,
-        entity.stateName
-      );
-
-      if (found?.calendarUrl || found?.officialWebsite) {
-        targetUrl = found.calendarUrl || found.officialWebsite || null;
-
-        // Persist discovered website into the entity record
-        await db
-          .update(entities)
-          .set({ websiteUrl: targetUrl || null })
-          .where(eq(entities.id, entity.id));
-
-        // Queue newly found calendar into sources for perpetual tracking
-        await db
-          .insert(sources)
-          .values({
-            url: targetUrl!,
-            name: `${entity.name} Official Calendar`,
-            sourceType: entity.entityType === "performer" ? "artist_tour" : "venue",
-            cityName: entity.cityName,
-            stateName: entity.stateName || null,
-            scrapeIntervalDays: entity.entityType === "performer" ? 30 : 14,
-            scrapeHorizonMonths: entity.entityType === "performer" ? 12 : 6,
-            status: "active",
-            nextScrapeDue: sql`NOW()`,
-          })
-          .onConflictDoNothing();
-      }
-    }
-
-    // 3. Active Web Crawl: Extract live events from the entity's calendar
-    if (
-      targetUrl &&
-      targetUrl.startsWith("http") &&
-      !targetUrl.match(/\.(png|jpg|jpeg|gif|webp|svg)(\?.*)?$/i)
-    ) {
+    // 2. Active Web Crawl: Extract live events from the entity's own website/calendar (URL only)
+    if (isCrawlableUrl(targetUrl)) {
       try {
-        const crawl = await extractEventsFromUrl(
-          targetUrl,
-          entity.cityName || "",
-          entity.stateName || ""
-        );
-
+        const crawl = await extractEventsFromUrl(targetUrl);
         if (crawl.events.length > 0 || crawl.extractedEmails.length > 0) {
-          const ingestStats = await ingestDiscoveredEvents(
-            crawl.events,
-            crawl.extractedEmails,
-            {
-              cityName: entity.cityName,
-              stateName: entity.stateName,
-              sourceUrl: targetUrl,
-              venueName: entity.name,
-              entityId: entity.id,
-            }
-          );
+          const ingestStats = await ingestCrawledEvents(crawl.events, crawl.extractedEmails, {
+            origin: "crawler",
+            sourceUrl: targetUrl,
+            entityId: entity.id,
+          });
           result.newEventsIngested += ingestStats.ingested;
-          result.newCitiesBirthed += ingestStats.birthedCities;
           result.newEntitiesDiscovered += ingestStats.newEntities;
           result.emailsIngested += ingestStats.emailsIngested;
+          addOutcomes(result.outcomes, ingestStats.outcomes);
         }
-
-        for (const subUrl of crawl.subUrls) {
-          if (!isValidCalendarSourceUrl(subUrl)) continue;
-          const cleanBaseName = (entity.name || "Discovered").replace(/(\s+Sub-Event)+$/i, "").trim();
-          await db
-            .insert(sources)
-            .values({
-              url: subUrl,
-              name: `${cleanBaseName} Calendar Hub`,
-              sourceType: "venue",
-              cityName: entity.cityName,
-              stateName: entity.stateName || null,
-              scrapeIntervalDays: 30,
-              scrapeHorizonMonths: 6,
-              status: "active",
-              nextScrapeDue: sql`NOW()`,
-            })
-            .onConflictDoNothing();
-        }
+        await spawnSubSources(crawl.subUrls, entity.name, "Calendar Hub");
       } catch (err: any) {
         console.error(`[SPIDER] Error spidering entity ${entity.name}:`, err.message);
       }
+    } else {
+      result.entitiesWithoutWebsite++;
     }
 
-    // 4. Connect co-entities via existing venue appearances
+    // 3. Connect co-entities via existing venue appearances
     const relatedVenues = await db
       .select({
         venueId: entityRelationships.targetEntityId,
@@ -289,35 +180,9 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
       }
     }
 
-    // 5. Ensure city is registered in cities table
-    if (entity.cityName) {
-      const cityCheck = await db
-        .select({ slug: cities.slug })
-        .from(cities)
-        .where(sql`LOWER(${cities.name}) = LOWER(${entity.cityName})`)
-        .limit(1);
+    // (City auto-creation removed: cities are created only by resolveLocation() via publishEvent().)
 
-      if (cityCheck.length === 0) {
-        const citySlug = entity.cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-        await db
-          .insert(cities)
-          .values({
-            name: entity.cityName,
-            slug: citySlug,
-            admin1: entity.stateName || null,
-            countryCode: (entity as any).countryCode || "US",
-            countryName: (entity as any).countryName || null,
-            latitude: entity.latitude || null,
-            longitude: entity.longitude || null,
-            timezone: null,
-            population: 10000,
-          })
-          .onConflictDoNothing();
-        result.newCitiesBirthed++;
-      }
-    }
-
-    // 6. Update entity lifecycle timestamp & status
+    // 4. Update entity lifecycle timestamp & status
     await db
       .update(entities)
       .set({
@@ -327,7 +192,7 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
       .where(eq(entities.id, entity.id));
   }
 
-  // 7. Spider pending high-priority sources due for crawl
+  // 5. Spider pending high-priority sources due for crawl
   const dueSources = await db
     .select()
     .from(sources)
@@ -346,48 +211,24 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
   for (const src of dueSources) {
     result.sourcesProcessed++;
     if (src.url && src.url.startsWith("http")) {
+      let retryNeeded = false;
       try {
-        const crawl = await extractEventsFromUrl(
-          src.url,
-          src.cityName || "",
-          src.stateName || ""
-        );
-
+        // URL only: the source row's city/state is never handed to the crawler.
+        const crawl = await extractEventsFromUrl(src.url);
         if (crawl.events.length > 0 || crawl.extractedEmails.length > 0) {
-          const stats = await ingestDiscoveredEvents(
-            crawl.events,
-            crawl.extractedEmails,
-            {
-              cityName: src.cityName,
-              stateName: src.stateName,
-              sourceUrl: src.url,
-              venueName: src.name,
-            }
-          );
+          const stats = await ingestCrawledEvents(crawl.events, crawl.extractedEmails, {
+            origin: "crawler",
+            sourceUrl: src.url,
+          });
+          retryNeeded = stats.retryNeeded;
           result.newEventsIngested += stats.ingested;
-          result.newCitiesBirthed += stats.birthedCities;
           result.newEntitiesDiscovered += stats.newEntities;
           result.emailsIngested += stats.emailsIngested;
+          addOutcomes(result.outcomes, stats.outcomes);
         }
 
         // Register newly discovered sub-event URLs into sources
-        for (const subUrl of crawl.subUrls) {
-          const cleanBaseName = (src.name || "Discovered").replace(/(\s+Sub-Event)+$/i, "").trim();
-          await db
-            .insert(sources)
-            .values({
-              url: subUrl,
-              name: `${cleanBaseName} Sub-Event`,
-              sourceType: "venue",
-              cityName: src.cityName,
-              stateName: src.stateName || null,
-              scrapeIntervalDays: 30,
-              scrapeHorizonMonths: 6,
-              status: "active",
-              nextScrapeDue: sql`NOW()`,
-            })
-            .onConflictDoNothing();
-        }
+        await spawnSubSources(crawl.subUrls, src.name || "Discovered", "Sub-Event");
       } catch (err: any) {
         console.error(`[SPIDER] Error spidering source ${src.name}:`, err.message);
       } finally {
@@ -395,7 +236,9 @@ export async function runRecursiveSpider(batchSize: number = 10): Promise<Spider
           .update(sources)
           .set({
             lastScrapedAt: new Date(),
-            nextScrapeDue: sql`NOW() + (${src.scrapeIntervalDays || 14} || ' days')::interval`,
+            nextScrapeDue: retryNeeded
+              ? sql`NOW() + interval '1 hour'`
+              : sql`NOW() + (${src.scrapeIntervalDays || 14} || ' days')::interval`,
             updatedAt: new Date(),
           })
           .where(eq(sources.id, src.id));

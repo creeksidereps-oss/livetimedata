@@ -47,11 +47,11 @@ export async function scrapeFranceSales(deptCode: string = "75", cityName: strin
           const geo = loc.geo || {};
 
           const street = addr.streetAddress || loc.name || "";
-          const locality = addr.addressLocality || cityName;
+          const locality = addr.addressLocality || ""; // listing's own locality only (never the searched city)
           const lat = geo.latitude ? parseFloat(geo.latitude) : undefined;
           const lon = geo.longitude ? parseFloat(geo.longitude) : undefined;
 
-          const startDate = data.startDate ? data.startDate.slice(0, 10) : new Date().toISOString().slice(0, 10);
+          const startDate = data.startDate ? data.startDate.slice(0, 10) : ""; // no date = no listing (never default to today)
           const endDate = data.endDate ? data.endDate.slice(0, 10) : startDate;
 
           sales.push({
@@ -64,8 +64,8 @@ export async function scrapeFranceSales(deptCode: string = "75", cityName: strin
             longitude: lon,
             startDate,
             endDate,
-            description: (data.description || name).slice(0, 800),
-            organizerName: data.organizer?.name || "Brocante & Vide-Grenier",
+            description: (data.description || "").slice(0, 800), // no title-as-description filler
+            organizerName: data.organizer?.name || undefined, // no made-up hosts
           });
         }
       } catch (e) {}

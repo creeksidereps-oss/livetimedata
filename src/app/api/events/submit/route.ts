@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
 import { sendEmail } from "@/lib/email";
-import { areEventsDuplicates, mergeEventRecords } from "@/lib/events/dedup";
 import { scheduleCityContentProvisioning } from "@/lib/cityContentWorkflow";
+import { publishEvent, type IntakeResult } from "@/lib/events/intake/publishEvent";
+import type { VerifiedLocation } from "@/lib/events/location/resolveLocation";
 import fs from "fs/promises";
 import path from "path";
 
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
     const title = String(body.title || "").trim();
     const cityName = String(body.cityName || "").trim();
     const stateName = String(body.stateName || "").trim();
+    const countryHint = String(body.countryCode || body.countryName || "").trim();
     const category = String(body.category || "Other").trim();
     const venueName = String(body.venueName || "").trim();
     const venueAddress = String(body.venueAddress || "").trim();
@@ -33,11 +35,11 @@ export async function POST(request: Request) {
     const contactEmail = String(body.contactEmail || "").trim();
     const contactPhone = String(body.contactPhone || "").trim();
 
-    // Revenue & Asset Links
+    // Revenue & Asset Links (the submission forms send ticketUrl / vendorUrl)
     const officialInfoUrl = String(body.officialInfoUrl || "").trim();
     const socialUrls = String(body.socialUrls || "").trim();
-    const affiliateUrl = String(body.affiliateUrl || "").trim(); 
-    const registrationUrl = String(body.registrationUrl || "").trim(); 
+    const affiliateUrl = String(body.affiliateUrl || body.ticketUrl || "").trim(); 
+    const registrationUrl = String(body.registrationUrl || body.vendorUrl || "").trim(); 
     const flyerBase64 = body.flyerBase64 || null; 
     let finalEventFlyerUrl = String(body.eventFlyerUrl || "").trim(); 
 
@@ -63,7 +65,6 @@ export async function POST(request: Request) {
     } 
 
     // Mandatory structural parameters baseline check
-    const effectiveVenue = venueName || venueAddress || "Residential / Local Site";
     if (!title || !cityName || eventDates.length === 0 || !userEmail || !userName) {
       return NextResponse.json(
         { ok: false, error: "Required fields missing from placement application matrix parameters" },
@@ -71,46 +72,23 @@ export async function POST(request: Request) {
       );
     }
 
-    // Auto-Geocode and Register City (Nearby Engine Fix)
-    try {
-      const cityCheck = await sql`SELECT slug FROM cities WHERE LOWER(name) = LOWER(${cityName}) LIMIT 1`;
-      if (cityCheck.rows.length === 0) {
-        const countryParam = body.countryCode ? `&countrycodes=${encodeURIComponent(body.countryCode.toLowerCase())}` : '';
-        const stateQuery = stateName ? `&state=${encodeURIComponent(stateName)}` : '';
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cityName)}${stateQuery}${countryParam}&format=json&limit=1`, {
-          headers: { "User-Agent": "LiveTimeData-Auto-Geocoder/1.0" }
-        });
-        const geoData = await geoRes.json();
-        if (geoData && geoData.length > 0) {
-          const lat = parseFloat(geoData[0].lat);
-          const lon = parseFloat(geoData[0].lon);
-          const cCode = (body.countryCode || 'US').toUpperCase();
-          const citySlug = `${cityName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${(stateName || cCode).toLowerCase()}`;
-          await sql`
-            INSERT INTO cities (slug, name, admin1, country_code, latitude, longitude)
-            VALUES (${citySlug}, ${cityName}, ${stateName || null}, ${cCode}, ${lat}, ${lon})
-            ON CONFLICT (slug) DO UPDATE SET latitude = ${lat}, longitude = ${lon};
-          `;
-          console.log(`[GEOCODER] Successfully registered ${cityName} at Lat: ${lat}, Lon: ${lon}`);
-        }
-      }
-    } catch (geoErr) {
-      console.error("[GEOCODER] Failed to geocode city:", geoErr);
-    }
+    // City registration/geocoding is done by publishEvent() -> resolveLocation() (verified, no defaults).
 
     // Trusted Users Bypass (Auto-Approve)
     const trustedEmails = ["employee@livetimedata.com", "admin@livetimedata.com", "trusted@venue.com"];
     const isTrusted = trustedEmails.includes(userEmail.toLowerCase());
     
     // AI Pre-Screening Pipeline & Franchise Matching
+    // Moderation decision only: 'rejected' = not stored, 'legal_hold' / 'franchise_pending' / 'pending_review' = held,
+    // 'approved' = allowed to go live IF publishEvent()'s rules also pass.
     let finalStatus = 'pending_review';
-    let matchedFranchiseId = null;
+    let matchedFranchiseId: number | null = null;
 
-    const franchiseCheck = await sql`
+    const franchiseCheck = venueName ? await sql`
       SELECT id, corporate_email FROM franchises 
       WHERE ${venueName} ILIKE ('%' || name || '%')
       LIMIT 1
-    `;
+    ` : { rows: [] as any[] };
 
     if (franchiseCheck.rows.length > 0) {
       matchedFranchiseId = franchiseCheck.rows[0].id;
@@ -171,7 +149,7 @@ export async function POST(request: Request) {
           } else if (aiText.includes("FLAG")) {
             finalStatus = "legal_hold";
             console.log(`[AI SECURITY HUB] Event FLAGGED: ${title}`);
-          } else if (aiText.includes("CLEAN")) {
+          } else if (aiText.includes("CLEAN") && finalStatus === 'pending_review') {
             // Auto-publish clean yard sales, garage sales, estate sales, auctions, auditions, community sales
             const catLower = (category + " " + title).toLowerCase();
             const isAutoApprovedCategory = 
@@ -202,90 +180,100 @@ export async function POST(request: Request) {
       finalStatus = 'approved';
     }
 
-    // Direct write execution sequence into your Neon PostgreSQL database engine
-    for (const eventDateStr of eventDates) {
-      // Multi-signal Duplicate Detection & Golden Enrichment Pipeline per date
-      const existingCandidates = await sql`
-        SELECT id, title, venue, venue_address, start_time, event_date, event_flyer_url, details,
-               official_info_url, social_urls, registration_url, hosting_entity, city_name, source
-        FROM events 
-        WHERE LOWER(city_name) = LOWER(${cityName})
-          AND DATE(event_date) = DATE(${eventDateStr}::timestamp)
-          AND status != 'duplicate'
-      `;
-
-      const incomingCandidate = {
-        title,
-        cityName,
-        stateName,
-        category,
-        venue: effectiveVenue,
-        venue_address: venueAddress,
-        hosting_entity: hostingEntity,
-        start_time: startTime,
-        event_date: eventDateStr,
-        details,
-        official_info_url: officialInfoUrl,
-        social_urls: socialUrls,
-        registration_url: registrationUrl,
-        event_flyer_url: finalEventFlyerUrl,
-        source: 'Public Event Submission'
-      };
-
-      let matchedMaster: any = null;
-      for (const cand of existingCandidates.rows) {
-        const check = areEventsDuplicates(cand as any, incomingCandidate as any);
-        if (check.isDuplicate) {
-          matchedMaster = cand;
-          break;
-        }
-      }
-
-      if (matchedMaster) {
-        // Increment duplicate counter & enrich master record with user's flyer or details
-        const merged = mergeEventRecords(matchedMaster as any, incomingCandidate as any);
-        await sql`
-          UPDATE events
-          SET 
-            duplicate_count = duplicate_count + 1,
-            event_flyer_url = COALESCE(event_flyer_url, ${merged.event_flyer_url || null}),
-            venue_address = COALESCE(venue_address, ${merged.venue_address || null}),
-            details = CASE WHEN LENGTH(details) < LENGTH(${details}) THEN ${details} ELSE details END,
-            official_info_url = COALESCE(official_info_url, ${merged.official_info_url || null}),
-            registration_url = COALESCE(registration_url, ${merged.registration_url || null}),
-            updated_at = NOW()
-          WHERE id = ${matchedMaster.id}
-        `;
-        continue;
-      }
-
-      await sql`
-        INSERT INTO events (
-          title, city_name, state_name, franchise_id, category, venue, venue_address,
-          hosting_entity, source, start_time, event_date, details, affiliate_url,
-          registration_url, user_name, user_email, user_phone, contact_email,
-          contact_phone, official_info_url, social_urls, event_flyer_url, view_count, status
-        ) VALUES (
-          ${title}, ${cityName}, ${stateName}, ${matchedFranchiseId}, ${category},
-          ${effectiveVenue}, ${venueAddress}, ${hostingEntity}, 'Public Event Submission',
-          ${startTime}, ${eventDateStr}::timestamp, ${details}, ${affiliateUrl || null},
-          ${registrationUrl || null}, ${userName}, ${userEmail}, ${userPhone || null},
-          ${contactEmail || null}, ${contactPhone || null}, ${officialInfoUrl || null},
-          ${socialUrls || null}, ${finalEventFlyerUrl || null}, 0, ${finalStatus}
-        )
-      `;
+    if (finalStatus === 'rejected') {
+      return NextResponse.json(
+        { ok: false, status: 'rejected', error: "This submission was blocked by our safety review (spam, unsafe links or adult content)." },
+        { status: 422 }
+      );
     }
 
-    if (cityName) {
+    // Every date goes through publishEvent(): verified location (exactly as the submitter typed it, no defaults),
+    // date/time rules, description rules and duplicate merging.
+    const results: Array<{ eventDate: string; outcome: IntakeResult["outcome"]; id?: number; reasons: string[]; detail?: string }> = [];
+    let verified: VerifiedLocation | undefined;
+    for (const eventDateStr of eventDates) {
+      const result = await publishEvent({
+        origin: "user_submission",
+        title,
+        details,
+        category,
+        venue: venueName,
+        venueAddress: venueAddress || null,
+        hostingEntity: hostingEntity || null,
+        startTime,
+        eventDate: eventDateStr,
+        location: {
+          city: cityName,
+          region: stateName || null,
+          country: countryHint || null,
+          address: venueAddress || null,
+          sourceUrl: officialInfoUrl || null,
+        },
+        source: "Public Event Submission",
+        franchiseId: matchedFranchiseId,
+        affiliateUrl: affiliateUrl || null,
+        registrationUrl: registrationUrl || null,
+        officialInfoUrl: officialInfoUrl || null,
+        socialUrls: socialUrls || null,
+        eventFlyerUrl: finalEventFlyerUrl || null,
+        contactEmail: contactEmail || null,
+        contactPhone: contactPhone || null,
+        userName,
+        userEmail,
+        userPhone: userPhone || null,
+        // Only moderation-approved submissions may go live; everything else is held for a human.
+        forcePending: finalStatus !== 'approved',
+      });
+      if (result.location) verified = result.location;
+
+      // Moderation queues that the curation UI understands (franchise mass-publish, legal hold) on the row we just created.
+      if (result.id && result.outcome === 'pending_review' && (finalStatus === 'franchise_pending' || finalStatus === 'legal_hold')) {
+        await sql`UPDATE events SET status = ${finalStatus}, updated_at = NOW() WHERE id = ${result.id} AND status = 'pending_review'`;
+      }
+      results.push({ eventDate: eventDateStr, outcome: result.outcome, id: result.id, reasons: result.reasons, detail: result.detail });
+    }
+
+    if (verified) {
       scheduleCityContentProvisioning({
-        cityName,
-        admin1: stateName,
-        country: "United States",
-        countryCode: "US",
+        cityName: verified.cityName,
+        admin1: verified.admin1,
+        country: verified.countryName,
+        countryCode: verified.countryCode,
+        lat: verified.lat,
+        lon: verified.lon,
+        timezone: verified.timezone,
       });
     }
 
-    return NextResponse.json({ ok: true });
+    const saved = results.filter((r) => r.outcome === 'published' || r.outcome === 'pending_review' || r.outcome === 'duplicate');
+    const failed = results.filter((r) => r.outcome === 'rejected' || r.outcome === 'retry');
+    const describe = (r: (typeof results)[number]) => `${r.eventDate}: ${r.reasons.join(", ") || r.outcome}${r.detail ? ` (${r.detail})` : ""}`;
+
+    if (saved.length === 0) {
+      const retry = failed.some((r) => r.outcome === 'retry');
+      return NextResponse.json(
+        {
+          ok: false,
+          status: retry ? 'retry' : 'rejected',
+          results,
+          error: retry
+            ? "We couldn't verify the event's city right now. Please try again in a few minutes."
+            : `Your event could not be accepted: ${failed.map(describe).join("; ")}`,
+        },
+        { status: retry ? 503 : 422 }
+      );
+    }
+
+    const anyLive = saved.some((r) => r.outcome === 'published');
+    const held = saved.filter((r) => r.outcome === 'pending_review');
+    return NextResponse.json({
+      ok: true,
+      status: anyLive ? 'live' : held.length ? 'pending_review' : 'duplicate',
+      results,
+      message: held.length
+        ? `Received. Held for review: ${held.map(describe).join("; ")}`
+        : anyLive ? "Your event is live." : "This event is already listed; we merged your details into it.",
+    });
   } catch (error: any) {
     console.error("❌ EVENT PLACEMENT API ENGINE REJECTION ERROR:", error);
     return NextResponse.json(

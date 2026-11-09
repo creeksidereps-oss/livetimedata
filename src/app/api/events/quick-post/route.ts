@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { sql } from "@/lib/db";
-import { areEventsDuplicates, mergeEventRecords } from "@/lib/events/dedup";
 import { scheduleCityContentProvisioning } from "@/lib/cityContentWorkflow";
+import { publishEvent, type IntakeResult } from "@/lib/events/intake/publishEvent";
+import type { VerifiedLocation } from "@/lib/events/location/resolveLocation";
 import fs from "fs/promises";
 import path from "path";
 
@@ -13,6 +14,7 @@ interface EventPayload {
   title: string;
   cityName: string;
   stateName?: string;
+  countryName?: string;
   venueName: string;
   venueAddress?: string;
   category?: string;
@@ -46,6 +48,7 @@ export async function POST(request: Request) {
           title: body.title,
           cityName: body.cityName,
           stateName: body.stateName,
+          countryName: body.countryName,
           venueName: body.venueName,
           venueAddress: body.venueAddress,
           category: body.category,
@@ -87,126 +90,90 @@ export async function POST(request: Request) {
       }
     }
 
-    const createdEvents: Array<{ id: number; title: string; cityName: string; eventUrl: string }> = [];
+    const createdEvents: Array<{ id: number; title: string; cityName: string; eventUrl: string; status: string; reasons: string[] }> = [];
+    const notPublished: Array<{ title: string; eventDate: string | null; outcome: string; reasons: string[]; detail?: string }> = [];
+    const verifiedCities = new Map<string, VerifiedLocation>();
 
     for (const ev of incomingEvents) {
       const title = String(ev.title || "").trim();
+      // Location = exactly what the poster typed. No defaults.
       const cityName = String(ev.cityName || body.cityName || "").trim();
       const stateName = String(ev.stateName || body.stateName || "").trim();
+      const countryName = String(ev.countryName || body.countryName || "").trim();
       const venueName = String(ev.venueName || "").trim();
       const venueAddress = String(ev.venueAddress || "").trim();
       const category = String(ev.category || "Community & Civic").trim();
-      const startTime = String(ev.startTime || "TBD").trim();
-      const eventDates: string[] = Array.isArray(ev.eventDates) && ev.eventDates.length > 0
-        ? ev.eventDates
-        : [new Date().toISOString().split("T")[0]];
+      const startTime = String(ev.startTime || "").trim(); // missing/TBD -> pending_review (never a made-up time)
+      const eventDates: string[] = Array.isArray(ev.eventDates) ? ev.eventDates.filter(Boolean) : [];
       const details = String(ev.details || "").trim();
       const officialInfoUrl = String(ev.officialInfoUrl || body.officialInfoUrl || "").trim();
       const performers: string[] = Array.isArray(ev.performers) ? ev.performers : [];
 
-      if (!title || !cityName || !venueName) continue;
-
-      // 1. Auto-Register City for Distance/Radius calculations if not in database
-      try {
-        const cityCheck = await sql`SELECT id FROM cities WHERE LOWER(name) = LOWER(${cityName}) LIMIT 1`;
-        if (cityCheck.rows.length === 0) {
-          const geoRes = await fetch(
-            `https://nominatim.openstreetmap.org/search?city=${encodeURIComponent(cityName)}&state=${encodeURIComponent(stateName)}&country=USA&format=json&limit=1`,
-            { headers: { "User-Agent": "LiveTimeData-QuickPost/1.0" }, cache: "no-store" }
-          );
-          const geoData = await geoRes.json();
-          if (geoData && geoData.length > 0) {
-            const lat = parseFloat(geoData[0].lat);
-            const lon = parseFloat(geoData[0].lon);
-            await sql`INSERT INTO cities (name, admin1, latitude, longitude) VALUES (${cityName}, ${stateName}, ${lat}, ${lon})`;
-          }
-        }
-      } catch (geoErr) {
-        console.warn("City registration skipped:", geoErr);
+      if (!title || !venueName) {
+        notPublished.push({ title: title || "(untitled)", eventDate: null, outcome: "rejected", reasons: [!title ? "title_missing" : "venue_missing"] });
+        continue;
+      }
+      if (eventDates.length === 0) {
+        // No date = no listing (never default to today).
+        notPublished.push({ title, eventDate: null, outcome: "rejected", reasons: ["date_missing"] });
+        continue;
       }
 
-      // 2. Insert into Events Table (Live Status)
-      let firstInsertedId: number | null = null;
+      // Every date goes through publishEvent() (location verification, date/time rules, dedup).
+      let firstResult: IntakeResult | null = null;
+      let verified: VerifiedLocation | undefined;
       for (const eventDateStr of eventDates) {
-        const existingCandidates = await sql`
-          SELECT id, title, venue, venue_address, start_time, event_date, event_flyer_url, details,
-                 official_info_url, social_urls, registration_url, hosting_entity, city_name, source
-          FROM events
-          WHERE LOWER(city_name) = LOWER(${cityName})
-            AND DATE(event_date) = DATE(${eventDateStr}::timestamp)
-            AND status != 'duplicate'
-        `;
-
-        const incomingCandidate = {
+        const result = await publishEvent({
+          origin: "quick_post",
           title,
-          cityName,
-          stateName,
+          details,
           category,
           venue: venueName,
-          venue_address: venueAddress,
-          hosting_entity: venueName,
-          start_time: startTime,
-          event_date: eventDateStr,
-          details,
-          official_info_url: officialInfoUrl,
-          event_flyer_url: finalEventFlyerUrl,
-          source: 'Mobile Quick Post'
-        };
-
-        let matchedMaster: any = null;
-        for (const cand of existingCandidates.rows) {
-          const check = areEventsDuplicates(cand as any, incomingCandidate as any);
-          if (check.isDuplicate) {
-            matchedMaster = cand;
-            break;
+          venueAddress: venueAddress || null,
+          hostingEntity: venueName,
+          startTime,
+          eventDate: eventDateStr,
+          location: {
+            city: cityName || null,
+            region: stateName || null,
+            country: countryName || null,
+            address: venueAddress || null,
+            sourceUrl: officialInfoUrl || null,
+          },
+          source: "Mobile Quick Post",
+          officialInfoUrl: officialInfoUrl || null,
+          eventFlyerUrl: finalEventFlyerUrl || null,
+          userName: "Admin Quick",
+          userEmail: "admin@livetimedata.com",
+        });
+        if (result.location) verified = result.location;
+        if (result.id && (result.outcome === "published" || result.outcome === "pending_review" || result.outcome === "duplicate")) {
+          if (!firstResult) firstResult = result;
+          if (result.outcome === "pending_review") {
+            notPublished.push({ title, eventDate: eventDateStr, outcome: result.outcome, reasons: result.reasons, detail: result.detail });
           }
-        }
-
-        if (matchedMaster) {
-          const merged = mergeEventRecords(matchedMaster as any, incomingCandidate as any);
-          await sql`
-            UPDATE events
-            SET 
-              duplicate_count = duplicate_count + 1,
-              event_flyer_url = COALESCE(event_flyer_url, ${merged.event_flyer_url || null}),
-              venue_address = COALESCE(venue_address, ${merged.venue_address || null}),
-              details = CASE WHEN LENGTH(details) < LENGTH(${details}) THEN ${details} ELSE details END,
-              official_info_url = COALESCE(official_info_url, ${merged.official_info_url || null}),
-              updated_at = NOW()
-            WHERE id = ${matchedMaster.id}
-          `;
-          if (!firstInsertedId) firstInsertedId = matchedMaster.id;
-          continue;
-        }
-
-        const insertRes = await sql`
-          INSERT INTO events (
-            title, city_name, state_name, category, venue, venue_address,
-            hosting_entity, source, start_time, event_date, details,
-            user_name, user_email, official_info_url, event_flyer_url,
-            view_count, status
-          ) VALUES (
-            ${title}, ${cityName}, ${stateName}, ${category}, ${venueName}, ${venueAddress},
-            ${venueName}, 'Mobile Quick Post', ${startTime}, ${eventDateStr}::timestamp, ${details},
-            'Admin Quick', 'admin@livetimedata.com', ${officialInfoUrl || null}, ${finalEventFlyerUrl || null},
-            0, 'live'
-          )
-          RETURNING id
-        `;
-
-        if (insertRes.rows.length > 0 && !firstInsertedId) {
-          firstInsertedId = insertRes.rows[0].id;
+        } else {
+          notPublished.push({ title, eventDate: eventDateStr, outcome: result.outcome, reasons: result.reasons, detail: result.detail });
         }
       }
 
-      if (firstInsertedId) {
+      if (firstResult?.id) {
         createdEvents.push({
-          id: firstInsertedId,
+          id: firstResult.id,
           title,
-          cityName,
-          eventUrl: `/events/${firstInsertedId}`
+          cityName: verified?.cityName || cityName,
+          eventUrl: `/events/${firstResult.id}`,
+          status: firstResult.outcome,
+          reasons: firstResult.reasons,
         });
       }
+
+      if (verified) verifiedCities.set(verified.citySlug, verified);
+
+      // Lifecycle seeding uses the verified location when we have one, else the poster's own text. Never a default country.
+      const seedCity = verified?.cityName || cityName || null;
+      const seedState = verified?.admin1 || stateName || null;
+      const seedCountry = verified?.countryCode || null;
 
       // 3. LIFECYCLE SEEDING: Ingest Venue into Entities & Venue Profiles (Businesses & named venues only)
       const isResidentialAddress = /^[0-9]+\s+[A-Za-z]/.test(venueName.trim()) || /^#[0-9]+/.test(venueName.trim());
@@ -218,8 +185,8 @@ export async function POST(request: Request) {
               name, normalized_name, entity_type, city_name, state_name,
               country_code, website_url, verification_status, created_at, updated_at
             ) VALUES (
-              ${venueName}, ${normVenue}, 'venue', ${cityName}, ${stateName || null},
-              'US', ${officialInfoUrl || null}, 'published', NOW(), NOW()
+              ${venueName}, ${normVenue}, 'venue', ${seedCity}, ${seedState},
+              ${seedCountry}, ${officialInfoUrl || null}, 'published', NOW(), NOW()
             )
             ON CONFLICT DO NOTHING;
           `;
@@ -228,7 +195,7 @@ export async function POST(request: Request) {
             INSERT INTO venue_profiles (
               venue_name, city_name, state_name, website_url, is_trusted_source
             ) VALUES (
-              ${venueName}, ${cityName}, ${stateName || null}, ${officialInfoUrl || null}, true
+              ${venueName}, ${seedCity}, ${seedState}, ${officialInfoUrl || null}, true
             )
             ON CONFLICT (venue_name) DO UPDATE 
             SET website_url = COALESCE(venue_profiles.website_url, EXCLUDED.website_url);
@@ -239,6 +206,7 @@ export async function POST(request: Request) {
       }
 
       // 4. LIFECYCLE SEEDING: Ingest Performers / Bands into Entities & Performers Graph
+      // Performers tour; they get no home city from one gig.
       for (const performer of performers) {
         if (!performer || performer.trim().length < 2) continue;
         try {
@@ -248,8 +216,8 @@ export async function POST(request: Request) {
               name, normalized_name, entity_type, city_name, state_name,
               country_code, verification_status, created_at, updated_at
             ) VALUES (
-              ${performer}, ${normPerformer}, 'performer', ${cityName}, ${stateName || null},
-              'US', 'published', NOW(), NOW()
+              ${performer}, ${normPerformer}, 'performer', NULL, NULL,
+              NULL, 'published', NOW(), NOW()
             )
             ON CONFLICT DO NOTHING;
           `;
@@ -272,7 +240,7 @@ export async function POST(request: Request) {
               url, source_type, name, city_name, state_name,
               scrape_interval_days, next_scrape_due, status, created_at, updated_at
             ) VALUES (
-              ${officialInfoUrl}, 'venue', ${venueName}, ${cityName}, ${stateName || null},
+              ${officialInfoUrl}, 'venue', ${venueName}, ${seedCity}, ${seedState},
               14, NOW(), 'active', NOW(), NOW()
             )
             ON CONFLICT (url) DO UPDATE 
@@ -285,27 +253,29 @@ export async function POST(request: Request) {
       }
     }
 
-    // Non-blocking city content provisioning for all distinct cities in this quick-post batch
-    const distinctCities = new Map<string, { cityName: string; stateName?: string }>();
-    for (const e of incomingEvents) {
-      if (e.cityName) {
-        const k = `${e.cityName.toLowerCase()}|${(e.stateName || "").toLowerCase()}`;
-        if (!distinctCities.has(k)) distinctCities.set(k, { cityName: e.cityName, stateName: e.stateName });
-      }
-    }
-    for (const c of distinctCities.values()) {
+    // Non-blocking city content provisioning, only for cities publishEvent verified (real country, no "United States" default)
+    for (const loc of verifiedCities.values()) {
       scheduleCityContentProvisioning({
-        cityName: c.cityName,
-        admin1: c.stateName,
-        country: "United States",
-        countryCode: "US",
+        cityName: loc.cityName,
+        admin1: loc.admin1,
+        country: loc.countryName,
+        countryCode: loc.countryCode,
+        lat: loc.lat,
+        lon: loc.lon,
+        timezone: loc.timezone,
       });
+    }
+
+    if (createdEvents.length === 0) {
+      const why = notPublished.map((n) => `${n.title}${n.eventDate ? ` (${n.eventDate})` : ""}: ${n.outcome} - ${n.reasons.join(", ")}${n.detail ? ` (${n.detail})` : ""}`).join("; ");
+      return NextResponse.json({ ok: false, error: `Nothing was saved. ${why}`, notPublished }, { status: 422 });
     }
 
     return NextResponse.json({
       ok: true,
       count: createdEvents.length,
       events: createdEvents,
+      notPublished,
       primaryEventUrl: createdEvents.length > 0 ? createdEvents[0].eventUrl : `/`,
       lifecycleSeeded: {
         venuesAdded: incomingEvents.map(e => e.venueName),

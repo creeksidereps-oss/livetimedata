@@ -1,7 +1,7 @@
 // src/lib/discovery/lifecycle.ts
 import { db } from '@/db';
-import { entities, entityRelationships, appearances, events } from '@/db/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { entities, entityRelationships } from '@/db/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 
 export interface UpsertEntityParams {
   name: string;
@@ -34,19 +34,21 @@ export function normalizeEntityName(name: string): string {
 /**
  * Upserts an entity into the universal entity graph with deduplication.
  * If the entity already exists, merges cuisine tags and contact details without duplicating.
+ * Location: only what the caller verified for this entity. No country default â€” an entity with no
+ * known country is stored with country_code NULL and deduplicated among other country-less entities.
  */
 export async function upsertEntity(params: UpsertEntityParams) {
   const normName = normalizeEntityName(params.name);
-  const country = (params.countryCode || 'US').toUpperCase();
+  const country = params.countryCode ? params.countryCode.toUpperCase() : null;
 
-  // Search existing entity by normalized name and city/country
+  // Search existing entity by normalized name and country
   const existing = await db
     .select()
     .from(entities)
     .where(
       and(
         eq(entities.normalizedName, normName),
-        eq(entities.countryCode, country)
+        country ? eq(entities.countryCode, country) : isNull(entities.countryCode)
       )
     )
     .limit(1);
@@ -119,66 +121,6 @@ export async function recordRelationship(
   });
 }
 
-/**
- * Records an appearance: Entity at Venue on Date/Time.
- * Automatically copies the entity's stored graphic/logo into event_flyer_url so
- * it is catalogued once and reused everywhere without redundant searching!
- */
-export async function recordAppearance(params: {
-  entityId: number;
-  entityName: string;
-  venueEntityId?: number;
-  venueName: string;
-  cityName: string;
-  stateName?: string;
-  countryCode?: string;
-  eventDate: Date;
-  startTime?: string;
-  endTime?: string;
-  details?: string;
-  isRecurring?: boolean;
-  recurrenceRule?: string;
-  sourceUrl?: string;
-}) {
-  // 1. Create Appearance in entity graph
-  const [app] = await db
-    .insert(appearances)
-    .values({
-      entityId: params.entityId,
-      venueEntityId: params.venueEntityId || null,
-      eventDate: params.eventDate,
-      startTime: params.startTime || '11:00 AM',
-      endTime: params.endTime || '2:00 PM',
-      isRecurring: params.isRecurring || false,
-      recurrenceRule: params.recurrenceRule || null,
-      sourceUrl: params.sourceUrl || null,
-      status: 'published'
-    })
-    .returning({ id: appearances.id });
 
-  // 2. Automatically retrieve the catalogued logo/photo from the entity record
-  const [vendor] = await db
-    .select({ imageUrl: entities.imageUrl, logoUrl: entities.logoUrl })
-    .from(entities)
-    .where(eq(entities.id, params.entityId))
-    .limit(1);
-
-  const finalGraphic = vendor?.imageUrl || vendor?.logoUrl || null;
-
-  // 3. Project into the unified Events feed with the catalogued graphic
-  await db.insert(events).values({
-    title: `${params.entityName} at ${params.venueName}`,
-    cityName: params.cityName,
-    stateName: params.stateName || '',
-    category: 'Food Trucks',
-    venue: params.venueName,
-    startTime: params.startTime || '11:00 AM',
-    eventDate: params.eventDate,
-    details: params.details || `${params.entityName} mobile food appearance at ${params.venueName}.`,
-    eventFlyerUrl: finalGraphic,
-    status: 'live',
-    source: params.sourceUrl || 'Discovery Lifecycle'
-  });
-
-  return app?.id;
-}
+// recordAppearance() was removed: it inserted rows into `events` directly with templated titles/descriptions
+// and default times. Event rows are written only by publishEvent() (src/lib/events/intake/publishEvent.ts).
