@@ -8,13 +8,28 @@ This document tracks venue seeds and calendar sources that require architectural
 
 ### Visit Raleigh (`#1213`)
 * **URL:** `https://www.visitraleigh.com/events/`
-* **Status:** Failed on Vercel Cloud with `403 Forbidden`
+* **Status:** Dropped to `failed` (5/5 failed attempts with `403 Forbidden`)
 * **Issue:** Protected by WAF / Cloudflare bot-shielding that blocks server datacenter IP requests (like Vercel/AWS).
-* **Objective for Opus:** Evaluate designated handler: test browser-mimicking headers, upstream destination marketing API (Simpleview CMS endpoints if exposed), or residential proxy rotation if permitted.
+* **Objective for Opus:** Evaluate designated handler: test browser-mimicking headers, upstream destination marketing API (Simpleview CMS endpoints if exposed), or proxy rotation if permitted.
+
+### Statesville Municipal & Event Sites (`#1033204`, `#547067`, `#49908`)
+* **URLs:**
+  * `https://parade.statesvillenc.com/`
+  * `https://www.downtownstatesville.com/downtown-statesville-events/`
+  * `https://eventcenter.statesvillenc.net/upcoming-events/`
+* **Status:** Dropped to `failed` (5/5 failed attempts with `403 Forbidden`)
+* **Issue:** Municipal hosting firewall / WAF blocks inbound automated requests from Vercel datacenter IPs.
+* **Objective for Opus:** Determine if these local city calendars can be fetched using specific user-agent/accept headers or if municipal WordPress REST endpoints (`/wp-json/wp/v2/...`) bypass the web tier WAF.
+
+### ArtsCalendar Broward (`#1033957`)
+* **URL:** `https://artscalendar.com/events/`
+* **Status:** Dropped to `failed` (5/5 failed attempts with `socket hang up`)
+* **Issue:** Server firewall terminates TCP connections (socket hang up) when contacted from Vercel serverless edge nodes.
+* **Objective for Opus:** Investigate timeout configuration or request header requirements to maintain connection.
 
 ### NC Festivals (`#498`)
 * **URL:** `https://www.ncfestivals.com/events`
-* **Status:** Returned 200 OK, but parsed `0 events found`
+* **Status:** Returned 200 OK, but parsed `0 events found` (scheduled for 30-day re-crawl)
 * **Issue:** Non-standard portal layout. Does not implement Schema.org JSON-LD, Microdata, or iCal feeds. The event listings exist inside proprietary ASP.NET table/card DOM containers.
 * **Objective for Opus:** Build a designated DOM handler for this portal layout or discover its underlying feed/API endpoint.
 
