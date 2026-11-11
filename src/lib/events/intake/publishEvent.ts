@@ -52,6 +52,10 @@ export interface EventSubmission {
   franchiseId?: number | null;
   /** Admin tools may force pending_review; nothing can force 'live' past a failed rule. */
   forcePending?: boolean;
+  /** Crawler handler / extraction strategy that produced this submission (logged only; spider repair 2026-11-10). */
+  handler?: string | null;
+  /** 'venue_site' when the location is the venue's own stated address on its own site (logged only). */
+  locationProvenance?: "event" | "venue_site" | null;
 }
 
 export type IntakeOutcome = "published" | "pending_review" | "rejected" | "duplicate" | "retry";
@@ -150,7 +154,7 @@ async function log(sub: EventSubmission, result: IntakeResult) {
       `INSERT INTO event_intake_log (origin, outcome, reasons, detail, event_id, title, source, payload)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [sub.origin, result.outcome, result.reasons, result.detail || null, result.id || null, String(sub.title || "").slice(0, 300),
-       sub.sourceUrl || sub.source || null, JSON.stringify({ location: sub.location, venue: sub.venue, venueAddress: sub.venueAddress, eventDate: sub.eventDate, startTime: sub.startTime })]
+       sub.sourceUrl || sub.source || null, JSON.stringify({ location: sub.location, venue: sub.venue, venueAddress: sub.venueAddress, eventDate: sub.eventDate, startTime: sub.startTime, handler: sub.handler || undefined, locationProvenance: sub.locationProvenance || undefined })]
     );
   } catch { /* logging must never block intake */ }
 }

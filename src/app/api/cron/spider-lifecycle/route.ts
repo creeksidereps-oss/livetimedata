@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { runLifecycleRound } from "@/lib/discovery/spider-lifecycle";
 
 export const dynamic = "force-dynamic";
-// Vercel Pro max (~13 min). New jobs stop starting at 8 min so the job in progress always finishes.
+// Vercel Pro max (~13 min). New jobs stop starting at 7 min and page fetches stop at 10 min, so the job in
+// progress always finishes (unfinished pagination is carried to crawl_frontier).
 export const maxDuration = 800;
 
 /**
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const stats = await runLifecycleRound({ startWindowMs: 8 * 60_000 });
+    const stats = await runLifecycleRound({ startWindowMs: 7 * 60_000, fetchDeadlineMs: 10 * 60_000 });
     return NextResponse.json({ success: true, ...stats, timestamp: new Date().toISOString() });
   } catch (error: any) {
     console.error("Spider lifecycle error:", error);

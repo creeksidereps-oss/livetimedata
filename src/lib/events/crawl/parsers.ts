@@ -12,7 +12,7 @@
 import type { CheerioAPI } from "cheerio";
 import type { ExtractedEvent, ExtractionStrategy } from "./types";
 import {
-  addEmail, categorizeEvent, cleanHtmlEntitiesAndTags, cleanStr, collectEmails, formatTimeFromDate, isAdultContent,
+  addEmail, categorizeEvent, cleanHtmlEntitiesAndTags, isTicketBrokerUrl, isValidCalendarSourceUrl, cleanStr, collectEmails, formatTimeFromDate, isAdultContent,
   isClearlyPast, isGenericCalendarHeader, isNonEventTitle, isOnlineOrVirtualEvent, isoDateFromSource, joinAddress,
   parseHumanDateString, parseStartTime, toNum,
 } from "./helpers";
@@ -607,4 +607,134 @@ export function parseHtmlTables($: CheerioAPI, pageUrl: string, emails?: Set<str
   return found;
 }
 
-export const STRATEGY_ORDER: ExtractionStrategy[] = ["jsonld", "tribe_rest", "ical", "aeg_feed", "simpleview_api", "dom_card", "html_table"];
+export const STRATEGY_ORDER: ExtractionStrategy[] = ["jsonld", "tribe_rest", "ical", "aeg_feed", "simpleview_api", "calendar_link", "dom_card", "html_table"];
+
+// ---------------------------------------------------------------------------
+// 8. "Add to calendar" template links (Google / Outlook / Yahoo)
+// ---------------------------------------------------------------------------
+// Many tour and venue sites publish no structured data but give every performance an "add to calendar"
+// link whose query string states the title, local date-time, timezone and full venue address.
+// Everything is read from the link the source publishes; nothing is inferred.
+
+const REMINDER_TITLE = /\b(coming up|reminder|remind me|on sale|onsale|presale|pre-sale|tickets? (go|goes) on sale)\b/i;
+const TICKET_HOST = /(ticket|tix|evenue|axs\.|etix|seatgeek|stubhub|vivid|eventbrite|livenation|showclix|universe\.com|ovationtix|tessitura|frontgate|prekindle|dice\.fm|feverup|songkick|bandsintown)/i;
+
+interface CalLink { title: string; start: string; ctz?: string; location: string; details: string; allDay: boolean }
+
+function readCalLink(href: string): CalLink | null {
+  let u: URL;
+  try { u = new URL(href); } catch { return null; }
+  const h = u.hostname.toLowerCase();
+  const q = u.searchParams;
+  if (/calendar\.google\.com$/.test(h) && /TEMPLATE/i.test(q.get("action") || "")) {
+    const dates = (q.get("dates") || "").split("/")[0];
+    return { title: q.get("text") || "", start: dates, ctz: q.get("ctz") || undefined, location: q.get("location") || "", details: q.get("details") || "", allDay: /^\d{8}$/.test(dates) };
+  }
+  if (/outlook\.(live|office)\.com$/.test(h) && q.get("subject")) {
+    const s = q.get("startdt") || "";
+    return { title: q.get("subject") || "", start: s, location: q.get("location") || "", details: q.get("body") || "", allDay: q.get("allday") === "true" || /^\d{4}-\d{2}-\d{2}$/.test(s) };
+  }
+  if (/calendar\.yahoo\.com$/.test(h) && q.get("title")) {
+    const s = q.get("st") || "";
+    return { title: q.get("title") || "", start: s, location: q.get("in_loc") || "", details: q.get("desc") || "", allDay: /^\d{8}$/.test(s) };
+  }
+  return null;
+}
+
+/** Local date + time ("" if unknown) of a calendar-link start value. */
+function calStart(c: CalLink): { eventDate: string; startTime: string } | null {
+  const s = c.start.trim();
+  const compact = s.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/);
+  if (compact) {
+    const date = `${compact[1]}-${compact[2]}-${compact[3]}`;
+    if (c.allDay || !compact[4]) return { eventDate: date, startTime: "All Day" };
+    if (compact[7]) {
+      if (!c.ctz) return { eventDate: date, startTime: "" };
+      const zp = zonedParts(new Date(Date.UTC(+compact[1], +compact[2] - 1, +compact[3], +compact[4], +compact[5])), c.ctz);
+      return zp ? { eventDate: zp.date, startTime: formatTimeFromDate(`${zp.date}T${String(zp.h).padStart(2, "0")}:${String(zp.m).padStart(2, "0")}`) } : null;
+    }
+    return { eventDate: date, startTime: formatTimeFromDate(`${date}T${compact[4]}:${compact[5]}`) };
+  }
+  const iso = isoDateFromSource(s);
+  if (!iso) return null;
+  if (c.allDay) return { eventDate: iso, startTime: "All Day" };
+  return { eventDate: iso, startTime: formatTimeFromDate(s) };
+}
+
+/** The venue's own website link inside the same block as the calendar link (e.g. "More Venue Info"). */
+function nearbyVenueUrl($: CheerioAPI, el: any, pageUrl: string, location: string, calSelector: string): string | undefined {
+  let pageHost = "";
+  try { pageHost = new URL(pageUrl).hostname.replace(/^www\./, ""); } catch { return undefined; }
+  let block = $(el);
+  let best: string | undefined;
+  for (let i = 0; i < 10; i++) {
+    const parent = block.parent();
+    if (!parent.length || parent.is("body, html")) break;
+    // Stop once the block covers calendar links for a different location (we left this venue's block).
+    const locs = new Set<string>();
+    parent.find(calSelector).each((_, a) => { const c = readCalLink($(a).attr("href") || ""); if (c) locs.add(c.location); });
+    if (locs.size > 1 || (locs.size === 1 && !locs.has(location))) break;
+    block = parent;
+    const labelled: string[] = [];
+    const others = new Set<string>();
+    block.find("a[href^='http']").each((_, a) => {
+      const href = $(a).attr("href") || "";
+      let u: URL;
+      try { u = new URL(href); } catch { return; }
+      const h = u.hostname.replace(/^www\./, "");
+      if (h === pageHost || TICKET_HOST.test(h) || isTicketBrokerUrl(href) || !isValidCalendarSourceUrl(href) || readCalLink(href)) return;
+      const root = `${u.protocol}//${u.hostname}${u.pathname === "/" || /venue|about|visit/i.test(u.pathname) ? u.pathname : "/"}`;
+      if (/venue/i.test(`${$(a).text()} ${$(a).attr("class") || ""} ${$(a).parent().attr("class") || ""}`)) labelled.push(root);
+      else others.add(`${u.protocol}//${u.hostname}/`);
+    });
+    if (labelled.length) return labelled[0];
+    if (others.size === 1) best = [...others][0];
+  }
+  return best;
+}
+
+export function parseCalendarLinks($: CheerioAPI, pageUrl: string): ExtractedEvent[] {
+  const providers = [
+    "a[href*='calendar.google.com'][href*='TEMPLATE'], a[href*='calendar.google.com'][href*='template']",
+    "a[href*='outlook.live.com'][href*='subject='], a[href*='outlook.office.com'][href*='subject=']",
+    "a[href*='calendar.yahoo.com'][href*='title=']",
+  ];
+  for (const sel of providers) {
+    const links = $(sel);
+    if (!links.length) continue;
+    const seen = new Set<string>();
+    const venueUrlByLocation = new Map<string, string | undefined>();
+    const out: ExtractedEvent[] = [];
+    links.each((_, el) => {
+      const c = readCalLink($(el).attr("href") || "");
+      if (!c) return;
+      const title = cleanStr(c.title);
+      if (!title || REMINDER_TITLE.test(title)) return;
+      const when = calStart(c);
+      if (!when) return;
+      const location = cleanStr(c.location);
+      const key = `${title}|${when.eventDate}|${when.startTime}|${location}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const parts = location.split(",").map((s) => s.trim()).filter(Boolean);
+      const venue = parts.length > 1 && !/^\d/.test(parts[0]) ? parts[0] : "";
+      if (location && !venueUrlByLocation.has(location)) venueUrlByLocation.set(location, nearbyVenueUrl($, el, pageUrl, c.location, sel));
+      const details = cleanHtmlEntitiesAndTags(c.details);
+      const ev = make({
+        title,
+        details: details && details !== title ? details : "",
+        venue,
+        startTime: when.startTime,
+        eventDate: when.eventDate,
+        address: location || undefined,
+        sourceUrl: pageUrl,
+        officialInfoUrl: pageUrl,
+        venueUrl: location ? venueUrlByLocation.get(location) : undefined,
+        strategy: "calendar_link",
+      });
+      if (acceptable(ev)) out.push(ev);
+    });
+    if (out.length) return out;
+  }
+  return [];
+}

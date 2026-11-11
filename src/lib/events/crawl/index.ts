@@ -3,5 +3,7 @@
 export * from "./types";
 export * from "./helpers";
 export * from "./parsers";
-export { extractEventsFromUrl, extractFromContent, detectTribeApi, discoverICalLinks } from "./extract";
+export { extractEventsFromUrl, extractFromContent, crawlUrl, CrawlFetchError, detectTribeApi, discoverICalLinks, type UrlCrawlResult, type ExtractOptions } from "./extract";
 export { ingestCrawledEvents, type IngestContext, type IngestStats, type CrawlOrigin } from "./ingest";
+export { fetchPage, type FetchStatus, type FetchResult } from "./fetch";
+export { canonicalUrl, isListingShaped } from "./discover";

@@ -13,6 +13,7 @@ export type ExtractionStrategy =
   | "simpleview_api"
   | "dom_card"
   | "html_table"
+  | "calendar_link"
   | "adapter_simpleview_sitemap"
   | "adapter_saffire";
 
@@ -49,15 +50,40 @@ export interface ExtractedEvent {
   organizerUrl?: string;
   venueUrl?: string;
   strategy: ExtractionStrategy;
+  /** 'venue_site' when the location came from the venue's own stated address (venueLocation.ts), not the event card. */
+  locationProvenance?: "event" | "venue_site";
+}
+
+/** What a crawled page is (spider repair 2026-11-10). */
+export type PageClass = "hub" | "detail" | "facility" | "article" | "js_shell" | "empty";
+
+/** A venue / performer / organizer found on a page (with the URL the page itself links to, if any). */
+export interface FoundEntity {
+  name: string;
+  type: "venue" | "performer" | "organization";
+  url?: string;
 }
 
 export interface CrawlResult {
   events: ExtractedEvent[];
-  /** Sub-pages to spawn as new spiders (capped at 10). */
+  /**
+   * Same-site listing pages (hubs) to spawn as new spiders. No cap (GEMINI.md Rule 10). Only filled when the
+   * page produced current/future events or venues (owner rule); never single-event detail pages.
+   */
   subUrls: string[];
-  /** Total distinct sub-pages discovered before the 10-page cap (flag for admin review if > 10). */
-  subUrlsTotal: number;
+  /** Pagination pages of THIS listing that were not reached inside the job (carried to crawl_frontier). */
+  paginationUrls: string[];
+  /** Venues / performers / organizers found on the page (spawned as entity spiders when they have a URL). */
+  entities: FoundEntity[];
   extractedEmails: string[];
   /** Strategies that produced events on this page. */
   strategies: ExtractionStrategy[];
+  pageClass: PageClass;
+  /** Page title (used to name spawned spiders instead of "X Calendar Hub"). */
+  pageTitle?: string;
+  /** Venue-stated location result for this page. */
+  venueLocationStatus?: "verified" | "none" | "multi_venue";
+  siteVenues?: { name: string; address: string; citySlug: string; evidenceUrl: string }[];
+  /** Design-only handler that should take this page (JS shell, season URL, ...). */
+  handlerQueue?: string;
 }

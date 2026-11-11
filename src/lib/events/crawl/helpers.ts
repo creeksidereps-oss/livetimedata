@@ -248,6 +248,36 @@ export function isoDateFromSource(value?: string | Date | null): string | null {
   return d ? d.toISOString().slice(0, 10) : null;
 }
 
+// Localized month / weekday names (FR, ES, IT, PT, DE, NL, SV/DA/NO) -> English, so the date parsers below
+// read "13 novembre 2026", "1er décembre 2026", "13. November 2026", "sábado 5 de diciembre de 2026".
+// Numeric d/m/y is never reinterpreted (ambiguous); only spelled-out month names are translated.
+const LOCAL_MONTHS: [RegExp, string][] = [
+  [/(?<![\p{L}])(janvier|janv|enero|gennaio|janeiro|januar|januari|jänner)(?![\p{L}])\.?/giu, "January"],
+  [/(?<![\p{L}])(février|fevrier|févr|fevr|febrero|febbraio|fevereiro|februar|februari)(?![\p{L}])\.?/giu, "February"],
+  [/(?<![\p{L}])(mars|marzo|março|märz|maerz|maart)(?![\p{L}])\.?/giu, "March"],
+  [/(?<![\p{L}])(avril|avr|abril|aprile)(?![\p{L}])\.?/giu, "April"],
+  [/(?<![\p{L}])(mai|mayo|maggio|maio|mei|maj)(?![\p{L}])\.?/giu, "May"],
+  [/(?<![\p{L}])(juin|junio|giugno|junho|juni)(?![\p{L}])\.?/giu, "June"],
+  [/(?<![\p{L}])(juillet|juil|julio|luglio|julho|juli)(?![\p{L}])\.?/giu, "July"],
+  [/(?<![\p{L}])(août|aout|agosto|augusti)(?![\p{L}])\.?/giu, "August"],
+  [/(?<![\p{L}])(septembre|septiembre|settembre|setembro)(?![\p{L}])\.?/giu, "September"],
+  [/(?<![\p{L}])(octobre|octubre|ottobre|outubro|oktober)(?![\p{L}])\.?/giu, "October"],
+  [/(?<![\p{L}])(novembre|noviembre|novembro)(?![\p{L}])\.?/giu, "November"],
+  [/(?<![\p{L}])(décembre|decembre|déc|diciembre|dicembre|dezembro|dezember)(?![\p{L}])\.?/giu, "December"],
+];
+const LOCAL_WEEKDAYS = /(?<![\p{L}])(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo|lunedì|lunedi|martedì|martedi|mercoledì|mercoledi|giovedì|giovedi|venerdì|venerdi|sabato|domenica|segunda-feira|terça-feira|quarta-feira|quinta-feira|sexta-feira|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|måndag|mandag|tisdag|tirsdag|onsdag|torsdag|fredag|lördag|lørdag|söndag|søndag)(?![\p{L}])\.?,?\s*/giu;
+const LOCAL_HINT = /(?<![\p{L}])(janvier|janv|février|fevrier|févr|mars|avril|avr|mai|juin|juillet|juil|août|aout|septembre|octobre|novembre|décembre|decembre|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|gennaio|febbraio|aprile|maggio|giugno|luglio|settembre|ottobre|dicembre|janeiro|fevereiro|março|maio|junho|julho|setembro|outubro|novembro|dezembro|januar|februar|märz|maerz|juni|juli|oktober|dezember|januari|februari|maart|mei|augusti|maj)(?![\p{L}])/iu;
+
+/** Translate spelled-out non-English month / weekday names to English (date handler, spider repair 2026-11-10). */
+export function localizeDateWords(s: string): string {
+  if (!LOCAL_HINT.test(s)) return s;
+  let out = s.replace(LOCAL_WEEKDAYS, "");
+  out = out.replace(/\b(\d{1,2})(?:er|ère|º|°)(?![\p{L}])/giu, "$1").replace(/\b(\d{1,2})\.(?=\s*\p{L})/gu, "$1");
+  out = out.replace(/\s+del?\s+/gi, " ");
+  for (const [re, en] of LOCAL_MONTHS) out = out.replace(re, en);
+  return out.replace(/\s+/g, " ").trim();
+}
+
 /** True if the date is before yesterday (UTC). publishEvent applies the exact timezone-aware rule. */
 export function isClearlyPast(isoDate: string): boolean {
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
@@ -260,7 +290,7 @@ export function isClearlyPast(isoDate: string): boolean {
  */
 export function parseHumanDateString(dateStr?: string): Date | null {
   if (!dateStr) return null;
-  const clean = dateStr.replace(/\s+/g, " ").replace(/^(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+/i, "").trim();
+  const clean = localizeDateWords(dateStr).replace(/\s+/g, " ").replace(/^(mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+/i, "").trim();
 
   // Range: "September 2 - 20, 2026" or "Sep 2 - 20, 2026"
   const rangeMatch = clean.match(/^([A-Za-z]+)\.?\s+(\d{1,2})\s*-\s*(\d{1,2}),?\s*(\d{4})$/);
