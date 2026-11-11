@@ -55,6 +55,7 @@ export type LifecycleStats = {
 
 const DEFAULT_INTERVAL_DAYS = 30; // all new spiders run monthly unless otherwise directed
 const MAX_FAILS = 5; // failed task rule: retry in 1h, drop after 5 failures
+const HORIZON_MONTHS = 12; // owner: events can be listed up to 12 months ahead (all source types)
 
 export async function ensureLifecycleSchema() {
   // Columns / tables are created by scripts/migrations/2026-11-10_spider_repair.sql. These guards keep an
@@ -79,7 +80,7 @@ export async function ensureLifecycleSchema() {
 }
 
 type SourceRow = {
-  id: number; url: string; name: string | null; scrape_interval_days: number | null; fail_count: number;
+  id: number; url: string; name: string | null; scrape_interval_days: number | null; scrape_horizon_months: number | null; fail_count: number;
   parent_source_id: number | null; root_source_id: number | null; depth: number | null;
 };
 
@@ -97,7 +98,7 @@ async function claimNextSource(): Promise<SourceRow | undefined> {
        LIMIT 1
        FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, url, name, scrape_interval_days, fail_count, parent_source_id, root_source_id, depth`
+     RETURNING id, url, name, scrape_interval_days, scrape_horizon_months, fail_count, parent_source_id, root_source_id, depth`
   );
   return rows[0] as SourceRow | undefined;
 }
@@ -188,7 +189,7 @@ async function ingestCrawl(crawl: UrlCrawlResult, src: SourceRow, stats: Lifecyc
 
   // Same-site hubs (already filtered by the events-or-venues rule and the listing-shape rule). No cap.
   let hubsSpawned = 0;
-  for (const hub of crawl.subUrls) hubsSpawned += await spawnSource(hub, prettyName(hub), "calendar_hub", 6, lineage);
+  for (const hub of crawl.subUrls) hubsSpawned += await spawnSource(hub, prettyName(hub), "calendar_hub", HORIZON_MONTHS, lineage);
   stats.subPagesSpawned += hubsSpawned;
 
   // Pagination not reached inside this run: carried over to the next run.
@@ -201,7 +202,7 @@ async function ingestCrawl(crawl: UrlCrawlResult, src: SourceRow, stats: Lifecyc
 async function crawlOneSource(src: SourceRow, stats: LifecycleStats, deadline: number, log: (m: string) => void) {
   try {
     // URL only: the source row's city/state is never handed to the crawler.
-    const crawl = await crawlUrl(src.url, { deadline, verifyVenue });
+    const crawl = await crawlUrl(src.url, { deadline, verifyVenue, horizonMonths: src.scrape_horizon_months ?? HORIZON_MONTHS });
     stats.fetchStatus[crawl.fetchStatus] = (stats.fetchStatus[crawl.fetchStatus] || 0) + 1;
     const venueCount = crawl.entities.filter((e) => e.type === "venue").length + (crawl.siteVenues?.length || 0);
 
@@ -270,11 +271,11 @@ async function crawlOneSource(src: SourceRow, stats: LifecycleStats, deadline: n
 }
 
 async function crawlFrontierPage(page: { id: number; source_id: number; url: string; attempts: number }, stats: LifecycleStats, deadline: number, log: (m: string) => void) {
-  const { rows } = await sql.query(`SELECT id, url, name, scrape_interval_days, fail_count, parent_source_id, root_source_id, depth FROM sources WHERE id = $1`, [page.source_id]);
+  const { rows } = await sql.query(`SELECT id, url, name, scrape_interval_days, scrape_horizon_months, fail_count, parent_source_id, root_source_id, depth FROM sources WHERE id = $1`, [page.source_id]);
   const src = rows[0] as SourceRow | undefined;
   if (!src) { await sql.query(`UPDATE crawl_frontier SET status = 'done', updated_at = NOW() WHERE id = $1`, [page.id]); return; }
   try {
-    const crawl = await crawlUrl(page.url, { deadline, verifyVenue });
+    const crawl = await crawlUrl(page.url, { deadline, verifyVenue, horizonMonths: src.scrape_horizon_months ?? HORIZON_MONTHS });
     stats.fetchStatus[crawl.fetchStatus] = (stats.fetchStatus[crawl.fetchStatus] || 0) + 1;
     if (!crawl.events.length && crawl.fetchStatus !== "ok" && crawl.fetchStatus !== "js_shell") {
       await sql.query(`UPDATE crawl_frontier SET status = CASE WHEN attempts >= $2 THEN 'failed' ELSE 'pending' END, last_error = $3, updated_at = NOW() WHERE id = $1`,

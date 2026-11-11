@@ -175,7 +175,7 @@ export async function ingestCrawledEvents(
       if (ev.venue) {
         venueEntityId = await upsertOnce({ name: ev.venue, entityType: "venue", subtype: "venue", websiteUrl: ev.venueUrl, ...loc });
         lastVenueEntityId = venueEntityId;
-        await spawn(ev.venueUrl, ev.venue, "venue", 6);
+        await spawn(ev.venueUrl, ev.venue, "venue", 12);
       }
 
       // Performer entity
@@ -214,7 +214,7 @@ export async function ingestCrawledEvents(
         if (venueEntityId) {
           await recordRelationship(orgId, "organized_by", venueEntityId, officialInfoUrl, { eventTitle: ev.title, date: ev.eventDate });
         }
-        await spawn(ev.organizerUrl, ev.organizerName, "organizer", 6);
+        await spawn(ev.organizerUrl, ev.organizerName, "organizer", 12);
       }
 
       // Food truck appearances link the mobile vendor to the venue (stored events only)
@@ -237,7 +237,7 @@ export async function ingestCrawledEvents(
       if (ent.type === "venue") {
         await upsertOnce({ name: ent.name, entityType: "venue", subtype: "venue", websiteUrl: c });
       }
-      await spawn(c, ent.name, ent.type === "performer" ? "artist_tour" : ent.type === "organization" ? "organizer" : "venue", ent.type === "performer" ? 12 : 6);
+      await spawn(c, ent.name, ent.type === "performer" ? "artist_tour" : ent.type === "organization" ? "organizer" : "venue", 12);
     } catch (err: any) {
       console.error(`[CRAWL_ENTITY_ERROR] ${ent.name}: ${err?.message || err}`);
     }

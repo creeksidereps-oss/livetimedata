@@ -148,8 +148,11 @@ async function main() {
     findHubLinks(cheerio.load(hubHtml), "https://www.springfieldarena.com/home", new Set(["https://www.springfieldarena.com/events/detail/rock-night"])),
     ["https://www.springfieldarena.com/events", "https://www.springfieldarena.com/calendar", "https://www.springfieldarena.com/whats-on"]);
 
-  const emptyPage = await extractFromContent("https://paper.example/sports/old-stats", `<html><head><meta property="og:type" content="article"><title>Old stats</title></head><body><p>Scores from 1998.</p><a href="/events">Events</a></body></html>`, { network: false });
-  eq("article: classified as article", emptyPage.pageClass, "article");
+  const emptyPage = await extractFromContent("https://paper.example/sports/old-stats", `<html><head><script type="application/ld+json">{"@type":"NewsArticle","headline":"Old stats"}</script><title>Old stats</title></head><body><p>Scores from 1998.</p><a href="/events">Events</a></body></html>`, { network: false });
+  eq("article: classified as article (explicit NewsArticle)", emptyPage.pageClass, "article");
+  const wpPage = await extractFromContent("https://fest.example/events", `<html><head><meta property="og:type" content="article"></head><body><a href="/calendar">Calendar</a></body></html>`, { network: false });
+  eq("article: og:type article alone (WordPress SEO default) is NOT an article", wpPage.pageClass, "empty");
+  eq("paging: month URL carries months ahead", pagingInfo(`https://hb.example/events?month=01&year=${Y + 1}`).monthsAhead! > 12, true);
   eq("article: spawns nothing (no events, no venues)", emptyPage.subUrls, []);
   const nothing = await extractFromContent("https://x.example/about", `<html><body><p>Hello</p><a href="/events">Events</a></body></html>`, { network: false });
   eq("empty page: class empty, spawns nothing", [nothing.pageClass, nothing.subUrls], ["empty", []]);
@@ -172,8 +175,8 @@ async function main() {
 
   // Page / date variants: never new sources; past months never followed (current & future only).
   const CY = new Date().getUTCFullYear();
-  eq("paging: past month is past", pagingInfo("https://hb.example/events?mode=calendar&month=04&year=2019"), { paged: true, past: true });
-  eq("paging: next year's month is not past", pagingInfo(`https://hb.example/events?mode=calendar&month=02&year=${Y}`), { paged: true, past: false });
+  { const i = pagingInfo("https://hb.example/events?mode=calendar&month=04&year=2019"); eq("paging: past month is past", [i.paged, i.past], [true, true]); }
+  { const i = pagingInfo(`https://hb.example/events?mode=calendar&month=02&year=${Y}`); eq("paging: next year's month is not past", [i.paged, i.past], [true, false]); }
   eq("paging: ?ao_pg=8 is a page of the same listing", pagingInfo("https://artscal.example/events/?ao_pg=8"), { paged: true, past: false });
   eq("paging: plain listing is not paged", pagingInfo("https://artscal.example/events/"), { paged: false, past: false });
   const gridHtml = `<html><body>

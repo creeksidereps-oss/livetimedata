@@ -79,7 +79,7 @@ export async function GET(request: Request) {
                 cityName: null,
                 stateName: null,
                 scrapeIntervalDays: 30,
-                scrapeHorizonMonths: 6,
+                scrapeHorizonMonths: 12,
                 status: 'active',
                 nextScrapeDue: sql`NOW()`,
               })

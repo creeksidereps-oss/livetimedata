@@ -16,7 +16,7 @@ import {
   parseTribeEvents,
 } from "./parsers";
 import { fetchJsonData, fetchPage, type FetchStatus } from "./fetch";
-import { canonicalUrl, classifyPage, collectEntities, detectHandlerQueue, findHubLinks, findPaginationLinks } from "./discover";
+import { canonicalUrl, classifyPage, collectEntities, detectHandlerQueue, findHubLinks, findPaginationLinks, pagingInfo } from "./discover";
 import { applySiteVenues, collectSiteVenues, readVenueCandidates, readVenueDirectoryLinks, type VenueVerifier } from "./venueLocation";
 
 const TRIBE_PAGE_GUARD = 200; // loop guard for next_rest_url pagination (repeated-URL protection, not a content cap)
@@ -31,6 +31,8 @@ export class CrawlFetchError extends Error {
 export interface ExtractOptions {
   /** Epoch ms after which no new page fetch is started (pagination left over goes to crawl_frontier). */
   deadline?: number;
+  /** Look-ahead for month/date-paged calendars (sources.scrape_horizon_months; 12 = events up to 12 months ahead). */
+  horizonMonths?: number;
   /** Verifies a venue-stated address (resolveLocation in production; stubbed in tests). */
   verifyVenue?: VenueVerifier;
 }
@@ -257,11 +259,17 @@ export async function extractFromContent(
   const pageTitle = $("title").first().text().replace(/\s+/g, " ").trim() || undefined;
 
   // Pagination of this listing: followed inside the job (API strategies already return every page).
+  //   - Numbered pages (?page=2, /page/3/): a page that repeats this crawl's events or is empty = end of list.
+  //   - Month / date pages (?month=3&year=2027): empty months do NOT end the walk; it continues to the source's
+  //     look-ahead horizon (scrape_horizon_months, 12 months: events can be listed up to 12 months ahead).
+  //     Past months are never followed (findPaginationLinks drops them).
+  const horizon = opts.horizonMonths ?? 12;
+  const withinHorizon = (u: string) => { const i = pagingInfo(u); return !i.dated || (i.monthsAhead ?? 0) <= horizon; };
   const apiStrategy = strategies.some((s) => s === "tribe_rest" || s === "simpleview_api" || s === "ical");
-  const pagination = findPaginationLinks($, url);
+  const pagination = findPaginationLinks($, url).filter(withinHorizon);
   const leftover: string[] = [];
   const hubPages: { url: string; $: cheerio.CheerioAPI }[] = [{ url, $ }];
-  if (network && events.length && !apiStrategy) {
+  if (network && !apiStrategy && (events.length || pagination.some((u) => pagingInfo(u).dated))) {
     const queue = [...pagination];
     const visited = new Set<string>([canonicalUrl(url) || url]);
     while (queue.length) {
@@ -273,13 +281,17 @@ export async function extractFromContent(
       if (!html) continue;
       const p = await parseOnePage(next, html, network);
       const fresh = p.events.filter((e) => !seen.has(eventKey(e)));
-      if (!fresh.length) continue; // a "next" page with nothing new ends this pagination chain
+      const $p = cheerio.load(html);
+      if (!fresh.length) {
+        // Empty month inside the horizon: keep walking forward. Numbered page with nothing new: end of list.
+        if (pagingInfo(next).dated) for (const n of findPaginationLinks($p, next).filter(withinHorizon)) if (!visited.has(n)) queue.push(n);
+        continue;
+      }
       for (const e of fresh) { seen.add(eventKey(e)); events.push(e); }
       p.emails.forEach((e) => emails.add(e));
       for (const s of p.strategies) if (!strategies.includes(s)) strategies.push(s);
-      const $p = cheerio.load(html);
       hubPages.push({ url: next, $: $p });
-      for (const n of findPaginationLinks($p, next)) if (!visited.has(n)) queue.push(n);
+      for (const n of findPaginationLinks($p, next).filter(withinHorizon)) if (!visited.has(n)) queue.push(n);
     }
   } else if (!network) {
     leftover.push(...pagination);

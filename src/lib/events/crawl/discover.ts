@@ -89,7 +89,7 @@ const DATE_KEYS = /^(month|mon|m|year|yr|y|date|day|d|week|wk|start|start_date|s
  * `past` is true when the URL points at a month or day that is already over: never followed
  * (LiveTimeData only works with current and future events).
  */
-export function pagingInfo(url: string): { paged: boolean; past: boolean } {
+export function pagingInfo(url: string): { paged: boolean; past: boolean; dated?: boolean; monthsAhead?: number } {
   let u: URL;
   try { u = new URL(url); } catch { return { paged: false, past: false }; }
   let paged = /\/page\/\d+\/?$/i.test(u.pathname);
@@ -113,7 +113,10 @@ export function pagingInfo(url: string): { paged: boolean; past: boolean } {
     else if (year === curY && month && month < curM) past = true;
     else if (year === curY && month === curM && day && day < curD - 1) past = true;
   }
-  return { paged, past };
+  if (!year) return { paged, past };
+  const now = new Date();
+  const monthsAhead = (year - now.getUTCFullYear()) * 12 + ((month || 1) - (now.getUTCMonth() + 1));
+  return { paged, past, dated: true, monthsAhead };
 }
 
 function stripPaging(url: string): string {
@@ -156,13 +159,15 @@ export function findPaginationLinks($: CheerioAPI, pageUrl: string): string[] {
   return [...out].filter((u) => !/\b(past|previous|prev|archive)\b|tribe_event_display=past|eventDisplay=past/i.test(u));
 }
 
-/** News / blog article (never a hub). */
+/**
+ * News / blog article (never a hub). Only explicit schema.org news/blog types count: og:type "article" is not
+ * used, because many CMSs (e.g. WordPress SEO plugins) put it on every page, including event calendars.
+ */
 export function isArticlePage($: CheerioAPI): boolean {
-  if (/^article$/i.test(cleanStr($('meta[property="og:type"]').attr("content")))) return true;
   let article = false;
   $('script[type="application/ld+json"]').each((_, el) => {
     const t = $(el).html() || "";
-    if (/"@type"\s*:\s*"(NewsArticle|Article|BlogPosting|ReportageNewsArticle|AnalysisNewsArticle|OpinionNewsArticle)"/.test(t)) article = true;
+    if (/"@type"\s*:\s*"(NewsArticle|BlogPosting|ReportageNewsArticle|AnalysisNewsArticle|OpinionNewsArticle)"/.test(t)) article = true;
   });
   return article;
 }

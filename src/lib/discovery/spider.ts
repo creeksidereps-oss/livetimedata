@@ -42,7 +42,7 @@ async function spawnSubSources(subUrls: string[], baseName: string, suffix: stri
         cityName: null,
         stateName: null,
         scrapeIntervalDays: 30,
-        scrapeHorizonMonths: 6,
+        scrapeHorizonMonths: 12,
         status: "active",
         nextScrapeDue: sql`NOW()`,
       })
