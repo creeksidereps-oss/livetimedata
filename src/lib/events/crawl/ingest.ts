@@ -26,7 +26,7 @@ import type { VerifiedLocation } from "@/lib/events/location/resolveLocation";
 import { recordRelationship, upsertEntity } from "@/lib/discovery/lifecycle";
 import type { ExtractedEvent, FoundEntity } from "./types";
 import { isTicketBrokerUrl, isValidCalendarSourceUrl } from "./helpers";
-import { canonicalUrl } from "./discover";
+import { canonicalUrl, pagingInfo } from "./discover";
 
 export type CrawlOrigin = Extract<IntakeOrigin, "crawler" | "rescrape" | "spider_daemon" | "discover_entity">;
 
@@ -74,6 +74,8 @@ export async function spawnSource(
   if (!rawUrl || !rawUrl.startsWith("http") || isTicketBrokerUrl(rawUrl)) return 0;
   const url = canonicalUrl(rawUrl);
   if (!url || !isValidCalendarSourceUrl(url)) return 0;
+  // Page / date variants of a calendar are never separate sources (and past months are never followed).
+  if (pagingInfo(url).paged) return 0;
   const r = await pool.query(
     `INSERT INTO sources (url, name, source_type, city_name, state_name, status, scrape_interval_days, scrape_horizon_months,
                           next_scrape_due, phase, parent_source_id, root_source_id, depth, created_at, updated_at)

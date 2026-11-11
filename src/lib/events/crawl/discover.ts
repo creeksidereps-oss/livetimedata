@@ -73,25 +73,85 @@ export function findHubLinks($: CheerioAPI, pageUrl: string, eventUrls: Set<stri
     const c = canonicalUrl(href, pageUrl);
     if (!c || c === self || eventUrls.has(c)) return;
     if (!isSameSite(c, pageUrl) || !isValidCalendarSourceUrl(c) || !isListingShaped(c)) return;
+    // A link with page or date settings is the same calendar's next/previous page, never a new source.
+    if (pagingInfo(c).paged) return;
     out.add(c);
   });
   return [...out];
 }
 
+// Query keys that page through one listing, and keys that pick a date / month of one calendar.
+const PAGE_KEYS = /^(page|pg|paged|ao_pg|p|pagenum|page_num|pagenumber|tribe_paged|sf_paged|_page|offset|skip|start_index|startindex)$/i;
+const DATE_KEYS = /^(month|mon|m|year|yr|y|date|day|d|week|wk|start|start_date|startdate|end|end_date|enddate|from|to|ym|yearmonth|cal_month|cal_year|calmonth|calyear|tribe-bar-date|eventdate|eventdisplay|view_date|viewdate|selected_date|mode)$/i;
+
+/**
+ * Page / date settings carried by a URL (query keys or /page/N/ path).
+ * `past` is true when the URL points at a month or day that is already over: never followed
+ * (LiveTimeData only works with current and future events).
+ */
+export function pagingInfo(url: string): { paged: boolean; past: boolean } {
+  let u: URL;
+  try { u = new URL(url); } catch { return { paged: false, past: false }; }
+  let paged = /\/page\/\d+\/?$/i.test(u.pathname);
+  let year: number | undefined, month: number | undefined, day: number | undefined;
+  for (const [k, v] of u.searchParams.entries()) {
+    if (PAGE_KEYS.test(k)) paged = true;
+    if (!DATE_KEYS.test(k)) continue;
+    paged = true;
+    const full = v.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);
+    if (full) { year = +full[1]; month = +full[2]; day = full[3] ? +full[3] : undefined; continue; }
+    if (/^(year|yr|y|cal_year|calyear)$/i.test(k) && /^\d{4}$/.test(v)) year = +v;
+    else if (/^(month|mon|m|cal_month|calmonth)$/i.test(k) && /^\d{1,2}$/.test(v)) month = +v;
+    else if (/^(ym|yearmonth)$/i.test(k)) { const m = v.match(/^(\d{4})-?(\d{2})$/); if (m) { year = +m[1]; month = +m[2]; } }
+    else if (/^(day|d)$/i.test(k) && /^\d{1,2}$/.test(v)) day = +v;
+  }
+  let past = false;
+  if (year) {
+    const now = new Date();
+    const curY = now.getUTCFullYear(), curM = now.getUTCMonth() + 1, curD = now.getUTCDate();
+    if (year < curY) past = true;
+    else if (year === curY && month && month < curM) past = true;
+    else if (year === curY && month === curM && day && day < curD - 1) past = true;
+  }
+  return { paged, past };
+}
+
+function stripPaging(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const k of [...u.searchParams.keys()]) if (PAGE_KEYS.test(k) || DATE_KEYS.test(k)) u.searchParams.delete(k);
+    u.pathname = u.pathname.replace(/\/page\/\d+\/?$/i, "/");
+    return u.href.replace(/\?$/, "").replace(/\/$/, "");
+  } catch {
+    return url;
+  }
+}
+
 const NEXT_TEXT = /^(next|next page|next events|more events|load more|show more|older|›|»|>|→|suivant|suivante|page suivante|siguiente|weiter|nächste|volgende|nästa|næste|neste|successivo|próximo|proxima)$/i;
 
-/** Pagination links of THIS listing ("next", rel=next, /page/N, ?page=N). */
+/**
+ * Pagination of THIS listing: "next" links, rel=next, /page/N, and links to the same calendar that differ only
+ * by page or date settings (?ao_pg=2, ?month=12&year=2026). Past months / days are never followed.
+ */
 export function findPaginationLinks($: CheerioAPI, pageUrl: string): string[] {
   const out = new Set<string>();
-  const add = (href?: string) => {
+  const self = canonicalUrl(pageUrl);
+  const base = stripPaging(self || pageUrl);
+  const add = (href?: string, requireSameCalendar = false) => {
     if (!href) return;
     const c = canonicalUrl(href, pageUrl);
-    if (c && c !== canonicalUrl(pageUrl) && isSameSite(c, pageUrl)) out.add(c);
+    if (!c || c === self || !isSameSite(c, pageUrl)) return;
+    const info = pagingInfo(c);
+    if (info.past) return;
+    if (requireSameCalendar && (!info.paged || stripPaging(c) !== base)) return;
+    out.add(c);
   };
   $('link[rel="next"], a[rel="next"]').each((_, el) => add($(el).attr("href")));
   $("a[href]").each((_, a) => {
+    const href = $(a).attr("href");
     const t = cleanStr($(a).text()) || cleanStr($(a).attr("aria-label")) || cleanStr($(a).attr("title"));
-    if (NEXT_TEXT.test(t) || /^next( page)?$/i.test(cleanStr($(a).attr("aria-label")))) add($(a).attr("href"));
+    if (NEXT_TEXT.test(t) || /^next( page)?$/i.test(cleanStr($(a).attr("aria-label")))) add(href);
+    else add(href, true);
   });
   return [...out].filter((u) => !/\b(past|previous|prev|archive)\b|tribe_event_display=past|eventDisplay=past/i.test(u));
 }

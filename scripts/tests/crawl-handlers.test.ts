@@ -9,7 +9,7 @@ import { parseCalendarLinks, parseDomCards } from "../../src/lib/events/crawl/pa
 import { extractFromContent } from "../../src/lib/events/crawl/extract";
 import { isoDateFromSource, localizeDateWords } from "../../src/lib/events/crawl/helpers";
 import {
-  canonicalUrl, classifyPage, collectEntities, detectHandlerQueue, findHubLinks, findPaginationLinks, isListingShaped,
+  canonicalUrl, classifyPage, collectEntities, detectHandlerQueue, findHubLinks, findPaginationLinks, isListingShaped, pagingInfo,
 } from "../../src/lib/events/crawl/discover";
 import {
   applySiteVenues, collectSiteVenues, readVenueCandidates, readVenueDirectoryLinks, venueNamesMatch, type VenueVerifier,
@@ -169,6 +169,23 @@ async function main() {
   eq("pagination: rel=next / Next / aria-label, past excluded", findPaginationLinks(cheerio.load(pagHtml), "https://a.example/events/"), ["https://a.example/events/page/2/", "https://a.example/events?page=2"]);
   eq("canonical: tracking params stripped, query sorted",
     canonicalUrl("https://Disney.example/events/Show-1/?xref=XMAwebsite&b=2&utm_source=x&a=1#top"), "https://disney.example/events/Show-1/?a=1&b=2");
+
+  // Page / date variants: never new sources; past months never followed (current & future only).
+  const CY = new Date().getUTCFullYear();
+  eq("paging: past month is past", pagingInfo("https://hb.example/events?mode=calendar&month=04&year=2019"), { paged: true, past: true });
+  eq("paging: next year's month is not past", pagingInfo(`https://hb.example/events?mode=calendar&month=02&year=${Y}`), { paged: true, past: false });
+  eq("paging: ?ao_pg=8 is a page of the same listing", pagingInfo("https://artscal.example/events/?ao_pg=8"), { paged: true, past: false });
+  eq("paging: plain listing is not paged", pagingInfo("https://artscal.example/events/"), { paged: false, past: false });
+  const gridHtml = `<html><body>
+    <a href="/events?mode=calendar&month=04&year=2019">2019</a>
+    <a href="/events?mode=calendar&month=01&year=${CY - 1}">last year</a>
+    <a href="/events?mode=calendar&month=03&year=${Y}">future month</a>
+    <a href="/events/?ao_pg=2">2</a>
+    <a href="/calendar">Calendar</a></body></html>`;
+  eq("hubs: page/date variants are never hubs", findHubLinks(cheerio.load(gridHtml), "https://hb.example/events", new Set()), ["https://hb.example/calendar"]);
+  eq("pagination: same calendar's future month and page 2 followed, past months dropped",
+    findPaginationLinks(cheerio.load(gridHtml), "https://hb.example/events"),
+    [`https://hb.example/events?mode=calendar&month=03&year=${Y}`, "https://hb.example/events/?ao_pg=2"]);
 
   // ------------------------------------------------------------ 6. localized dates
   eq("date fr: 13 novembre", isoDateFromSource(`13 novembre ${Y}`), `${Y}-11-13`);
