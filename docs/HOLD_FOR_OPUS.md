@@ -1,114 +1,52 @@
-# Hold for Opus
+# Handoff for Opus: Spider Lifecycle & Ingestion Diagnostics
 
-This document tracks venue seeds and calendar sources that require architectural patterns, specialized parser handlers, or policy solutions, held for review and implementation rather than applying one-off brittle patches.
+## Summary for Opus
+The user is switching to Opus to address core architectural failures in the spider discovery and crawler ingestion system. 
 
----
-
-## 1. Cloud-Blocked & Failed Initial Seeds
-
-### Visit Raleigh (`#1213`)
-* **URL:** `https://www.visitraleigh.com/events/`
-* **Status:** Dropped to `failed` (5/5 failed attempts with `403 Forbidden`)
-* **Issue:** Protected by WAF / Cloudflare bot-shielding that blocks server datacenter IP requests (like Vercel/AWS).
-* **Objective for Opus:** Evaluate designated handler: test browser-mimicking headers, upstream destination marketing API (Simpleview CMS endpoints if exposed), or proxy rotation if permitted.
-
-### Statesville Municipal & Event Sites (`#1033204`, `#547067`, `#49908`)
-* **URLs:**
-  * `https://parade.statesvillenc.com/`
-  * `https://www.downtownstatesville.com/downtown-statesville-events/`
-  * `https://eventcenter.statesvillenc.net/upcoming-events/`
-* **Status:** Dropped to `failed` (5/5 failed attempts with `403 Forbidden`)
-* **Issue:** Municipal hosting firewall / WAF blocks inbound automated requests from Vercel datacenter IPs.
-* **Objective for Opus:** Determine if these local city calendars can be fetched using specific user-agent/accept headers or if municipal WordPress REST endpoints (`/wp-json/wp/v2/...`) bypass the web tier WAF.
-
-### ArtsCalendar Broward (`#1033957`)
-* **URL:** `https://artscalendar.com/events/`
-* **Status:** Dropped to `failed` (5/5 failed attempts with `socket hang up`)
-* **Issue:** Server firewall terminates TCP connections (socket hang up) when contacted from Vercel serverless edge nodes.
-* **Objective for Opus:** Investigate timeout configuration or request header requirements to maintain connection.
-
-### NC Festivals (`#498`)
-* **URL:** `https://www.ncfestivals.com/events`
-* **Status:** Returned 200 OK, but parsed `0 events found` (scheduled for 30-day re-crawl)
-* **Issue:** Non-standard portal layout. Does not implement Schema.org JSON-LD, Microdata, or iCal feeds. The event listings exist inside proprietary ASP.NET table/card DOM containers.
-* **Objective for Opus:** Build a designated DOM handler for this portal layout or discover its underlying feed/API endpoint.
+The goal from the user: The spider system must cascade, recursively discover venues and calendar hubs, handle thousands of real events without stalling, and cleanly handle real-world venue websites rather than dying on firewalls, JavaScript shells, or producing single-digit event yields.
 
 ---
 
-## 2. French Stadiums, Arenas & Ticketing Subdomains
-
-### Comédie-Française (Paris, France)
-* **URL:** `https://www.comedie-francaise.fr/calendrier-2026-2027`
-* **Issue:**
-  1. **Year/Season in URL:** URL contains hardcoded season years (`calendrier-2026-2027`). Needs a canonical permanent route (e.g. `https://www.comedie-francaise.fr/fr/programme-saison`).
-  2. **French Theatre Season Architecture:** Season calendars use interactive date filters and custom CMS agenda structures rather than standard Schema.org JSON-LD or iCal feeds.
-* **Objective for Opus:** Design a standardized season/theatre calendar parser pattern for European performing arts halls.
-
-### Accor Arena (Paris, France)
-* **URL:** `https://www.accorarena.com/fr/programmation`
-* **Issue:**
-  1. **Angular SSR / Custom Web Components:** Built with custom tags (`<aa-sessions-dates>`, `<aa-link-item>`). No JSON-LD, Microdata, Tribe Events, or iCal feeds present.
-  2. **Missing In-DOM Start Times:** Event showpages display the date (`13 novembre 2026`) but omit start times, deferring door/show times to the separate ticketing subdomain (`billetterie.accorarena.com`). Under current strict rules, events without confirmed start times are routed to `pending_review`.
-  3. **Foreign Language Date Strings:** Uses localized French month names rather than standard ISO dates.
-* **Objective for Opus:** Design a unified European arena / ticketing-linked venue handler that can extract session schedules or resolve times without scraping protected ticketing brokers.
-
-### French Ticketing Portals & Arenas
-* **Paris Saint-Germain (PSG) Ticketing:**
-  * `https://billetterie.psg.fr/fr/calendrier-des-matchs` (Soccer)
-  * `https://billetterie.psg.fr/fr/hand/calendrier-des-matchs` (Handball)
-  * `https://billetterie.psg.fr/fr/footfem/calendrier-des-matchs` (Women's Soccer)
-* **Paris FC Ticketing:**
-  * `https://billetterie.parisfc.fr/fr/calendrier`
-  * `https://billetterie.parisfc.fr/fr/equipe-feminine/calendrier`
-* **Stade Français Rugby:** `https://billetterie.stade.fr/fr/calendrier`
-* **Stade de France:** `https://www.stadefrance.com/fr/billetteries`
-* **Adidas Arena:** `https://www.adidasarena.com/programmation`
-* **Dôme de Paris:** `https://www.ledomedeparis.com/fr/spectacles/a-laffiche`
-* **Plénitude Arena:** `https://www.plenitudearena.com/billetterie/`
-* **City of Paris Calendar:** `https://www.paris.fr/quefaire/semaine` and `https://www.paris.fr/pages/les-concerts-du-mois-de-novembre-a-paris-37062`
-* **Common Problem Across All:** French ticketing engines (Secutix, Digitick, Ticketmaster FR) lock event dates and match kickoff times inside dynamic booking modals or require session cookies.
-* **Objective for Opus:** Create a unified European sports/arena handler that hooks into official league fixtures (e.g. Ligue 1, Top 14 Rugby) rather than parsing fragile ticketing subdomains.
+## 1. Current State & Where Code Lives
+* **Single Intake Gate:** `src/lib/events/intake/publishEvent.ts` (enforces verified location, no default cities, in-person only, confirmed start time, date >= today).
+* **Location Engine:** `src/lib/events/location/resolveLocation.ts` (Open-Meteo first, GeoNames backup, cached).
+* **Spider Lifecycle Engine:** `src/lib/discovery/spider-lifecycle.ts`
+* **Crawler Core:** `src/lib/events/crawl/` (`extract.ts`, `parsers.ts`, `helpers.ts`, `ingest.ts`).
+* **Cloud Cron:** `/api/cron/spider-lifecycle` scheduled in `vercel.json` (`*/15 * * * *`).
+* **Active Database Snapshot (as of 2026-11-09):**
+  * `events`: 14,597 total (795 public upcoming, 7,528 in `pending_review`).
+  * `sources`: 163 active, 10 failed, 41,250 in `legacy_hold` (user explicitly directed: **do not run legacy_hold**; new seeds only).
 
 ---
 
-## 3. Major Sports League Roll-Up Design
+## 2. The Core Failures Diagnosed Today
 
-### League Schedules vs. Aggregator Portals
-* **NFL Official:** `https://www.nfl.com/schedules`
-* **ESPN Sports Portals:**
-  * `https://www.espn.com/nba/schedule`
-  * `https://www.espn.com/nfl/`
-  * `https://www.espn.com/college-football/schedule`
-  * `https://www.espn.com/mlb/schedule`
-  * `https://www.espn.com/soccer/schedule`
-  * `https://www.espn.com/nhl/schedule`
-  * `https://www.espn.com/wnba/schedule`
-  * `https://www.espn.com/boxing/story/_/id/12508267/boxing-schedule`
-  * `https://www.espn.com/mma/schedule`
-  * `https://www.espn.com/golf/schedule` (including TGL, WTGL, LPGA, Champions Tour, LIV, European Tour)
-* **Project Policy (Rule 7):** Team matches roll up to the league schedule source, not one spider per team.
-* **Objective for Opus:** Decide architecture: should we ingest from hidden JSON schedule APIs (e.g. ESPN's site API `site.api.espn.com/apis/site/v2/sports/...`) or use official league feeds (NFL.com, NBA.com)? Ensure venue addresses and host cities map cleanly to official stadium entities.
+### A. The Datacenter / Cloud WAF Block Problem (403 Forbidden & Socket Hang Up)
+When Vercel serverless functions make direct `fetch()` calls to external venue websites, an enormous percentage are immediately blocked or hung up on by Cloudflare, Akamai, and municipal hosting firewalls:
+* **Visit Raleigh (`#1213`):** 5/5 consecutive 403 Forbidden.
+* **Statesville Parade, Downtown Statesville, Statesville Event Center (`#1033204`, `#547067`, `#49908`):** 5/5 consecutive 403 Forbidden.
+* **ArtsCalendar Broward (`#1033957`):** 5/5 consecutive `socket hang up` (firewall connection reset on Vercel IPs).
+* **Impact:** 30%–40% of all entered seeds died on the first hop before extracting a single byte.
+* **Opus Task:** Design a resilient fetching strategy. Determine how to handle WAF shielding (headers, user-agents, proxy strategy, or discovering upstream JSON/REST API feeds like Simpleview or WordPress `/wp-json/` endpoints).
 
----
+### B. The Cascading Spider & Sub-Page Model Is Not Scaling
+* **Expectation:** Feeding a few seed calendar hubs should cascade recursively, discovering hundreds of connected venues, performers, and sub-pages, yielding thousands of events.
+* **Observed Reality:** The 13 seeds spawned 145 sub-spiders, but most spawned sub-spiders found **0 events** (`[none]`).
+* **Why:** 
+  1. Modern event portals (Angular, React, Vue, ASP.NET) render event cards dynamically via client-side JavaScript or internal API calls; the static DOM parser in `extract.ts` only sees empty shell containers (`<div id="root">`, `<aa-sessions-dates>`).
+  2. The sub-page URL heuristics in `isValidCalendarSourceUrl()` match sub-URLs that often turn out to be ticketing redirect wrappers or single-show landing pages that don't cascade further.
+* **Opus Task:** Overhaul `src/lib/events/crawl/` to support deeper extraction, structured API discovery, and genuine recursive calendar hub following.
 
-## 4. Rejected Seeds & Architectural Alternatives
+### C. Queue Stalling & Interval Architecture
+* **Problem:** In `spider-lifecycle.ts`, once a source is crawled, it updates `next_scrape_due = NOW() + 30 days`. With a small, controlled seed list, the spider crawls once and the entire cron goes completely idle (`no due sources; generation complete`) for the next 34 runs.
+* **Opus Task:** Re-architect the living spider lifecycle to manage crawl depth, seed exploration versus re-crawl intervals, and dynamic queue replenishment.
 
-### Secondary Ticket Aggregators
-* **VividSeats Horse Racing:** `https://www.vividseats.com/sports/horse-racing?wsUser=717&wsVar=Horseracingindexnav`
-* **Reason Rejected:** Secondary ticket broker/aggregator. Strictly banned by Rule 6.
-* **Objective for Opus:** Determine official horse racing calendar sources (e.g. Equibase, NTRA, or primary track sources like Churchill Downs, Belmont, Saratoga) to cover race schedules without aggregators.
-
-### Facility Description Pages (No Event Calendars)
-* **Stade Yves-du-Manoir:** `https://www.hauts-de-seine.fr/sortir-et-decouvrir/sport/equipements-sportifs/le-stade-departemental-yves-du-manoir`
-* **Gymnase Bertrand Dauvin:** `https://www.paris.fr/lieux/centre-sportif-bertrand-dauvin-3074`
-* **La Patinoire de l'Accor Arena:** `https://www.accorarena.com/fr/le-faubourg/patinoire`
-* **Stade Paul Faber:** `https://www.paris.fr/lieux/stade-paul-faber-3070`
-* **Stade Élisabeth:** `https://www.paris.fr/lieux/centre-sportif-elisabeth-3050`
-* **Théâtre Édouard VII:** `https://www.theatreedouard7.com/`
-* **Reason Rejected / Held:** These are municipal static facility profiles, public park guides, or facility hours pages—not live calendar feeds of upcoming ticketed events.
-* **Objective for Opus:** Create a distinction between "Physical Facility/Venue Directory Listings" (which have addresses and opening hours) and "Event Calendar Feeds" (which have specific upcoming scheduled dates/times).
-
-### Missing URL Seeds
-* **Théâtre du Palais-Royal:** Submitted as a bare name without a URL.
-* **Reason Rejected:** Banned by Rule 4 (Option A gatekeeper: venues only get spiders if they have a real calendar URL; spiders never guess or fabricate URLs).
-* **Objective for Opus:** Establish a verified intake workflow to locate and validate official calendar URLs before registering entities.
+### D. Specific Seed Patterns Needing Architectural Handlers
+1. **French & European Theatres/Arenas:**
+   - Comédie-Française (`calendrier-2026-2027` - season-specific URLs, interactive JS agenda).
+   - Accor Arena (`accorarena.com/fr/programmation` - Angular SSR custom web components, door/start times omitted from DOM and pushed to `billetterie` subdomain).
+   - French ticketing clubs: PSG (`billetterie.psg.fr`), Paris FC, Stade de France.
+2. **Major Sports League Roll-ups (Rule 7):**
+   - Official NFL, NBA, MLB, NHL, Soccer schedules (`nfl.com/schedules`, `espn.com/*`). Need official league or direct schedule JSON endpoints that cleanly roll up matches to home stadium entities.
+3. **Primary Racing Feeds:**
+   - Replacement for secondary broker VividSeats: Equibase or official track calendars.
