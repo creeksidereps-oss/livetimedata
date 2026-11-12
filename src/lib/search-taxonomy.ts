@@ -61,6 +61,10 @@ export const MULTILINGUAL_SEARCH_TAXONOMY: Record<string, string[]> = {
     "natale", "capodanno", "fuochi d'artificio",
     "natal", "queima de fogos"
   ],
+  Christmas: [
+    "christmas", "xmas", "santa", "santa claus", "noel", "yuletide", "navidad", "weihnachten", "natale", "natal",
+    "holiday lights", "christmas lights", "christmas parade", "tree lighting"
+  ],
   Classes: [
     "class", "classes", "workshop", "workshops", "seminar", "training", "lesson", "lessons", "course", "courses", "masterclass",
     "clase", "clases", "taller", "talleres", "curso", "cursos", "capacitacion", "capacitación",

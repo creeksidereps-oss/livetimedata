@@ -30,7 +30,7 @@ type CategoryKey =
   | "Local"
   | "Clubs / Groups"
   | "Fundraisers"
-  | "Halloween"
+  | "Christmas"
   | "Holiday"
   | "Arts"
   | "Kids"
@@ -40,25 +40,27 @@ type CategoryKey =
   | "Comedy"
   | "Nightlife"
   | "Other"
-  | "Conventions";
+  | "Conventions"
+  | "Halloween";
 
-type HalloweenSubdivision = "all" | "trick_or_treat" | "haunted" | "themed";
+type ChristmasSubdivision = "all" | "parades" | "lights" | "santa";
 
-function matchesHalloweenSubdivision(subTab: HalloweenSubdivision, title: string, details?: string): boolean {
+function matchesChristmasSubdivision(subTab: ChristmasSubdivision, title: string, details?: string, categories?: CategoryKey[]): boolean {
   if (subTab === "all") return true;
   const text = `${title} ${details || ""}`.toLowerCase();
 
-  const isTrickOrTreat = /\b(trick[ -]*or[ -]*treat|trunk[ -]*(or|&|\/)[ -]*treat|trick[ -]*or[ -]*treating|trail[s]?[ -]*(of|&)[ -]*treat[s]?|candy crawl|treats?|hallofest)\b/i.test(text);
-  const isHaunted = /\b(haunt|haunted|ghost[ -]*(tour|walk|hunt|stories|bus)?|paranormal|panic point|spookywoods|dark trail|fright|carnival of horrors|sinister springs)\b/i.test(text);
+  const isParade = /\b(parade|parades|procession|flotilla|boat parade|cavalcade)\b/i.test(text) || (categories ? categories.includes("Parades") : false);
+  const isLights = /\b(lights?|lighting|illumination|illuminations|illuminated|lanterns?|glow|luminar(ia|ias|y|ies)|candlelight|candlelite|light show|light display)\b/i.test(text);
+  const isSanta = /\b(santa|claus|st[.]? nick|saint nick|father christmas|kris kringle|mrs[.]? claus)\b/i.test(text);
 
-  if (subTab === "trick_or_treat") {
-    return isTrickOrTreat;
+  if (subTab === "parades") {
+    return isParade;
   }
-  if (subTab === "haunted") {
-    return isHaunted;
+  if (subTab === "lights") {
+    return isLights;
   }
-  if (subTab === "themed") {
-    return (!isTrickOrTreat && !isHaunted) || /\b(costume|party|contest|trivia|movie|film|hocus pocus|rocky horror|samhain|zombie|witch|carve|pumpkin|carnaval|goth|havoc|dance)\b/i.test(text);
+  if (subTab === "santa") {
+    return isSanta;
   }
   return true;
 }
@@ -132,7 +134,7 @@ const CATEGORY_ORDER: CategoryKey[] = [
   "Local",
   "Clubs / Groups",
   "Fundraisers",
-  "Halloween",
+  "Christmas",
   "Holiday",
   "Arts",
   "Kids",
@@ -342,15 +344,40 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       if (!matched.includes("Nightlife")) matched.push("Nightlife");
     }
 
-    // Holiday
+    // Holiday (includes Halloween, Easter, Thanksgiving, 4th of July, New Year, etc.)
     if (
       pLow.includes("holiday") ||
       pLow.includes("christmas") ||
+      pLow.includes("xmas") ||
       pLow.includes("halloween") ||
+      pLow.includes("trick or treat") ||
+      pLow.includes("trunk or treat") ||
+      pLow.includes("haunted") ||
+      pLow.includes("quallaween") ||
+      pLow.includes("spooky") ||
+      pLow.includes("thanksgiving") ||
       pLow.includes("easter") ||
       pLow.includes("independence day") ||
-      pLow.includes("4th of july")
+      pLow.includes("4th of july") ||
+      pLow.includes("new year")
     ) {
+      if (!matched.includes("Holiday")) matched.push("Holiday");
+    }
+
+    // Christmas
+    if (
+      pLow.includes("christmas") ||
+      pLow.includes("xmas") ||
+      pLow.includes("santa") ||
+      pLow.includes("yuletide") ||
+      pLow.includes("noel") ||
+      pLow.includes("nativity") ||
+      pLow.includes("mistletoe") ||
+      pLow.includes("holiday lights") ||
+      pLow.includes("christmas lights") ||
+      pLow.includes("christmas parade")
+    ) {
+      if (!matched.includes("Christmas")) matched.push("Christmas");
       if (!matched.includes("Holiday")) matched.push("Holiday");
     }
 
@@ -385,7 +412,7 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       if (!matched.includes("Auditions")) matched.push("Auditions");
     }
 
-    // Halloween
+    // Halloween (categorized into Holiday)
     if (
       pLow.includes("halloween") ||
       pLow.includes("trick or treat") ||
@@ -394,6 +421,7 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       pLow.includes("quallaween") ||
       pLow.includes("spooky")
     ) {
+      if (!matched.includes("Holiday")) matched.push("Holiday");
       if (!matched.includes("Halloween")) matched.push("Halloween");
     }
 
@@ -429,11 +457,20 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
     ) {
       if (!matched.includes("Auditions")) matched.push("Auditions");
     }
-    // Halloween
+    // Holiday (includes Halloween, Thanksgiving, Easter, 4th of July, New Year, etc.)
     if (
-      /\b(halloween|trick[ -]*or[ -]*treat|trunk[ -]*(or|&)[ -]*treat|haunted|ghost (tour|walk|hunt|stories|bus)|quallaween|spooky|spookywoods|panic point|trail[s]? (of|&)[ ]*treat[s]?|candy crawl|festival of frights|fright night|hallofest)\b/i.test(tLow)
+      /\b(holiday|holidays|halloween|trick[ -]*or[ -]*treat|trunk[ -]*(or|&)[ -]*treat|haunted|ghost (tour|walk|hunt|stories|bus)|quallaween|spooky|spookywoods|panic point|trail[s]? (of|&)[ ]*treat[s]?|candy crawl|festival of frights|fright night|hallofest|thanksgiving|turkey trot|easter|independence day|4th of july|new year)\b/i.test(tLow)
     ) {
+      if (!matched.includes("Holiday")) matched.push("Holiday");
       if (!matched.includes("Halloween")) matched.push("Halloween");
+    }
+
+    // Christmas
+    if (
+      /\b(christmas|xmas|santa|claus|st[.]? nick|saint nick|father christmas|kris kringle|mrs[.]? claus|yuletide|noel|nativity|mistletoe|tinsel|winter wonderland|deck the halls|jingle bell[s]?|nutcracker|holiday lights|christmas lights|light display|christmas parade|holiday parade)\b/i.test(tLow)
+    ) {
+      if (!matched.includes("Christmas")) matched.push("Christmas");
+      if (!matched.includes("Holiday")) matched.push("Holiday");
     }
   }
 
@@ -466,8 +503,10 @@ function categoryAccent(category: CategoryKey) {
       return "#ec4899";
     case "Fundraisers":
       return "#e11d48"; // vibrant rose / heart crimson
+    case "Christmas":
+      return "#dc2626"; // festive Christmas crimson red
     case "Halloween":
-      return "#ea580c"; // festive pumpkin orange
+      return "#ea580c";
     case "Conventions":
       return "#3b82f6";
     case "Holiday":
@@ -1821,7 +1860,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
   const [dayModalIso, setDayModalIso] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [categoryModalKey, setCategoryModalKey] = useState<CategoryKey | null>(null);
-  const [halloweenSubTab, setHalloweenSubTab] = useState<HalloweenSubdivision>("all");
+  const [christmasSubTab, setChristmasSubTab] = useState<ChristmasSubdivision>("all");
   const [activeDayCategory, setActiveDayCategory] = useState<CategoryKey | null>(null);
   const [openEventId, setOpenEventId] = useState<string | null>(null);
   const [selectedModalEvent, setSelectedModalEvent] = useState<EventItem | null>(null);
@@ -2106,30 +2145,30 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       .sort((a, b) => new Date(a.eventDate!).getTime() - new Date(b.eventDate!).getTime());
   }, [effectiveDbEvents, categoryModalKey]);
 
-  const halloweenCounts = useMemo(() => {
-    if (categoryModalKey !== "Halloween") return { all: 0, trick_or_treat: 0, haunted: 0, themed: 0 };
+  const christmasCounts = useMemo(() => {
+    if (categoryModalKey !== "Christmas") return { all: 0, parades: 0, lights: 0, santa: 0 };
     return {
       all: baseCategoryEvents.length,
-      trick_or_treat: baseCategoryEvents.filter((e) => matchesHalloweenSubdivision("trick_or_treat", e.title, e.details)).length,
-      haunted: baseCategoryEvents.filter((e) => matchesHalloweenSubdivision("haunted", e.title, e.details)).length,
-      themed: baseCategoryEvents.filter((e) => matchesHalloweenSubdivision("themed", e.title, e.details)).length,
+      parades: baseCategoryEvents.filter((e) => matchesChristmasSubdivision("parades", e.title, e.details, e.categories)).length,
+      lights: baseCategoryEvents.filter((e) => matchesChristmasSubdivision("lights", e.title, e.details, e.categories)).length,
+      santa: baseCategoryEvents.filter((e) => matchesChristmasSubdivision("santa", e.title, e.details, e.categories)).length,
     };
   }, [baseCategoryEvents, categoryModalKey]);
 
   const categoryEvents = useMemo(() => {
-    if (categoryModalKey !== "Halloween" || halloweenSubTab === "all") {
-      return baseCategoryEvents;
+    if (categoryModalKey === "Christmas" && christmasSubTab !== "all") {
+      return baseCategoryEvents.filter((event) =>
+        matchesChristmasSubdivision(christmasSubTab, event.title, event.details, event.categories)
+      );
     }
-    return baseCategoryEvents.filter((event) =>
-      matchesHalloweenSubdivision(halloweenSubTab, event.title, event.details)
-    );
-  }, [baseCategoryEvents, categoryModalKey, halloweenSubTab]);
+    return baseCategoryEvents;
+  }, [baseCategoryEvents, categoryModalKey, christmasSubTab]);
 
   function openDayModal(iso: string, category?: CategoryKey | null) {
     const day = days.find((d) => d.iso === iso) ?? null;
     setCalendarOpen(false);
     setCategoryModalKey(null);
-    setHalloweenSubTab("all");
+    setChristmasSubTab("all");
     setSubmitOpen(false);
     setIsSearchOpen(false);
     setDayModalIso(iso);
@@ -2142,7 +2181,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     setDayModalIso(null);
     setCalendarOpen(false);
     setCategoryModalKey(null);
-    setHalloweenSubTab("all");
+    setChristmasSubTab("all");
     setActiveDayCategory(null);
     setOpenEventId(null);
     setSelectedModalEvent(null);
@@ -2653,7 +2692,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 type="button"
                 onClick={() => {
                   closeAllModals();
-                  setHalloweenSubTab("all");
+                  setChristmasSubTab("all");
                   setCategoryModalKey(category);
                 }}
                 style={{
@@ -2922,7 +2961,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
       {/* Pop-up Overlay Container 3: Vertical Category Filter List */}
       {categoryModalKey ? (
         <OverlayModal
-          title={`${cityName}${showNearby ? " (Nearby)" : ""} - ${categoryModalKey === "Halloween" ? "🎃 Halloween" : getLocalizedCategoryLabel(categoryModalKey, countryCode)}`}
+          title={`${cityName}${showNearby ? " (Nearby)" : ""} - ${categoryModalKey === "Christmas" ? "🎄 Christmas" : getLocalizedCategoryLabel(categoryModalKey, countryCode)}`}
           onClose={closeAllModals}
           headerAction={
             <div style={{ display: "flex", border: "1px solid #111827", borderRadius: "999px", overflow: "hidden" }}>
@@ -3050,8 +3089,8 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
             )}
           </div>
 
-          {/* Halloween Subdivisions: Trick-or-Treat, Haunted, Themed */}
-          {categoryModalKey === "Halloween" && (
+          {/* Christmas Subdivisions: Parades, Lights, Santa */}
+          {categoryModalKey === "Christmas" && (
             <div
               style={{
                 display: "flex",
@@ -3061,82 +3100,82 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                 WebkitOverflowScrolling: "touch",
                 paddingBottom: "8px",
                 marginBottom: "12px",
-                borderBottom: "1px solid #fed7aa",
+                borderBottom: "1px solid #fecaca",
                 flexShrink: 0,
                 scrollbarWidth: "none",
               }}
             >
               <button
                 type="button"
-                onClick={() => setHalloweenSubTab("all")}
+                onClick={() => setChristmasSubTab("all")}
                 style={{
                   padding: "4px 12px",
                   borderRadius: "999px",
                   fontSize: "11px",
-                  fontWeight: halloweenSubTab === "all" ? 800 : 600,
-                  background: halloweenSubTab === "all" ? "#ea580c" : "#fff7ed",
-                  color: halloweenSubTab === "all" ? "#fff" : "#9a3412",
-                  border: halloweenSubTab === "all" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  fontWeight: christmasSubTab === "all" ? 800 : 600,
+                  background: christmasSubTab === "all" ? "#dc2626" : "#fef2f2",
+                  color: christmasSubTab === "all" ? "#fff" : "#991b1b",
+                  border: christmasSubTab === "all" ? "1px solid #dc2626" : "1px solid #fecaca",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                🎃 All Halloween ({halloweenCounts.all})
+                🎄 All Christmas ({christmasCounts.all})
               </button>
               <button
                 type="button"
-                onClick={() => setHalloweenSubTab("trick_or_treat")}
+                onClick={() => setChristmasSubTab("parades")}
                 style={{
                   padding: "4px 12px",
                   borderRadius: "999px",
                   fontSize: "11px",
-                  fontWeight: halloweenSubTab === "trick_or_treat" ? 800 : 600,
-                  background: halloweenSubTab === "trick_or_treat" ? "#ea580c" : "#fff7ed",
-                  color: halloweenSubTab === "trick_or_treat" ? "#fff" : "#9a3412",
-                  border: halloweenSubTab === "trick_or_treat" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  fontWeight: christmasSubTab === "parades" ? 800 : 600,
+                  background: christmasSubTab === "parades" ? "#dc2626" : "#fef2f2",
+                  color: christmasSubTab === "parades" ? "#fff" : "#991b1b",
+                  border: christmasSubTab === "parades" ? "1px solid #dc2626" : "1px solid #fecaca",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                🍬 Trick-or-Treat ({halloweenCounts.trick_or_treat})
+                🎺 Parades ({christmasCounts.parades})
               </button>
               <button
                 type="button"
-                onClick={() => setHalloweenSubTab("haunted")}
+                onClick={() => setChristmasSubTab("lights")}
                 style={{
                   padding: "4px 12px",
                   borderRadius: "999px",
                   fontSize: "11px",
-                  fontWeight: halloweenSubTab === "haunted" ? 800 : 600,
-                  background: halloweenSubTab === "haunted" ? "#ea580c" : "#fff7ed",
-                  color: halloweenSubTab === "haunted" ? "#fff" : "#9a3412",
-                  border: halloweenSubTab === "haunted" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  fontWeight: christmasSubTab === "lights" ? 800 : 600,
+                  background: christmasSubTab === "lights" ? "#dc2626" : "#fef2f2",
+                  color: christmasSubTab === "lights" ? "#fff" : "#991b1b",
+                  border: christmasSubTab === "lights" ? "1px solid #dc2626" : "1px solid #fecaca",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                👻 Haunted ({halloweenCounts.haunted})
+                ✨ Lights ({christmasCounts.lights})
               </button>
               <button
                 type="button"
-                onClick={() => setHalloweenSubTab("themed")}
+                onClick={() => setChristmasSubTab("santa")}
                 style={{
                   padding: "4px 12px",
                   borderRadius: "999px",
                   fontSize: "11px",
-                  fontWeight: halloweenSubTab === "themed" ? 800 : 600,
-                  background: halloweenSubTab === "themed" ? "#ea580c" : "#fff7ed",
-                  color: halloweenSubTab === "themed" ? "#fff" : "#9a3412",
-                  border: halloweenSubTab === "themed" ? "1px solid #ea580c" : "1px solid #fed7aa",
+                  fontWeight: christmasSubTab === "santa" ? 800 : 600,
+                  background: christmasSubTab === "santa" ? "#dc2626" : "#fef2f2",
+                  color: christmasSubTab === "santa" ? "#fff" : "#991b1b",
+                  border: christmasSubTab === "santa" ? "1px solid #dc2626" : "1px solid #fecaca",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                🎭 Themed ({halloweenCounts.themed})
+                🎅 Santa ({christmasCounts.santa})
               </button>
             </div>
           )}
