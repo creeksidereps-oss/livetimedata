@@ -97,6 +97,7 @@ async function main() {
   eq("venue: provenance recorded", vEvents.map((e) => e.locationProvenance || "event"), ["venue_site", "venue_site", "event"]);
   eq("venue: card-stated location always wins", vEvents[2].address, "55 Elm Road, Rivertown, OH 44101");
   eq("venue: venue name filled from the site", vEvents[0].venue, "Springfield Arena");
+  eq("venue: verified city populated when candidate had text only", vEvents[0].city, "springfield");
 
   // ------------------------------------------------------------ 3. venue-stated location (multi-venue org)
   const orgHtml = `<html><head><title>Events | City Arts</title></head><body>

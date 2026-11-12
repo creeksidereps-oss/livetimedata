@@ -155,8 +155,11 @@ export function readVenueCandidates($: CheerioAPI, pageUrl: string, nameHint?: s
       clone.find("br").replaceWith(", ");
       clone.find("p, div, li").append(", ");
       const raw = cleanStr(clone.text()).replace(/\s*,\s*(,\s*)+/g, ", ").replace(/^,\s*|,\s*$/g, "");
-      // Keep the address part only (drop phone numbers / emails / "Get directions").
-      const addr = raw.split(/\s(?:phone|tel|t:|call|email|e-mail|box office|get directions|directions|map)\b/i)[0].replace(/[,\s]+$/, "").trim();
+      // Keep the address part only (drop phone numbers / emails / "Get directions" / hours / box office prefix).
+      let addr = raw.trim().replace(/^(?:box office[^,]*,\s*)/i, "");
+      addr = addr.split(/,\s*(?:\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})/)[0];
+      addr = addr.split(/,\s*(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i)[0];
+      addr = addr.split(/(?:^|\s|,)(?:phone|tel|t:|call|email|e-mail|get directions|directions|map)\b/i)[0].replace(/[,\s]+$/, "").trim();
       if (!looksLikeStreetAddress(addr) || seen.has(addr)) return;
       seen.add(addr);
       const name = nameHint || siteName;
@@ -282,7 +285,7 @@ export function applySiteVenues(events: ExtractedEvent[], venues: SiteVenue[]): 
     }
     if (!v) continue;
     ev.address = v.address;
-    if (v.city) ev.city = v.city;
+    if (v.city || v.verifiedCity) ev.city = v.city || v.verifiedCity;
     if (v.region) ev.region = v.region;
     if (v.country) ev.country = v.country;
     if (v.lat !== undefined && v.lon !== undefined) { ev.lat = v.lat; ev.lon = v.lon; }
