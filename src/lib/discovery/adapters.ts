@@ -11,6 +11,7 @@
 
 import { categorizeEvent, cleanHtmlEntitiesAndTags, isOnlineOrVirtualEvent, toNum } from "@/lib/events/crawl/helpers";
 import type { ExtractedEvent } from "@/lib/events/crawl/types";
+import { parseAddressHints } from "@/lib/events/location/resolveLocation";
 
 export type SpawnCandidate = {
   name: string;            // organizer / venue name as given by the site
@@ -246,11 +247,57 @@ export async function saffireEvents(cfg: { base: string; monthsAhead?: number })
     const descHtml: string = it.LongDescription || it.ShortDescription || "";
     const details = cleanHtmlEntitiesAndTags(descHtml);
     const loc = (it.Locations || [])[0] || {};
-    const street = (loc.Address1 || loc.Address || "").trim();
-    const city = (loc.City || "").trim();
-    const state = (loc.State || "").trim();
-    const zip = (loc.Zip || loc.PostalCode || "").trim();
-    const venueAddress = street ? [street, city, [state, zip].filter(Boolean).join(" ")].filter(Boolean).join(", ") : "";
+    let street = (loc.Address1 || loc.Address || "").trim();
+    let city = (loc.City || "").trim();
+    let state = (loc.State || "").trim();
+    let zip = (loc.Zip || loc.PostalCode || "").trim();
+    let venue = (loc.Name || "").trim();
+    let country = (loc.Country || "").trim();
+
+    // Fall back to reading venue and city/state stated in the description HTML text
+    if (!city && !street) {
+      const lines = descHtml
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/(?:p|div|li|h[1-6])>/gi, "\n")
+        .replace(/<[^>]+>/g, " ")
+        .split("\n")
+        .map((l) => cleanHtmlEntitiesAndTags(l).trim())
+        .filter(Boolean);
+
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+
+        // Explicit "Location: ..." or "Venue: ..." label
+        const locLabel = l.match(/^(?:location|venue|where|held at):\s*(.+)$/i);
+        if (locLabel) {
+          const rest = locLabel[1].trim();
+          const next = lines[i + 1] || "";
+          const hints = parseAddressHints(`${rest}, ${next}`);
+          if (hints.region && hints.cityTokens.length) {
+            venue = venue || rest;
+            city = hints.cityTokens[0].replace(/^(?:downtown|historic|uptown|old town)\s+/i, "").trim();
+            state = hints.region;
+            street = rest;
+            break;
+          }
+          if (!venue) venue = rest;
+        }
+
+        // Check if the line itself contains an address hint with a recognized region
+        const hints = parseAddressHints(l);
+        if (hints.region && hints.cityTokens.length) {
+          const potCity = hints.cityTokens[0].replace(/^(?:downtown|historic|uptown|old town)\s+/i, "").trim();
+          if (potCity.length >= 2 && potCity.length < 35 && !/(?:january|february|march|april|may|june|july|august|september|october|november|december|admission|ticket|hours|cost|registration|schedule)/i.test(potCity)) {
+            city = potCity;
+            state = hints.region;
+            street = l;
+            break;
+          }
+        }
+      }
+    }
+
+    const venueAddress = street ? [street, city && city !== street ? city : "", [state, zip].filter(Boolean).join(" ")].filter(Boolean).join(", ") : "";
     const startTime = it.EventTimeRangeString ? parseStartTime(it.EventTimeRangeString) : parseStartTime(details);
     const links = externalLinks(descHtml.replace(/\\"/g, '"'), ownHost);
     // also accept bare "www.example.com" text in descriptions (real text on the page, not constructed)
@@ -262,7 +309,6 @@ export async function saffireEvents(cfg: { base: string; monthsAhead?: number })
     // In-person only: never ingest online/virtual events.
     if (isOnlineOrVirtualEvent(it.Name, details, loc.Name, it.DetailURL)) { res.notes.push(`online/virtual skipped: ${it.Name}`); continue; }
 
-    const country = (loc.Country || "").trim();
     res.events.push({
       title: cleanHtmlEntitiesAndTags(it.Name),
       city: city || undefined,
@@ -271,7 +317,7 @@ export async function saffireEvents(cfg: { base: string; monthsAhead?: number })
       address: venueAddress || undefined,
       lat: toNum(pin?.lat),
       lon: toNum(pin?.lng),
-      venue: (loc.Name || "").trim(),
+      venue: venue || (loc.Name || "").trim(),
       category: categorizeEvent(it.Name, details),
       startTime,
       eventDate: it._firstDate,
