@@ -84,38 +84,39 @@ type SourceRow = {
   parent_source_id: number | null; root_source_id: number | null; depth: number | null;
 };
 
-/** Atomically claim the next due source so overlapping runs never crawl the same one. Discovery first. */
-async function claimNextSource(): Promise<SourceRow | undefined> {
+/** Claim a cohort of due sources for this generation (discovery first). */
+async function claimDueSources(limit: number): Promise<SourceRow[]> {
   const { rows } = await sql.query(
     `UPDATE sources SET next_scrape_due = NOW() + interval '30 minutes', updated_at = NOW()
-     WHERE id = (
+     WHERE id IN (
        SELECT id FROM sources
        WHERE status = 'active' AND url LIKE 'http%' AND (source_type IS NULL OR source_type != 'yardsale_aggregator')
          AND (next_scrape_due IS NULL OR next_scrape_due <= NOW())
        ORDER BY (phase = 'discovery') DESC NULLS LAST,
                 (last_scraped_at IS NULL) DESC,
                 next_scrape_due ASC NULLS FIRST
-       LIMIT 1
+       LIMIT $1
        FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, url, name, scrape_interval_days, scrape_horizon_months, fail_count, parent_source_id, root_source_id, depth`
+     RETURNING id, url, name, scrape_interval_days, scrape_horizon_months, fail_count, parent_source_id, root_source_id, depth`,
+    [limit]
   );
-  return rows[0] as SourceRow | undefined;
+  return rows as SourceRow[];
 }
 
-/** Claim one unfinished pagination page left over by an earlier run. */
-async function claimFrontierPage(): Promise<{ id: number; source_id: number; url: string; attempts: number } | undefined> {
+/** Claim unfinished pagination pages left over by earlier runs. */
+async function claimFrontierPages(limit: number): Promise<{ id: number; source_id: number; url: string; attempts: number }[]> {
   const { rows } = await sql.query(
     `UPDATE crawl_frontier SET status = 'running', attempts = attempts + 1, updated_at = NOW()
-     WHERE id = (
+     WHERE id IN (
        SELECT id FROM crawl_frontier
        WHERE (status = 'pending' OR (status = 'running' AND updated_at < NOW() - interval '30 minutes')) AND attempts < $1
-       ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+       ORDER BY created_at ASC LIMIT $2 FOR UPDATE SKIP LOCKED
      )
      RETURNING id, source_id, url, attempts`,
-    [MAX_FAILS]
+    [MAX_FAILS, limit]
   );
-  return rows[0] as any;
+  return rows as any;
 }
 
 async function recordLookupNeeded(name: string | undefined | null, type: string, ev: any, src: { id: number; url: string }): Promise<boolean> {
@@ -292,15 +293,38 @@ async function crawlFrontierPage(page: { id: number; source_id: number; url: str
   }
 }
 
+async function runWithPacer<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let index = 0;
+  const workers = Array.from({ length: Math.min(items.length, limit) }, async () => {
+    while (index < items.length) {
+      const current = items[index++];
+      try {
+        await fn(current);
+      } catch (err) {
+        console.error("[SPIDER_EXECUTION_ERROR]", err);
+      }
+    }
+  });
+  await Promise.all(workers);
+}
+
 /**
- * One generation of the lifecycle. Finishes leftover pagination first, then takes one source at a time until
- * the start window closes; the job in progress always completes.
+ * One generation of the lifecycle (Vercel Cron, every 15 minutes).
+ * Launches up to 1,000 independent spiders per generation.
+ * Each spider executes its 1 assigned entity/task, spawns what it discovered, and dies.
+ * Spiders do not loop back to the queue.
  */
-export async function runLifecycleRound(opts: { startWindowMs?: number; fetchDeadlineMs?: number; concurrency?: number } = {}): Promise<LifecycleStats> {
-  const startWindowMs = opts.startWindowMs ?? 7 * 60_000;
+export async function runLifecycleRound(opts: {
+  cohortSize?: number;
+  inFlightLimit?: number;
+  fetchDeadlineMs?: number;
+  startWindowMs?: number;
+} = {}): Promise<LifecycleStats> {
   const started = Date.now();
   const deadline = started + (opts.fetchDeadlineMs ?? 10 * 60_000);
-  const concurrency = opts.concurrency ?? parseInt(process.env.SPIDER_CONCURRENCY || "20", 10);
+  const cohortSize = opts.cohortSize ?? parseInt(process.env.SPIDER_COHORT_SIZE || "1000", 10);
+  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "35", 10);
+
   const stats: LifecycleStats = {
     sourcesCrawled: 0, sourcesFailed: 0, frontierPagesCrawled: 0, eventsFound: 0, eventsIngested: 0,
     newEntities: 0, subPagesSpawned: 0, entitySourcesSpawned: 0, emailsIngested: 0, lookupsNeeded: 0, problemsQueued: 0,
@@ -316,20 +340,28 @@ export async function runLifecycleRound(opts: { startWindowMs?: number; fetchDea
 
   await ensureLifecycleSchema();
 
-  const worker = async () => {
-    while (Date.now() - started < startWindowMs) {
-      const page = await claimFrontierPage();
-      if (page) {
-        await crawlFrontierPage(page, stats, deadline, log);
-        continue;
-      }
-      const src = await claimNextSource();
-      if (!src) break;
-      await crawlOneSource(src, stats, deadline, log);
-    }
-  };
+  // 1. Claim leftover frontier pages from previous generation (Rule 12)
+  const frontierPages = await claimFrontierPages(100);
+  // 2. Claim up to 1,000 due sources for this generation's spiders
+  const dueSources = await claimDueSources(cohortSize);
 
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  log(`launching generation: ${frontierPages.length} frontier spiders + ${dueSources.length} entity spiders (cohort size up to ${cohortSize})`);
+
+  // Each frontier spider executes its 1 page and dies
+  if (frontierPages.length > 0) {
+    await runWithPacer(frontierPages, inFlightLimit, async (page) => {
+      if (Date.now() > deadline) return;
+      await crawlFrontierPage(page, stats, deadline, log);
+    });
+  }
+
+  // Each entity spider executes its 1 source: crawl -> spawn new spiders -> die
+  if (dueSources.length > 0) {
+    await runWithPacer(dueSources, inFlightLimit, async (src) => {
+      if (Date.now() > deadline) return;
+      await crawlOneSource(src, stats, deadline, log);
+    });
+  }
 
   // Queue visibility: what is waiting, so a stall shows up in spider_runs.
   const q = await sql.query(
