@@ -170,12 +170,15 @@ export async function ingestCrawledEvents(
       const loc = entityLocation(result.location);
       const eventId = result.outcome === "published" || result.outcome === "pending_review" || result.outcome === "duplicate" ? result.id ?? null : null;
 
-      // Venue entity
+      // Venue entity (Iron Podium exception: tiny small gyms do not have calendars; do not spawn venue spiders)
       let venueEntityId: number | undefined;
+      const isIronPodium = Boolean(ctx.sourceUrl && /ironpodium\.com/i.test(ctx.sourceUrl));
       if (ev.venue) {
         venueEntityId = await upsertOnce({ name: ev.venue, entityType: "venue", subtype: "venue", websiteUrl: ev.venueUrl, ...loc });
         lastVenueEntityId = venueEntityId;
-        await spawn(ev.venueUrl, ev.venue, "venue", 12);
+        if (!isIronPodium) {
+          await spawn(ev.venueUrl, ev.venue, "venue", 12);
+        }
       }
 
       // Performer entity
@@ -231,6 +234,7 @@ export async function ingestCrawledEvents(
   // Entities named by the page outside of event records (e.g. the site's own venue pages).
   for (const ent of ctx.entities || []) {
     if (!ent.url) continue;
+    if (isIronPodium && ent.type === "venue") continue;
     try {
       const c = canonicalUrl(ent.url);
       if (!c || spawnedUrls.has(c)) continue;
