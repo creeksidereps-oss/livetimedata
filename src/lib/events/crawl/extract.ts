@@ -18,6 +18,8 @@ import {
 import { fetchJsonData, fetchPage, type FetchStatus } from "./fetch";
 import { canonicalUrl, classifyPage, collectEntities, detectHandlerQueue, findHubLinks, findPaginationLinks, pagingInfo } from "./discover";
 import { applySiteVenues, collectSiteVenues, readVenueCandidates, readVenueDirectoryLinks, type VenueVerifier } from "./venueLocation";
+import { harvestDetailPages, isSaffireSite, parseEmbeddedJson, sitemapEvents } from "./handlers";
+import { saffireEvents } from "@/lib/discovery/adapters";
 
 const TRIBE_PAGE_GUARD = 200; // loop guard for next_rest_url pagination (repeated-URL protection, not a content cap)
 const DETAIL_CONCURRENCY = 5;
@@ -170,13 +172,21 @@ interface PageParse {
   emails: Set<string>;
   strategies: ExtractionStrategy[];
   tableSubUrls: string[];
+  /** Event pages (detail / sitemap handlers) not reached before the deadline: carried to crawl_frontier. */
+  leftover: string[];
 }
 
 /** Parse one already-fetched page with the extraction strategies, in order (first that yields wins). */
-async function parseOnePage(url: string, body: string, network: boolean): Promise<PageParse> {
+async function parseOnePage(
+  url: string,
+  body: string,
+  network: boolean,
+  opts: { firstPage?: boolean; deadline?: number; horizonMonths?: number } = {}
+): Promise<PageParse> {
   const emails = new Set<string>();
   const tableSubUrls: string[] = [];
   const strategies: ExtractionStrategy[] = [];
+  const leftover: string[] = [];
   let events: ExtractedEvent[] = [];
   const use = (s: ExtractionStrategy, evs: ExtractedEvent[]) => {
     if (evs.length) { events = evs; strategies.push(s); }
@@ -184,7 +194,7 @@ async function parseOnePage(url: string, body: string, network: boolean): Promis
 
   if (/^\s*BEGIN:VCALENDAR/i.test(body)) {
     use("ical", parseICalEvents(body, url));
-    return { events, emails, strategies, tableSubUrls };
+    return { events, emails, strategies, tableSubUrls, leftover };
   }
   const $ = cheerio.load(body);
   $('a[href^="mailto:"]').each((_, el) => addEmail($(el).attr("href"), emails));
@@ -217,8 +227,17 @@ async function parseOnePage(url: string, body: string, network: boolean): Promis
   if (!events.length && network && /plugins_events_events|asm_list|get_simple_token/.test(body)) {
     try { use("simpleview_api", await simpleviewEvents(url)); } catch (err: any) { console.error(`[SIMPLEVIEW_CRAWL_ERROR] ${err.message}`); }
   }
+  // 5b. Platform feeds (handler 4): Saffire calendars load from the site's own eventsservice.asmx
+  if (!events.length && network && isSaffireSite(body)) {
+    try {
+      const r = await saffireEvents({ base: new URL(url).origin, monthsAhead: opts.horizonMonths ?? 12 });
+      use("adapter_saffire", r.events);
+    } catch (err: any) { console.error(`[SAFFIRE_CRAWL_ERROR] ${err.message}`); }
+  }
   // 6. "Add to calendar" template links (title + local time + full venue address per performance)
   if (!events.length) use("calendar_link", parseCalendarLinks($, url));
+  // 6b. Embedded page data (handler 3): events shipped as JSON inside the page's scripts
+  if (!events.length) use("embedded_json", parseEmbeddedJson($, url));
   // 7. DOM event cards
   if (!events.length) use("dom_card", parseDomCards($, url));
   // 8. HTML table / accordion calendars
@@ -228,7 +247,19 @@ async function parseOnePage(url: string, body: string, network: boolean): Promis
     const probe = await probeDataApis(url, emails, { wordpress: true, simpleview: false });
     if (probe.strategy) use(probe.strategy, probe.events);
   }
-  return { events, emails, strategies, tableSubUrls };
+  // 10. Listing -> detail pages (handler 1): a listing that only links to one page per event
+  if (!events.length && network) {
+    const r = await harvestDetailPages($, url, opts.deadline);
+    use("detail_pages", r.events);
+    leftover.push(...r.leftover);
+  }
+  // 11. Event sitemap (handler 2): the site's own sitemap lists its event pages (first page of a crawl only)
+  if (!events.length && network && opts.firstPage) {
+    const r = await sitemapEvents(url, opts.deadline);
+    use("sitemap", r.events);
+    leftover.push(...r.leftover);
+  }
+  return { events, emails, strategies, tableSubUrls, leftover };
 }
 
 function eventKey(e: ExtractedEvent): string {
@@ -245,7 +276,7 @@ export async function extractFromContent(
   opts: { network?: boolean; fetchStatus?: FetchStatus } & ExtractOptions = {}
 ): Promise<CrawlResult> {
   const network = opts.network !== false;
-  const first = await parseOnePage(url, body, network);
+  const first = await parseOnePage(url, body, network, { firstPage: true, deadline: opts.deadline, horizonMonths: opts.horizonMonths });
   const events = [...first.events];
   const emails = first.emails;
   const strategies = [...first.strategies];
@@ -265,9 +296,9 @@ export async function extractFromContent(
   //     Past months are never followed (findPaginationLinks drops them).
   const horizon = opts.horizonMonths ?? 12;
   const withinHorizon = (u: string) => { const i = pagingInfo(u); return !i.dated || (i.monthsAhead ?? 0) <= horizon; };
-  const apiStrategy = strategies.some((s) => s === "tribe_rest" || s === "simpleview_api" || s === "ical");
+  const apiStrategy = strategies.some((s) => s === "tribe_rest" || s === "simpleview_api" || s === "ical" || s === "adapter_saffire" || s === "sitemap");
   const pagination = findPaginationLinks($, url).filter(withinHorizon);
-  const leftover: string[] = [];
+  const leftover: string[] = [...first.leftover];
   const hubPages: { url: string; $: cheerio.CheerioAPI }[] = [{ url, $ }];
   if (network && !apiStrategy && (events.length || pagination.some((u) => pagingInfo(u).dated))) {
     const queue = [...pagination];
@@ -279,7 +310,8 @@ export async function extractFromContent(
       if (opts.deadline && Date.now() > opts.deadline) { leftover.push(next, ...queue.filter((q) => !visited.has(q))); break; }
       const html = await fetchText(next);
       if (!html) continue;
-      const p = await parseOnePage(next, html, network);
+      const p = await parseOnePage(next, html, network, { deadline: opts.deadline, horizonMonths: opts.horizonMonths });
+      leftover.push(...p.leftover);
       const fresh = p.events.filter((e) => !seen.has(eventKey(e)));
       const $p = cheerio.load(html);
       if (!fresh.length) {
@@ -353,14 +385,20 @@ export async function crawlUrl(url: string, opts: ExtractOptions = {}): Promise<
   });
 
   if (r.status !== "ok" && r.status !== "js_shell") {
-    // HTML blocked / failing: the site's data APIs may still answer (API before giving up).
+    // HTML blocked / failing: the site's data APIs or its event sitemap may still answer.
     const emails = new Set<string>();
-    const probe = await probeDataApis(url, emails, { wordpress: true, simpleview: true });
+    let probe = await probeDataApis(url, emails, { wordpress: true, simpleview: true });
+    let leftover: string[] = [];
+    if (!probe.events.length && r.status !== "not_found") {
+      const sm = await sitemapEvents(url, opts.deadline);
+      probe = { events: sm.events, strategy: sm.events.length ? "sitemap" : undefined };
+      leftover = sm.leftover;
+    }
     if (!probe.events.length) return empty("empty");
     return {
-      events: probe.events, subUrls: [], paginationUrls: [], entities: collectEntities(probe.events, []),
+      events: probe.events, subUrls: [], paginationUrls: leftover, entities: collectEntities(probe.events, []),
       extractedEmails: [...emails], strategies: probe.strategy ? [probe.strategy] : [], pageClass: "hub",
-      fetchStatus: r.status, fetchDetail: `${r.detail}; events read from data API`,
+      fetchStatus: r.status, fetchDetail: `${r.detail}; events read from ${probe.strategy === "sitemap" ? "event sitemap" : "data API"}`,
     };
   }
 

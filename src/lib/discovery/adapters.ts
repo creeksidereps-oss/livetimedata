@@ -208,7 +208,7 @@ export async function saffireEvents(cfg: { base: string; monthsAhead?: number })
   const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 
   const daysRes = await fetch(`${svc}/GetEventDays`, {
-    method: "POST", headers: H,
+    method: "POST", headers: H, signal: AbortSignal.timeout(20000),
     body: `{'day':'','startDate':'${fmt(d0)}','endDate':'${fmt(d1)}','currentUserItems':'false','myPicks':'false',${common}}`,
   });
   res.pagesFetched++;
@@ -219,7 +219,7 @@ export async function saffireEvents(cfg: { base: string; monthsAhead?: number })
   const pins = new Map<number, { lat: number; lng: number }>();
   try {
     const m = await fetch(`${svc}/GetEventMapData`, {
-      method: "POST", headers: H,
+      method: "POST", headers: H, signal: AbortSignal.timeout(20000),
       body: `{'day':'','startDate':'${fmt(d0)}','endDate':'${fmt(d1)}','currentUserItems':'false','publicGUID':'','myPicks':'false',${common}}`,
     });
     res.pagesFetched++;
@@ -229,7 +229,7 @@ export async function saffireEvents(cfg: { base: string; monthsAhead?: number })
   const seen = new Map<number, any>();
   for (let i = 0; i < dates.length; i += 30) {
     const r = await fetch(`${svc}/GetEventDaysByList`, {
-      method: "POST", headers: H, body: `{'dates':'${dates.slice(i, i + 30).join(",")}','day':'',${common}}`,
+      method: "POST", headers: H, signal: AbortSignal.timeout(20000), body: `{'dates':'${dates.slice(i, i + 30).join(",")}','day':'',${common}}`,
     });
     res.pagesFetched++;
     const days = (await r.json()).d?.Days || [];

@@ -15,6 +15,7 @@ import {
   applySiteVenues, collectSiteVenues, readVenueCandidates, readVenueDirectoryLinks, venueNamesMatch, type VenueVerifier,
 } from "../../src/lib/events/crawl/venueLocation";
 import { isJsShell, isWafResponse } from "../../src/lib/events/crawl/fetch";
+import { findDetailLinks, isSaffireSite, jsonValuesIn, parseEmbeddedJson } from "../../src/lib/events/crawl/handlers";
 import type { ExtractedEvent } from "../../src/lib/events/crawl/types";
 
 const Y = new Date().getUTCFullYear() + 1; // always in the future
@@ -208,6 +209,39 @@ async function main() {
   eq("js shell: real page is not", isJsShell(`<html><body>${"<p>Real event listing text here.</p>".repeat(40)}</body></html>`), false);
   eq("handler queue: season URL", detectHandlerQueue("https://theatre.example/calendrier-2026-2027", "ok", [], "empty"), "season_url");
   eq("handler queue: blocked", detectHandlerQueue("https://a.example/events", "waf_blocked", [], "empty"), "waf_blocked");
+
+  // ------------------------------------------------------------ 8. new handlers (2026-11-11)
+  // 1. Listing -> detail pages
+  const listingHtml = `<html><body><a href="/events/">Events</a><a href="/events/category/music/">Music</a><a href="/events/page/2/">2</a>
+    <a href="/events/reeves-open-mic-band-night/">Open Mic</a><a href="/events/murder-mystery-dinner/">Murder Mystery</a>
+    <a href="/events/historic-ghost-tours/">Ghost Tours</a><a href="https://other.example/events/x-y-z/">Other</a></body></html>`;
+  eq("detail links: one page per event, same site, no category/page links",
+    findDetailLinks(cheerio.load(listingHtml), "https://valley.example/events/"),
+    ["https://valley.example/events/reeves-open-mic-band-night/", "https://valley.example/events/murder-mystery-dinner/", "https://valley.example/events/historic-ghost-tours/"]);
+  eq("detail links: fewer than 3 is not a listing", findDetailLinks(cheerio.load(`<a href="/events/one-thing/">1</a><a href="/events/two-thing/">2</a>`), "https://valley.example/events/"), []);
+
+  // 3. Embedded page data
+  const vueHtml = `<html><body><div id="wrapper"></div><script>
+    var vue = new Vue({ el: '#wrapper', data: { sport:'strongman', events:[
+      {"id":"1","event_title":"Turkey Pull and Press ${Y}","slug":"turkey","location":"Grizzly Strength","address":"300 Oak Street","city":"Rivertown","state":"OH","zip":"44101","start_date":"${Y}-11-28","start_time":"09:00","description":"<p>Annual charity strongman meet with truck pull and log press.</p>"},
+      {"id":"2","event_title":"Old Meet","location":"Gym","city":"Rivertown","start_date":"2020-01-01"}
+    ], other: 1 } });
+    window.posts = [{"title":"Blog post about training","date":"${Y}-01-01","author":"x"}];
+    window.tourMapData.push({"events":[{"city":"Green Bay","country":"US","event_date":"${Y}-11-19T14:30:00.000-06:00","province":"WI","published":"1","title":"Orchestra - Green Bay, WI","venue":"Resch Center","page_url":"https://tickets.example/e?id=1"},
+      {"city":"Omaha","event_date":"${Y}-11-20T19:00:00.000-06:00","published":"0","title":"Orchestra - Omaha, NE","venue":"Arena"}]});
+  </script></body></html>`;
+  const emb = parseEmbeddedJson(cheerio.load(vueHtml), "https://podium.example/browse/events");
+  eq("embedded: real future events with a place; past, unpublished and blog objects skipped",
+    emb.map((e) => [e.title, e.eventDate, e.startTime, e.venue, e.city || "", e.address || ""]), [
+      [`Turkey Pull and Press ${Y}`, `${Y}-11-28`, "9:00 AM", "Grizzly Strength", "Rivertown", "300 Oak Street, Rivertown, OH 44101"],
+      ["Orchestra - Green Bay, WI", `${Y}-11-19`, "2:30 PM", "Resch Center", "Green Bay", ""],
+    ]);
+  eq("embedded: description from the data, HTML stripped", emb[0]?.details, "Annual charity strongman meet with truck pull and log press.");
+  eq("embedded: JSON scan is linear and skips JS literals", jsonValuesIn(`var a = {b: 1}; var c = [{"d":2}]; f({"g":"}"})`).length, 2);
+
+  // 4. Platform feeds
+  eq("saffire: detected from the page build", isSaffireSite(`<script src="https://cdn.saffire.com/js/app.js"></script>`), true);
+  eq("saffire: other sites not", isSaffireSite(`<script src="/wp-content/x.js"></script>`), false);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

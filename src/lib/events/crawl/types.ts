@@ -14,6 +14,9 @@ export type ExtractionStrategy =
   | "dom_card"
   | "html_table"
   | "calendar_link"
+  | "detail_pages"
+  | "sitemap"
+  | "embedded_json"
   | "adapter_simpleview_sitemap"
   | "adapter_saffire";
 
