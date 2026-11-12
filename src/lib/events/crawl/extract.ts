@@ -106,14 +106,209 @@ async function simpleviewEvents(pageUrl: string): Promise<ExtractedEvent[]> {
   return json ? parseSimpleviewDocs(json, pageUrl) : [];
 }
 
+async function coloradoEvents(pageUrl: string): Promise<ExtractedEvent[]> {
+  const origin = new URL(pageUrl).origin;
+  const out: ExtractedEvent[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  let offset = 0;
+  const limit = 48;
+  const maxEvents = 1000;
+
+  while (out.length < maxEvents) {
+    const json = await fetchJsonData(`${origin}/api/events?offset=${offset}&limit=${limit}`, 12000);
+    if (!json || !Array.isArray(json.items) || json.items.length === 0) break;
+
+    for (const item of json.items) {
+      const src = item._source || {};
+      const dr = src.dateRange && src.dateRange[0];
+      const ed = src.eventDates && src.eventDates[0];
+
+      let isoDate: string | null = null;
+      let startTime = "";
+
+      if (dr?.start?.time) {
+        const d = new Date(dr.start.time);
+        try {
+          isoDate = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "America/Denver",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(d);
+          const t = new Intl.DateTimeFormat("en-US", {
+            timeZone: "America/Denver",
+            hour: "numeric",
+            minute: "2-digit",
+          }).format(d);
+          startTime = t === "12:00 AM" ? "All Day" : t;
+        } catch {
+          isoDate = dr.start.time.slice(0, 10);
+        }
+      } else if (ed?.value) {
+        const d = new Date(ed.value * 1000);
+        try {
+          isoDate = new Intl.DateTimeFormat("en-CA", {
+            timeZone: "America/Denver",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(d);
+        } catch {
+          isoDate = d.toISOString().slice(0, 10);
+        }
+        startTime = "All Day";
+      }
+
+      if (!isoDate || isoDate < today) continue;
+
+      const rawAddr = String(src.address?.addressLine1 || "").trim();
+      const lines = rawAddr.split(/\r?\n/).map((s: string) => s.trim()).filter(Boolean);
+      const address = lines.join(", ");
+
+      let city = "";
+      for (const line of lines) {
+        const m = line.match(/^([^,]+),\s*(?:CO|Colorado)\b/i);
+        if (m) {
+          city = m[1].trim();
+          break;
+        }
+      }
+
+      const venueName = String(src.business?.title || "").trim();
+      const venuePath = src.business?.path;
+      const venueUrl = venuePath ? `${origin}${venuePath}` : undefined;
+      const lat = item.coordinates?.lat ?? src.geofield?.lat;
+      const lon = item.coordinates?.lng ?? src.geofield?.lon;
+
+      out.push({
+        title: String(item.title || "").trim(),
+        details: String(item.excerpt || "").trim(),
+        category: src.category?.name || (item.tags && item.tags[0]) || "Festivals & Events",
+        venue: venueName,
+        venueUrl,
+        startTime,
+        eventDate: isoDate,
+        city: city || undefined,
+        region: "CO",
+        country: "US",
+        address: address || undefined,
+        lat: typeof lat === "number" ? lat : undefined,
+        lon: typeof lon === "number" ? lon : undefined,
+        sourceUrl: pageUrl,
+        officialInfoUrl: item.path ? `${origin}${item.path}` : pageUrl,
+        eventFlyerUrl: item.image
+          ? item.image.startsWith("http")
+            ? item.image
+            : `${origin}${item.image}`
+          : undefined,
+        strategy: "embedded_json",
+      });
+    }
+
+    if (json.items.length < limit) break;
+    offset += json.items.length;
+  }
+  return out;
+}
+
+async function boplexEvents(pageUrl: string): Promise<ExtractedEvent[]> {
+  const origin = new URL(pageUrl).origin;
+  const out: ExtractedEvent[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const dateFmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const timeFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  const res = await fetch(`${origin}/api/meilisearch/indexes/boplex_events/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q: "", limit: 200 }),
+    signal: AbortSignal.timeout(12000),
+  }).catch(() => null);
+
+  if (!res || !res.ok) return [];
+  const json: any = await res.json().catch(() => null);
+  if (!json || !Array.isArray(json.hits)) return [];
+
+  for (const hit of json.hits) {
+    if (!hit.startDate) continue;
+    const d = new Date(hit.startDate * 1000);
+    const eventDate = dateFmt.format(d);
+    if (eventDate < today) continue;
+
+    let startTime = "";
+    if (hit.startTime) {
+      const t = timeFmt.format(new Date(hit.startTime * 1000));
+      if (t !== "12:00 AM") startTime = t;
+    }
+    if (!startTime && hit.displayDate) {
+      const m = hit.displayDate.match(/\|(\d{1,2}(?::\d{2})?\s*(?:AM|PM))/i);
+      if (m) startTime = m[1].replace(/([A-Z]+)/, " $1").replace(/\s+/, " ").trim();
+    }
+    if (!startTime) startTime = "All Day";
+
+    const venue = hit.venueTitle || "Bojangles Entertainment Complex";
+    const venueUrl = venue.toLowerCase().includes("ovens")
+      ? `${origin}/our-venues/ovens-auditorium`
+      : `${origin}/our-venues/bojangles-coliseum`;
+
+    const sourceUrl = `${origin}/${hit.uri || "events/" + hit.slug}`;
+
+    out.push({
+      title: String(hit.title || "").trim(),
+      details: `${String(hit.title || "").trim()} live at ${venue} in Charlotte, NC. ${hit.displayDate ? "Date: " + hit.displayDate : ""}`.trim(),
+      category: hit.relatedTitle || "Concerts & Live Music",
+      venue,
+      venueUrl,
+      startTime,
+      eventDate,
+      city: "Charlotte",
+      region: "NC",
+      country: "US",
+      address: "2700 E Independence Blvd, Charlotte, NC 28205",
+      lat: 35.2079,
+      lon: -80.7937,
+      sourceUrl,
+      officialInfoUrl: sourceUrl,
+      eventFlyerUrl: hit.image?.url || undefined,
+      strategy: "embedded_json",
+    });
+  }
+  return out;
+}
+
 /**
  * Data APIs tried when the HTML page is blocked, a JS shell, or yields nothing (handler 2/3: API before HTML):
  * The Events Calendar REST, the Tribe iCal export of this page, Simpleview token API. Fetched for data only;
  * these URLs are never stored as sources.
  */
+export async function tryCalendar(
+  pageUrl: string,
+  emails: Set<string> = new Set(),
+  opts: { wordpress?: boolean; simpleview?: boolean } = { wordpress: true, simpleview: true }
+): Promise<{ events: ExtractedEvent[]; strategy?: ExtractionStrategy }> {
+  return probeDataApis(pageUrl, emails, { wordpress: opts.wordpress ?? true, simpleview: opts.simpleview ?? true });
+}
+
 async function probeDataApis(pageUrl: string, emails: Set<string>, opts: { wordpress: boolean; simpleview: boolean }): Promise<{ events: ExtractedEvent[]; strategy?: ExtractionStrategy }> {
   let origin = "";
   try { origin = new URL(pageUrl).origin; } catch { return { events: [] }; }
+  if (origin.includes("colorado.com")) {
+    const co = await coloradoEvents(pageUrl).catch(() => []);
+    if (co.length) return { events: co, strategy: "embedded_json" };
+  }
+  if (origin.includes("boplex.com")) {
+    const bp = await boplexEvents(pageUrl).catch(() => []);
+    if (bp.length) return { events: bp, strategy: "embedded_json" };
+  }
   if (opts.wordpress) {
     const tribe = await tribeEvents(`${origin}/wp-json/tribe/events/v1/events`, pageUrl, emails).catch(() => []);
     if (tribe.length) return { events: tribe, strategy: "tribe_rest" };
@@ -259,7 +454,35 @@ async function parseOnePage(
     use("sitemap", r.events);
     leftover.push(...r.leftover);
   }
+  // 12. Root / portal navigation -> primary calendar hub (when homepage has 0 direct events)
+  if (!events.length && network && opts.firstPage && isRootVenueUrl(url)) {
+    const hubs = findHubLinks($, url, new Set());
+    const primary = hubs.find((h) => /\/(events?|calendar|shows?|schedule)\b/i.test(h)) || hubs[0];
+    if (primary && primary !== url) {
+      try {
+        const hubHtml = await fetchText(primary, 12000);
+        if (hubHtml) {
+          const hubRes = await parseOnePage(primary, hubHtml, network, { firstPage: false, deadline: opts.deadline, horizonMonths: opts.horizonMonths });
+          if (hubRes.events.length) {
+            use(hubRes.strategies[0] || "dom_card", hubRes.events);
+            hubRes.emails.forEach((e) => emails.add(e));
+            leftover.push(...hubRes.leftover);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+  }
   return { events, emails, strategies, tableSubUrls, leftover };
+}
+
+function isRootVenueUrl(uStr: string): boolean {
+  try {
+    const u = new URL(uStr);
+    const p = u.pathname.replace(/\/$/, "");
+    return !p;
+  } catch {
+    return false;
+  }
 }
 
 function eventKey(e: ExtractedEvent): string {
@@ -348,12 +571,23 @@ export async function extractFromContent(
   const ownVenue = readVenueCandidates($, url);
   const entities = collectEntities(events, venueLinks);
   const venueCount = entities.filter((e) => e.type === "venue").length + ownVenue.length;
-  const pageClass: PageClass = classifyPage({ $, url, events, venueCount, hasPagination: pagination.length > 0, fetchStatus: opts.fetchStatus });
+  const eventUrls = new Set(events.map((e) => (e.officialInfoUrl ? canonicalUrl(e.officialInfoUrl) : null)).filter(Boolean) as string[]);
+  const hubLinks = findHubLinks($, url, eventUrls);
+  const isRoot = isRootVenueUrl(url);
+  const pageClass: PageClass = classifyPage({
+    $,
+    url,
+    events,
+    venueCount,
+    hasPagination: pagination.length > 0,
+    hasHubs: isRoot && hubLinks.length > 0,
+    fetchStatus: opts.fetchStatus,
+  });
 
   // Owner rule: only pages that produced current/future events or venues spawn spiders. Articles never do.
+  // Root / portal pages that link to calendar hubs also spawn those hubs.
   const subUrls = new Set<string>();
-  if ((events.length || venueCount) && pageClass !== "article") {
-    const eventUrls = new Set(events.map((e) => (e.officialInfoUrl ? canonicalUrl(e.officialInfoUrl) : null)).filter(Boolean) as string[]);
+  if ((events.length || venueCount || (isRoot && hubLinks.length > 0)) && pageClass !== "article") {
     for (const p of hubPages) for (const h of findHubLinks(p.$, p.url, eventUrls)) subUrls.add(h);
     for (const p of hubPages) for (const pg of findPaginationLinks(p.$, p.url)) subUrls.delete(pg);
   }

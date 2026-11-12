@@ -110,7 +110,7 @@ export function hasStreetAddress(address?: string | null): boolean {
   const a = String(address || "").trim();
   if (a.length < 6) return false;
   if (/^(downtown|uptown|midtown|city cent(er|re)|various|tbd|tba|online|virtual)/i.test(a)) return false;
-  return /\p{L}{3,}[\p{L} .'-]*\s\d{1,5}[a-zA-Z]?\b/u.test(a) || /\b\d{1,5}[a-zA-Z]?,?\s+\p{L}{2,}[\p{L} .'-]*\p{L}{2,}/u.test(a);
+  return /\p{L}{3,}[\p{L} .'-]*\s\d{1,5}[a-zA-Z]?\b/u.test(a) || /\b\d{1,5}[a-zA-Z]?,?\s+(?:[a-zA-Z]\.?\s+)?[\p{L}\d]{2,}[\p{L}\d .'-]*\p{L}{2,}/u.test(a);
 }
 
 export function startTimeProblem(startTime?: string | null): string | null {
@@ -171,7 +171,7 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
   const human = HUMAN_ORIGINS.has(sub.origin);
   const title = String(sub.title || "").replace(/\s+/g, " ").trim();
   const venue = String(sub.venue || "").replace(/\s+/g, " ").trim();
-  const address = String(sub.venueAddress || "").replace(/\s+/g, " ").trim();
+  let address = String(sub.venueAddress || "").replace(/\s+/g, " ").trim();
   const details = String(sub.details || "").trim();
   const kind = sub.kind || detectKind(title, sub.category);
   const fullText = `${title} ${details} ${venue}`;
@@ -207,7 +207,29 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
   // Sale listings: time + location are what matter (GEMINI.md). An empty description is allowed; a templated one is not.
   if (dp && !(kind === "sale" && (dp === "description_missing" || dp === "description_too_short"))) pending.push(dp);
   const venueCoords = isRealCoordinate(sub.location.lat, sub.location.lon);
-  const addressOk = hasStreetAddress(address) || (!!venue && venueCoords && kind === "event");
+  let addressOk = hasStreetAddress(address) || (!!venue && venueCoords && kind === "event");
+  if (!addressOk && venue && location && kind === "event") {
+    // If the event listing states a named venue in a verified city without a street address,
+    // check if that same venue already has a verified street address in this city in events.
+    try {
+      const { rows: knownVenue } = await pool.query(
+        `SELECT venue_address, latitude, longitude
+         FROM events
+         WHERE city_slug = $1 AND lower(venue) = lower($2) AND venue_address IS NOT NULL AND venue_address != ''
+         LIMIT 1`,
+        [location.citySlug, venue]
+      );
+      if (knownVenue[0]?.venue_address && hasStreetAddress(knownVenue[0].venue_address)) {
+        address = knownVenue[0].venue_address;
+        sub.venueAddress = address;
+        addressOk = true;
+        if (!venueCoords && knownVenue[0].latitude != null && knownVenue[0].longitude != null) {
+          sub.location.lat = Number(knownVenue[0].latitude);
+          sub.location.lon = Number(knownVenue[0].longitude);
+        }
+      }
+    } catch { /* ignore */ }
+  }
   if (!addressOk) {
     if (kind === "sale" && !human) return { outcome: "rejected", reasons: ["sale_without_street_address"] };
     pending.push("address_not_specific");
@@ -242,7 +264,7 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
 
   // Event coordinates: the source's own venue coordinates if they agree with the city, else the city centre.
   let lat = location?.lat ?? null, lon = location?.lon ?? null;
-  if (location && venueCoords && distanceKm(location.lat, location.lon, Number(sub.location.lat), Number(sub.location.lon)) <= 50) {
+  if (location && isRealCoordinate(sub.location.lat, sub.location.lon) && distanceKm(location.lat, location.lon, Number(sub.location.lat), Number(sub.location.lon)) <= 50) {
     lat = Number(sub.location.lat); lon = Number(sub.location.lon);
   }
 

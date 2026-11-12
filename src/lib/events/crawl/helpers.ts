@@ -376,7 +376,7 @@ export function addEmail(raw: unknown, into: Set<string>): void {
 
 /** Ticket brokers / resale sites (never used as an event's official link). */
 export function isTicketBrokerUrl(u?: string | null): boolean {
-  return /(ticketmaster|eventbrite|livenation|stubhub|seatgeek|vividseats)\./i.test(String(u || ""));
+  return /(ticketmaster|eventbrite|livenation|stubhub|seatgeek|vividseats|gotickets)\./i.test(String(u || ""));
 }
 
 /**
@@ -404,7 +404,7 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
     // 3. Reject bot-blocked social platforms, ticket brokers & banned aggregators
     const blockedKeywords = [
       "facebook.", "instagram.", "twitter.", "x.com", "linkedin.", "tiktok.", "youtube.", "pinterest.", "snapchat.",
-      "reddit.", "threads.net", "seatgeek.", "ticketmaster.", "livenation.", "stubhub.", "vividseats.", "axs.com",
+      "reddit.", "threads.net", "seatgeek.", "ticketmaster.", "livenation.", "stubhub.", "vividseats.", "gotickets.", "axs.com",
       "dice.fm", "etix.", "ticketweb.", "eventbrite.", "bandsintown.", "songkick.", "seated.", "windy.com",
     ];
     if (blockedKeywords.some((bk) => host.includes(bk) || host === bk.replace(/\.$/, ""))) return false;

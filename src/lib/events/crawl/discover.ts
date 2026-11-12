@@ -178,13 +178,14 @@ export function classifyPage(input: {
   events: ExtractedEvent[];
   venueCount: number;
   hasPagination: boolean;
+  hasHubs?: boolean;
   fetchStatus?: FetchStatus;
 }): PageClass {
-  const { $, url, events, venueCount } = input;
+  const { $, url, events, venueCount, hasHubs } = input;
   if (input.fetchStatus === "js_shell" && !events.length) return "js_shell";
   if (!events.length) {
     if (isArticlePage($)) return "article";
-    return venueCount > 0 ? "facility" : "empty";
+    return venueCount > 0 || hasHubs ? "facility" : "empty";
   }
   if (events.length === 1 && !input.hasPagination) {
     const self = canonicalUrl(url);

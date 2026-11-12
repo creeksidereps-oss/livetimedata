@@ -232,7 +232,7 @@ async function crawlOneSource(src: SourceRow, stats: LifecycleStats, deadline: n
     //   no events and no venues                -> 'problem' + spider_problem_queue (that queue decides pruning)
     let status = "active";
     let problem: string | null = null;
-    if (!crawl.events.length && crawl.pageClass !== "facility") {
+    if (!crawl.events.length && crawl.pageClass !== "facility" && !crawl.subUrls.length) {
       status = "problem";
       problem = crawl.pageClass === "js_shell" ? "js_shell" : crawl.pageClass === "article" ? "article" : "empty";
     } else if (crawl.pageClass === "detail" && src.parent_source_id) {
@@ -296,26 +296,40 @@ async function crawlFrontierPage(page: { id: number; source_id: number; url: str
  * One generation of the lifecycle. Finishes leftover pagination first, then takes one source at a time until
  * the start window closes; the job in progress always completes.
  */
-export async function runLifecycleRound(opts: { startWindowMs?: number; fetchDeadlineMs?: number } = {}): Promise<LifecycleStats> {
+export async function runLifecycleRound(opts: { startWindowMs?: number; fetchDeadlineMs?: number; concurrency?: number } = {}): Promise<LifecycleStats> {
   const startWindowMs = opts.startWindowMs ?? 7 * 60_000;
   const started = Date.now();
   const deadline = started + (opts.fetchDeadlineMs ?? 10 * 60_000);
+  const concurrency = opts.concurrency ?? parseInt(process.env.SPIDER_CONCURRENCY || "20", 10);
   const stats: LifecycleStats = {
     sourcesCrawled: 0, sourcesFailed: 0, frontierPagesCrawled: 0, eventsFound: 0, eventsIngested: 0,
     newEntities: 0, subPagesSpawned: 0, entitySourcesSpawned: 0, emailsIngested: 0, lookupsNeeded: 0, problemsQueued: 0,
     outcomes: {}, handlerOutcomes: {}, fetchStatus: {}, log: [],
   };
-  const log = (m: string) => stats.log.push(`[${new Date().toISOString()}] ${m}`);
+  const log = (m: string) => {
+    if (stats.log.length < 500) {
+      stats.log.push(`[${new Date().toISOString()}] ${m}`);
+    } else if (stats.log.length === 500) {
+      stats.log.push(`[${new Date().toISOString()}] ... log summary truncated for brevity ...`);
+    }
+  };
 
   await ensureLifecycleSchema();
 
-  while (Date.now() - started < startWindowMs) {
-    const page = await claimFrontierPage();
-    if (page) { await crawlFrontierPage(page, stats, deadline, log); continue; }
-    const src = await claimNextSource();
-    if (!src) { log("no due sources; generation complete"); break; }
-    await crawlOneSource(src, stats, deadline, log);
-  }
+  const worker = async () => {
+    while (Date.now() - started < startWindowMs) {
+      const page = await claimFrontierPage();
+      if (page) {
+        await crawlFrontierPage(page, stats, deadline, log);
+        continue;
+      }
+      const src = await claimNextSource();
+      if (!src) break;
+      await crawlOneSource(src, stats, deadline, log);
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
   // Queue visibility: what is waiting, so a stall shows up in spider_runs.
   const q = await sql.query(

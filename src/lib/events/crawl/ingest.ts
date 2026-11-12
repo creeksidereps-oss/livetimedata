@@ -103,12 +103,13 @@ export async function ingestCrawledEvents(
     handlerOutcomes: {},
   };
   let lastVenueEntityId: number | undefined = ctx.entityId || undefined;
+  const isIronPodium = Boolean(ctx.sourceUrl && /ironpodium\.com/i.test(ctx.sourceUrl));
   const verifiedCities = new Map<string, VerifiedLocation>();
   const spawnedUrls = new Set<string>();
   // One upsert per entity per page (a tour page can list the same venue for dozens of performances).
   const entityIds = new Map<string, number>();
   const upsertOnce = async (p: Parameters<typeof upsertEntity>[0]) => {
-    const key = `||`;
+    const key = `${p.entityType}|${(p.name || "").toLowerCase().trim()}|${p.cityName || ""}`;
     const known = entityIds.get(key);
     if (known) return known;
     const id = await upsertEntity(p);
@@ -172,7 +173,6 @@ export async function ingestCrawledEvents(
 
       // Venue entity (Iron Podium exception: tiny small gyms do not have calendars; do not spawn venue spiders)
       let venueEntityId: number | undefined;
-      const isIronPodium = Boolean(ctx.sourceUrl && /ironpodium\.com/i.test(ctx.sourceUrl));
       if (ev.venue) {
         venueEntityId = await upsertOnce({ name: ev.venue, entityType: "venue", subtype: "venue", websiteUrl: ev.venueUrl, ...loc });
         lastVenueEntityId = venueEntityId;
