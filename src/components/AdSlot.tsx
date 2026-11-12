@@ -1,7 +1,7 @@
 // src/components/AdSlot.tsx
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { ADS_ENABLED, AdSlotKey } from "@/config/adSlots";
 
 interface AdSlotProps {
@@ -11,6 +11,17 @@ interface AdSlotProps {
 }
 
 export default function AdSlot({ slot, className = "", format = "auto" }: AdSlotProps) {
+  useEffect(() => {
+    if (!ADS_ENABLED) return;
+    try {
+      if (typeof window !== "undefined") {
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
   // Never render placeholder boxes or unfinished ad units while awaiting review
   if (!ADS_ENABLED) {
     return null;

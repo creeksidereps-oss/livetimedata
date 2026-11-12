@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import FlagVideoCard from "./FlagVideoCard";
 import GoogleMapCard from "./GoogleMapCard";
-import AdPlaceholder from "./AdPlaceholder";
+import AdSlot from "./AdSlot";
 import { ADS_ENABLED } from "@/config/adSlots";
 import FeaturedFactCard from "./FeaturedFactCard";
 
@@ -29,14 +29,7 @@ type RailCard = {
 
 const RailAdSlot = ({ id }: { id: string }) => {
   if (!ADS_ENABLED) return null;
-  return (
-    <div 
-      className="w-full bg-gray-50/50 border border-dashed border-gray-200 rounded flex items-center justify-center text-[9px] font-black uppercase text-gray-400 tracking-tighter h-[36px]" 
-      style={{ marginTop: "10px" }}
-    >
-      {id}
-    </div>
-  );
+  return <AdSlot slot={id} className="my-2" />;
 };
 
 function buildRail(cityName: string) {
