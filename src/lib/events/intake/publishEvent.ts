@@ -209,20 +209,24 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
   // Sale listings: start time is optional per owner rule (leave blank, no AI fabrication). Standard events require a confirmed time.
   if (sp && kind !== "sale") pending.push(sp);
   const dp = descriptionProblem(details, title);
-  // Sale listings: time + location are what matter (GEMINI.md). An empty description is allowed; a templated one is not.
-  if (dp && !(kind === "sale" && (dp === "description_missing" || dp === "description_too_short"))) pending.push(dp);
+  // Descriptions are optional (owner decision): events are not held for missing or short descriptions. Templated spam is still caught.
+  if (dp && dp !== "description_missing" && dp !== "description_too_short") pending.push(dp);
   const venueCoords = isRealCoordinate(sub.location.lat, sub.location.lon);
   let addressOk = hasStreetAddress(address) || (!!venue && venueCoords && kind === "event");
   if (!addressOk && venue && location && kind === "event") {
-    // If the event listing states a named venue in a verified city without a street address,
-    // check if that same venue already has a verified street address in this city in events.
+    // If the event listing states a named venue without a street address,
+    // cross-lookup our system's known verified address for this venue in the same market/city/state.
     try {
+      const v = venue.trim();
       const { rows: knownVenue } = await pool.query(
-        `SELECT venue_address, latitude, longitude
+        `SELECT venue_address, latitude, longitude, city_slug
          FROM events
-         WHERE city_slug = $1 AND lower(venue) = lower($2) AND venue_address IS NOT NULL AND venue_address != ''
+         WHERE venue_address ~ '\\d'
+           AND (lower(venue) = lower($1) OR venue ILIKE $2)
+           AND (city_slug = $3 OR lower(city_name) = lower($4) OR lower(state_name) = lower($5))
+         ORDER BY (city_slug = $3) DESC, (lower(venue) = lower($1)) DESC, id DESC
          LIMIT 1`,
-        [location.citySlug, venue]
+        [v, `%${v}%`, location.citySlug, location.cityName, location.admin1 || ""]
       );
       if (knownVenue[0]?.venue_address && hasStreetAddress(knownVenue[0].venue_address)) {
         address = knownVenue[0].venue_address;
