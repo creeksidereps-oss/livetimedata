@@ -110,9 +110,41 @@ async function resolveCityWithDb(
   }
 
   // 2. In-memory fast cache lookup (for direct visits to clean slugs)
+  //    Order matters: an EXACT slug (dataset or stored city row) always wins over a loose name match,
+  //    otherwise e.g. /weather/barcelona-louisiana showed Barcelona, Spain and /weather/banta-ca showed Bantay, PH.
   if (slug) {
     const memoryResolved = resolveCityFromSlug(slug, false);
-    if (memoryResolved && (memoryResolved.lat !== 0 || memoryResolved.lon !== 0)) {
+    const memoryHasCoords = !!memoryResolved && (memoryResolved.lat !== 0 || memoryResolved.lon !== 0);
+    if (memoryHasCoords && memoryResolved!.slug && memoryResolved!.slug.toLowerCase() === slugClean) {
+      return memoryResolved;
+    }
+    // 2b. Exact stored city row (clean slugs only)
+    if (isCleanCitySlug(slugClean)) {
+      try {
+        const { rows } = await sql`
+          SELECT name, admin1, country_name, country_code, latitude, longitude, timezone, slug
+          FROM cities
+          WHERE LOWER(slug) = ${slugClean} AND latitude IS NOT NULL AND longitude IS NOT NULL
+          LIMIT 1
+        `;
+        const c = rows[0];
+        if (c && (Number(c.latitude) !== 0 || Number(c.longitude) !== 0)) {
+          return {
+            name: c.name,
+            admin1: c.admin1 || "",
+            country: c.country_name || (c.country_code === "US" ? "United States" : ""),
+            country_code: c.country_code || "",
+            lat: Number(c.latitude),
+            lon: Number(c.longitude),
+            timezone: c.timezone || undefined,
+            slug: c.slug,
+          };
+        }
+      } catch (err) {
+        console.warn("Exact city row lookup error:", err);
+      }
+    }
+    if (memoryHasCoords) {
       return memoryResolved;
     }
   }
@@ -237,7 +269,10 @@ async function resolveCityWithDb(
             const timezone = matched.timezone || undefined;
 
             const sitemapMatch = findSitemapMatch(name, admin1, country, country_code);
-            const finalSlug = sitemapMatch ? sitemapMatch.slug : slugClean;
+            // Never store the raw requested URL as a city slug (attack URLs like "...-union-select-null-bangkok"
+            // were being saved). Use the dataset slug, else the clean search-landing format from the geocoded place.
+            const finalSlug = sitemapMatch ? sitemapMatch.slug : (admin1 && isValidRegionName(admin1) ? `${slugify(name)}-${slugify(admin1)}` : slugify(name));
+            if (!finalSlug || !isCleanCitySlug(finalSlug)) continue;
 
             if (isNaN(lat) || isNaN(lon) || (lat === 0 && lon === 0)) {
               continue;
@@ -285,7 +320,8 @@ async function resolveCityWithDb(
 
 // Indexability = curated set OR the city has real content (events, report, facts, photos, webcams).
 // (Imported here, below the protected search-landing section, so that section stays byte-identical.)
-import { isCityIndexable } from "@/lib/seo/cityIndexability";
+// Canonical = ONE official slug per place (shared with the sitemap and event links): src/lib/seo/cityCanonical.ts
+import { canonicalCitySlug, isPlaceIndexable, isCleanCitySlug } from "@/lib/seo/cityCanonical";
 
 export async function generateMetadata(
   { params, searchParams }: { 
@@ -310,7 +346,9 @@ export async function generateMetadata(
 
   const title = `Local Weather Forecast & Live Conditions in ${cityName}${stateName}${countryName}`;
   const description = `14-day weather forecast, current temperatures, wind, humidity, and atmospheric conditions for ${cityName}${countryName}. Real-time municipal intelligence.`;
-  const canonicalUrl = `https://www.livetimedata.com/weather/${resolved.slug}`;
+  const place = { name: resolved.name, admin1: resolved.admin1, country: resolved.country, countryCode: resolved.country_code, lat: resolved.lat, lon: resolved.lon, slug: resolved.slug };
+  const officialSlug = await canonicalCitySlug(place);
+  const canonicalUrl = `https://www.livetimedata.com/weather/${officialSlug}`;
 
   return {
     title,
@@ -319,7 +357,7 @@ export async function generateMetadata(
       canonical: canonicalUrl,
     },
     // Indexable once the city has real content (or is curated); otherwise live but noindex. Same rule as sitemap.xml.
-    robots: (isIndexableCitySlug(resolved.slug) || (await isCityIndexable(resolved.slug))) ? { index: true, follow: true } : { index: false, follow: true },
+    robots: (isIndexableCitySlug(officialSlug) || (await isPlaceIndexable(place, officialSlug))) ? { index: true, follow: true } : { index: false, follow: true },
     openGraph: {
       title,
       description,

@@ -3,8 +3,9 @@
 //   cities  -> curated set + any city with real content (src/lib/seo/cityIndexability.ts)
 //   events  -> verified (city_slug), public, upcoming, NOT sale-type (sales are deleted after 7 days)
 import { pool } from "@/lib/db";
-import { INDEXABLE_CITIES } from "@/lib/indexableCities";
 import { CITY_HAS_CONTENT_SQL } from "./cityIndexability";
+// Same "official URL" rule the city pages use for their canonical tag (one slug per place, never junk).
+import { canonicalCitySlug, curatedCanonicalSlugs, isCleanCitySlug, placeForSlug } from "./cityCanonical";
 
 export const SITE = "https://www.livetimedata.com";
 export const PART_SIZE = 40000; // under Google's 50,000-URL limit per file
@@ -20,13 +21,22 @@ export const INDEXABLE_EVENTS_WHERE = `
   AND NOT ${SALE_SQL}`;
 
 export async function getIndexableCitySlugs(): Promise<string[]> {
-  const slugs = new Set(INDEXABLE_CITIES.map((c) => c.slug.toLowerCase()));
+  // Curated cities, already mapped to their official slug.
+  const slugs = new Set(await curatedCanonicalSlugs());
   try {
+    // Cities with real content -> the official slug of that place (duplicate and junk rows collapse onto it).
     const { rows } = await pool.query(
-      `SELECT c.slug FROM cities c
+      `SELECT c.slug, c.name, c.admin1, c.country_name, c.country_code, c.latitude, c.longitude FROM cities c
         WHERE c.latitude IS NOT NULL AND c.longitude IS NOT NULL AND ${CITY_HAS_CONTENT_SQL}`
     );
-    for (const r of rows) if (r.slug) slugs.add(String(r.slug).toLowerCase());
+    for (const r of rows) {
+      if (!r.name || !isCleanCitySlug(String(r.slug || "").toLowerCase())) continue;
+      // Resolve the slug exactly the way the city page does, then take that place's official slug.
+      const place = await placeForSlug(String(r.slug));
+      if (!place) continue;
+      const canon = await canonicalCitySlug(place);
+      if (isCleanCitySlug(canon)) slugs.add(canon);
+    }
   } catch (e) {
     console.error("[sitemap] content-city query failed, using curated set only:", (e as any)?.message);
   }

@@ -10,6 +10,7 @@ import { pool } from "@/lib/db";
 import { findSitemapMatch, KNOWN_ENTRIES, US_STATE_TO_CODE, isValidRegionName } from "@/lib/cityResolver";
 import { distanceKm, isRealCoordinate } from "./geoReference";
 import type { GeoCandidate } from "./geocoder";
+import { canonicalCitySlug } from "@/lib/seo/cityCanonical";
 
 // Same slugify as the search landing branch (time/[slug]/page.tsx) - must stay identical.
 export function landingSlugify(text: string): string {
@@ -78,5 +79,6 @@ export async function ensureCanonicalCity(c: GeoCandidate): Promise<string> {
        longitude    = COALESCE(cities.longitude, EXCLUDED.longitude)`,
     [slug, c.name, c.admin1, c.countryCode, c.countryName, c.lat, c.lon, c.timezone, c.population || null]
   );
-  return slug;
+  // Link the event to the place's OFFICIAL page (same rule as the city page canonical tag and the sitemap).
+  return canonicalCitySlug({ name: c.name, admin1: c.admin1, country: c.countryName, countryCode: c.countryCode, lat: c.lat, lon: c.lon, slug });
 }
