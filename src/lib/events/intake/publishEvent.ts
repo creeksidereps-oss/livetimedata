@@ -174,6 +174,10 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
   let address = String(sub.venueAddress || "").replace(/\s+/g, " ").trim();
   const details = String(sub.details || "").trim();
   const kind = sub.kind || detectKind(title, sub.category);
+  let startTime = String(sub.startTime || "").trim();
+  if (kind === "sale" && /\b(tbd|tba|to be (announced|determined))\b/i.test(startTime)) {
+    startTime = "";
+  }
   const fullText = `${title} ${details} ${venue}`;
 
   // --- hard rejects (any origin) ---
@@ -201,8 +205,9 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
   const pending: string[] = [];
   if (!loc.ok) pending.push("location_" + loc.reason);
   if (tp === "title_is_venue") pending.push(tp);
-  const sp = startTimeProblem(sub.startTime);
-  if (sp) pending.push(sp);
+  const sp = startTimeProblem(startTime);
+  // Sale listings: start time is optional per owner rule (leave blank, no AI fabrication). Standard events require a confirmed time.
+  if (sp && kind !== "sale") pending.push(sp);
   const dp = descriptionProblem(details, title);
   // Sale listings: time + location are what matter (GEMINI.md). An empty description is allowed; a templated one is not.
   if (dp && !(kind === "sale" && (dp === "description_missing" || dp === "description_too_short"))) pending.push(dp);
@@ -245,7 +250,7 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
       [location.citySlug, isoDate]
     );
     for (const cand of rows) {
-      if (areEventsDuplicates(cand, { title, venue, venue_address: address, start_time: sub.startTime || null, event_date: isoDate, details, category: sub.category || null, source: sub.source || null }).isDuplicate) {
+      if (areEventsDuplicates(cand, { title, venue, venue_address: address, start_time: startTime || null, event_date: isoDate, details, category: sub.category || null, source: sub.source || null }).isDuplicate) {
         // backfill only empty fields on the existing record
         await pool.query(
           `UPDATE events SET
@@ -294,7 +299,7 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
       address || null,
       sub.hostingEntity || null,
       sub.source || sub.sourceUrl || sub.origin,
-      String(sub.startTime || "").trim(),
+      startTime,
       isoDate,
       details,
       sub.affiliateUrl || null,

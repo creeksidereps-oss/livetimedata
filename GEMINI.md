@@ -25,9 +25,10 @@
   - All yard sales and auctions must have a physical on-site street address.
 
 ### Start Time & Curation Requirements (TBD / TBA Policy)
-- **TBD / TBA Start Times:** Never accept or publish events with unconfirmed "TBD" or "TBA" times directly to the live feed.
-- **Curation List (`pending_review`):** Tentative, placeholder, or time-unknown listings must be held in `pending_review` until an official start time is verified.
-- **Public Feed:** Strictly displays events with verified, confirmed start times or explicit full-day schedules.
+- **TBD / TBA Start Times (Standard Events):** Never accept or publish standard community events with unconfirmed "TBD" or "TBA" times directly to the live feed.
+- **Sale-Type Listings Exception (set by owner, Nov 17 2026):** Sale events (yard/garage/estate sales, auctions, flea markets) **do not require a start time** to go live. If unstated or marked TBD/TBA, leave start_time blank (never AI fabricate or hallucinate a start time) and publish directly as long as date and physical numeric street address are present.
+- **Curation List (`pending_review`):** Tentative, placeholder, or time-unknown standard events must be held in `pending_review` until an official start time is verified.
+- **Public Feed:** Strictly displays events with verified, confirmed start times or explicit full-day schedules (and sale listings with valid date & physical address).
 
 ### Current & Future Events Only (No Expired / Past Events)
 - **Expired / Past Events:** **STRICTLY DISCARD / DO NOT INGEST.**
