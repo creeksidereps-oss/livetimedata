@@ -82,7 +82,7 @@ export function findHubLinks($: CheerioAPI, pageUrl: string, eventUrls: Set<stri
 
 // Query keys that page through one listing, and keys that pick a date / month of one calendar.
 const PAGE_KEYS = /^(page|pg|paged|ao_pg|p|pagenum|page_num|pagenumber|tribe_paged|sf_paged|_page|offset|skip|start_index|startindex)$/i;
-const DATE_KEYS = /^(month|mon|m|year|yr|y|date|day|d|week|wk|start|start_date|startdate|end|end_date|enddate|from|to|ym|yearmonth|cal_month|cal_year|calmonth|calyear|tribe-bar-date|eventdate|eventdisplay|view_date|viewdate|selected_date|mode)$/i;
+const DATE_KEYS = /^(month|mon|m|year|yr|y|date|day|d|week|wk|start|start_date|startdate|end|end_date|enddate|from|to|ym|yearmonth|cal_month|cal_year|calmonth|calyear|ao_month|ao_year|tribe-bar-date|eventdate|eventdisplay|view_date|viewdate|selected_date|mode)$/i;
 
 /**
  * Page / date settings carried by a URL (query keys or /page/N/ path).
@@ -100,8 +100,8 @@ export function pagingInfo(url: string): { paged: boolean; past: boolean; dated?
     paged = true;
     const full = v.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);
     if (full) { year = +full[1]; month = +full[2]; day = full[3] ? +full[3] : undefined; continue; }
-    if (/^(year|yr|y|cal_year|calyear)$/i.test(k) && /^\d{4}$/.test(v)) year = +v;
-    else if (/^(month|mon|m|cal_month|calmonth)$/i.test(k) && /^\d{1,2}$/.test(v)) month = +v;
+    if (/^(year|yr|y|cal_year|calyear|ao_year)$/i.test(k) && /^\d{4}$/.test(v)) year = +v;
+    else if (/^(month|mon|m|cal_month|calmonth|ao_month)$/i.test(k) && /^\d{1,2}$/.test(v)) month = +v;
     else if (/^(ym|yearmonth)$/i.test(k)) { const m = v.match(/^(\d{4})-?(\d{2})$/); if (m) { year = +m[1]; month = +m[2]; } }
     else if (/^(day|d)$/i.test(k) && /^\d{1,2}$/.test(v)) day = +v;
   }

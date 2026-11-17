@@ -177,7 +177,7 @@ export function readVenueDirectoryLinks($: CheerioAPI, pageUrl: string): { name:
     let u: URL;
     try { u = new URL(href, pageUrl); } catch { return; }
     if (!sameSite(u.href, pageUrl)) return;
-    if (!/\/(venues?|locations?|facilities|facility|spaces|theat(?:er|re)s?|halls?|stages?)\/(?:detail\/|details\/)?[^/?#]+\/?$/i.test(u.pathname)) return;
+    if (!/(?:\/[a-z0-9_-]+)?\/(venues?|locations?|facilities|facility|spaces|theat(?:er|re)s?|halls?|stages?)\/(?:detail\/|details\/)?[^/?#]+\/?$/i.test(u.pathname)) return;
     const name = cleanStr($(a).text()) || cleanStr($(a).attr("title"));
     if (!name || name.length < 3 || name.length > 80 || /^(more|info|details|view|learn more|more info)$/i.test(name)) return;
     u.hash = "";
@@ -261,6 +261,10 @@ export async function collectSiteVenues(
 
 export type VenueLocationStatus = "verified" | "none" | "multi_venue";
 
+const SUB_ROOM_RE = /\b(atrium|ballroom|hall|room|stage|plaza|lobby|concourse|salon|terrace|lounge|studio|deck|suite|gallery|pavilion|lawn|ring|court|exhibit|exhibition|convention hall|meeting room)\b/i;
+const FACILITY_RE = /\b(coliseum|arena|center|centre|complex|auditorium|theatre|theater|amphitheater|stadium|fairgrounds|pavilion|speedway|rink|fieldhouse|convention center)\b/i;
+const ORG_RE = /\b(hq|headquarters|office|foundation|society|association|league|network|council|department)\b/i;
+
 /**
  * Apply verified site venues to events that state no location. Mutates events; returns how many were placed.
  * A stated location always wins: events that have any location are never touched.
@@ -279,6 +283,16 @@ export function applySiteVenues(events: ExtractedEvent[], venues: SiteVenue[]): 
     let v: SiteVenue | undefined;
     if (ev.venue) {
       v = venues.find((x) => venueNamesMatch(ev.venue, x.name));
+      // If the venue name didn't match directly, but the site states ONE physical facility address,
+      // internal sub-rooms (e.g. "The Elk River Atrium", "Ballroom B") inherit the facility's address.
+      if (!v && distinct.size === 1) {
+        const singleVenue = venues[0];
+        const isFacility = FACILITY_RE.test(singleVenue.name) && !ORG_RE.test(singleVenue.name);
+        const isSubRoom = SUB_ROOM_RE.test(ev.venue);
+        if (isFacility && isSubRoom) {
+          v = singleVenue;
+        }
+      }
       if (!v) unmatchedNamed = true;
     } else if (distinct.size === 1 && namedVenues.size < 2) {
       v = venues[0];

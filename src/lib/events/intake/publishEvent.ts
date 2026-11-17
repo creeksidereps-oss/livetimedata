@@ -194,8 +194,8 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
   const location = loc.ok ? loc.location : undefined;
 
   // date must be today or later in the event's own timezone
-  if (isoDate < isoDateInTz(new Date(), location?.timezone || null)) return { outcome: "rejected", reasons: ["date_in_past"] };
-  if (location && normalizeGeoText(title) === normalizeGeoText(location.cityName)) return { outcome: "rejected", reasons: ["title_is_place_name"] };
+  if (isoDate < isoDateInTz(new Date(), location?.timezone || null)) return { outcome: "rejected", reasons: ["date_in_past"], location };
+  if (location && normalizeGeoText(title) === normalizeGeoText(location.cityName)) return { outcome: "rejected", reasons: ["title_is_place_name"], location };
 
   // --- soft problems -> pending_review (stored, never public) ---
   const pending: string[] = [];

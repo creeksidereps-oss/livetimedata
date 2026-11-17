@@ -128,6 +128,15 @@ async function main() {
   ];
   applySiteVenues(mixed, [{ name: "Org HQ", address: "1 Office Park, Springfield, IL", evidenceUrl: "https://o.example", from: "address_text", citySlug: "springfield-us", verifiedCity: "springfield" }]);
   eq("mixed: unnamed event not placed at the org address when the calendar names other venues", mixed.map((e) => e.address), [undefined, undefined, undefined]);
+
+  const facilityEvents: ExtractedEvent[] = [
+    { title: "Gala", details: "", category: "", venue: "The Elk River Atrium", startTime: "", eventDate: `${Y}-05-01`, sourceUrl: "https://chaswvccc.example", strategy: "dom_card" },
+    { title: "Dance", details: "", category: "", venue: "Grand Ballroom B", startTime: "", eventDate: `${Y}-05-02`, sourceUrl: "https://chaswvccc.example", strategy: "dom_card" },
+    { title: "Away Match", details: "", category: "", venue: "External High School", startTime: "", eventDate: `${Y}-05-03`, sourceUrl: "https://chaswvccc.example", strategy: "dom_card" },
+  ];
+  applySiteVenues(facilityEvents, [{ name: "Charleston Coliseum & Convention Center", address: "200 Civic Center Drive, Charleston, WV 25301", evidenceUrl: "https://chaswvccc.example", from: "address_text", citySlug: "charleston-wv", verifiedCity: "charleston" }]);
+  eq("facility sub-rooms inherit main facility address; external venues do not", facilityEvents.map((e) => e.address), ["200 Civic Center Drive, Charleston, WV 25301", "200 Civic Center Drive, Charleston, WV 25301", undefined]);
+
   eq("venue names: 'The Belk Theater' ~ 'Belk Theater'", venueNamesMatch("The Belk Theater", "Belk Theater"), true);
   eq("venue names: 'Hall' !~ 'Knight Hall Annex'", venueNamesMatch("Hall", "Knight Hall Annex"), false);
 
@@ -179,6 +188,8 @@ async function main() {
   const CY = new Date().getUTCFullYear();
   { const i = pagingInfo("https://hb.example/events?mode=calendar&month=04&year=2019"); eq("paging: past month is past", [i.paged, i.past], [true, true]); }
   { const i = pagingInfo(`https://hb.example/events?mode=calendar&month=02&year=${Y}`); eq("paging: next year's month is not past", [i.paged, i.past], [true, false]); }
+  { const i = pagingInfo("https://artscal.example/events/?ao_month=2023-08"); eq("paging: ao_month past is past and paged", [i.paged, i.past], [true, true]); }
+  { const i = pagingInfo(`https://artscal.example/events/?ao_month=08&ao_year=${Y}`); eq("paging: ao_month next year is paged and not past", [i.paged, i.past], [true, false]); }
   eq("paging: ?ao_pg=8 is a page of the same listing", pagingInfo("https://artscal.example/events/?ao_pg=8"), { paged: true, past: false });
   eq("paging: plain listing is not paged", pagingInfo("https://artscal.example/events/"), { paged: false, past: false });
   const gridHtml = `<html><body>
