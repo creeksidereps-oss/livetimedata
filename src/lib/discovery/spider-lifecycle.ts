@@ -30,6 +30,7 @@ import { crawlUrl, ingestCrawledEvents, type UrlCrawlResult } from "@/lib/events
 import { spawnSource } from "@/lib/events/crawl/ingest";
 import { looksLikeStreetAddress, type VenueVerifier } from "@/lib/events/crawl/venueLocation";
 import { resolveLocation } from "@/lib/events/location/resolveLocation";
+import { resolveCandidate, isResolvableEntity } from "./entity-resolver";
 
 export type LifecycleStats = {
   sourcesCrawled: number;
@@ -124,14 +125,55 @@ async function recordLookupNeeded(name: string | undefined | null, type: string,
   if (!n || n.length < 2) return false;
   // city_name is the page-stated city or '' (never the parent source's city).
   const r = await sql.query(
-    `INSERT INTO spider_lookup_needed (entity_name, entity_type, city_name, state_name, found_on_source_id, found_on_url, sample_event_title)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO spider_lookup_needed (entity_name, entity_type, city_name, state_name, found_on_source_id, found_on_url, sample_event_title, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
      ON CONFLICT (entity_type, entity_name, city_name)
      DO UPDATE SET times_seen = spider_lookup_needed.times_seen + 1, last_seen_at = NOW()
      RETURNING (xmax = 0) AS inserted`,
     [n, type, ev.city || "", ev.region || null, src.id, src.url, ev.title || null]
   );
   return Boolean(r.rows[0]?.inserted);
+}
+
+/**
+ * Resolves an entity immediately via the 4-step $0 engine (MusicBrainz -> Gemini Parametric -> Wikidata -> DuckDuckGo)
+ * and verifies over HTTP 200 before spawning into the active cascade.
+ * ONLY if unresolvable across all 4 steps does it fall back to spider_lookup_needed.
+ */
+async function resolveOrRecordLookup(
+  name: string | undefined | null,
+  type: string,
+  ev: any,
+  src: { id: number; url: string },
+  lineage: { parentSourceId: number | null; rootSourceId: number | null; depth: number | null },
+  stats: LifecycleStats
+): Promise<boolean> {
+  const n = (name || "").trim();
+  if (!isResolvableEntity(n)) return false;
+
+  // Step 1: Attempt the 4-step $0 resolver
+  try {
+    const res = await resolveCandidate({
+      name: n,
+      type,
+      city: ev.city || null,
+      state: ev.region || null,
+      sampleEventTitle: ev.title || null,
+    });
+
+    if (res.ok && res.calendarUrl) {
+      const spawned = await spawnSource(res.calendarUrl, n, type, HORIZON_MONTHS, lineage);
+      if (spawned) {
+        stats.entitySourcesSpawned += spawned;
+        return false; // Successfully resolved & spawned! Does not need to go to spider_lookup_needed.
+      }
+    }
+  } catch {
+    // If error in resolution, proceed to record in spider_lookup_needed
+  }
+
+  // Step 2: Unresolvable across all 4 steps -> record to spider_lookup_needed
+  return await recordLookupNeeded(n, type, ev, src);
 }
 
 async function queueProblem(src: { id: number; url: string; name: string | null }, reason: string, detail: string | null): Promise<void> {
@@ -181,11 +223,19 @@ async function ingestCrawl(crawl: UrlCrawlResult, src: SourceRow, stats: Lifecyc
     outcomeSummary = Object.entries(r.outcomes).filter(([, v]) => v > 0).map(([k, v]) => `${k}=${v}`).join(" ");
   }
 
-  // Entities the page names without any URL: recorded for visibility ($0, no paid lookups).
+  // Entities the page names without any URL:
+  // First attempt the 4-step $0 engine (MusicBrainz -> Gemini Parametric -> Wikidata -> DuckDuckGo + Option A verification).
+  // If resolved, immediately spawn as new source. ONLY if unresolvable, log to spider_lookup_needed.
   for (const ev of crawl.events) {
-    if (ev.venue && !ev.venueUrl && (await recordLookupNeeded(ev.venue, "venue", ev, src))) stats.lookupsNeeded++;
-    if (ev.performerName && !ev.performerUrl && (await recordLookupNeeded(ev.performerName, "performer", ev, src))) stats.lookupsNeeded++;
-    if (ev.organizerName && ev.organizerName !== ev.venue && !ev.organizerUrl && (await recordLookupNeeded(ev.organizerName, "organization", ev, src))) stats.lookupsNeeded++;
+    if (ev.venue && !ev.venueUrl) {
+      if (await resolveOrRecordLookup(ev.venue, "venue", ev, src, lineage, stats)) stats.lookupsNeeded++;
+    }
+    if (ev.performerName && !ev.performerUrl) {
+      if (await resolveOrRecordLookup(ev.performerName, "performer", ev, src, lineage, stats)) stats.lookupsNeeded++;
+    }
+    if (ev.organizerName && ev.organizerName !== ev.venue && !ev.organizerUrl) {
+      if (await resolveOrRecordLookup(ev.organizerName, "organization", ev, src, lineage, stats)) stats.lookupsNeeded++;
+    }
   }
 
   // Same-site hubs (already filtered by the events-or-venues rule and the listing-shape rule). No cap.
@@ -309,6 +359,73 @@ async function runWithPacer<T>(items: T[], limit: number, fn: (item: T) => Promi
 }
 
 /**
+ * Automatically drain a batch of pending rows from spider_lookup_needed on each generation ($0 Google spend).
+ * Runs through the 4-step resolver: MusicBrainz -> Gemini Parametric -> Wikidata -> DuckDuckGo -> HTTP 200 verify.
+ */
+async function drainSpiderLookupNeeded(limit: number = 20, stats: LifecycleStats, log: (m: string) => void) {
+  try {
+    const { rows } = await sql.query(
+      `SELECT id, entity_name, entity_type, city_name, state_name, sample_event_title, found_on_source_id
+       FROM spider_lookup_needed
+       WHERE status = 'pending'
+       ORDER BY times_seen DESC
+       LIMIT $1
+       FOR UPDATE SKIP LOCKED`,
+      [limit]
+    );
+
+    if (rows.length === 0) return;
+
+    for (const row of rows) {
+      if (!isResolvableEntity(row.entity_name)) {
+        await sql.query(`UPDATE spider_lookup_needed SET status = 'skipped_generic', last_seen_at = NOW() WHERE id = $1`, [row.id]);
+        continue;
+      }
+
+      try {
+        const res = await resolveCandidate({
+          id: row.id,
+          name: row.entity_name,
+          type: row.entity_type,
+          city: row.city_name || null,
+          state: row.state_name || null,
+          sampleEventTitle: row.sample_event_title || null,
+        });
+
+        if (res.ok && res.calendarUrl) {
+          const cityName = row.entity_type === "performer" ? null : row.city_name || null;
+          const stateName = row.entity_type === "performer" ? null : row.state_name || null;
+
+          await sql.query(
+            `INSERT INTO sources (url, name, source_type, city_name, state_name, status, scrape_interval_days, scrape_horizon_months,
+                                  next_scrape_due, phase, parent_source_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'active', 30, 12, NOW(), 'discovery', $6, NOW(), NOW())
+             ON CONFLICT (url) DO UPDATE SET status = 'active', next_scrape_due = NOW(), updated_at = NOW()`,
+            [res.calendarUrl, row.entity_name.slice(0, 200), row.entity_type, cityName, stateName, row.found_on_source_id || null]
+          );
+
+          await sql.query(
+            `UPDATE spider_lookup_needed
+             SET status = 'resolved', resolved_url = $1, resolved_at = NOW(), resolve_method = $2
+             WHERE id = $3`,
+            [res.calendarUrl, res.method || "auto_resolver", row.id]
+          );
+
+          stats.entitySourcesSpawned++;
+          log(`[auto-resolver] Resolved ${row.entity_name} (${row.entity_type}) via ${res.method} -> ${res.calendarUrl}`);
+        } else {
+          await sql.query(`UPDATE spider_lookup_needed SET status = 'unresolved', last_seen_at = NOW() WHERE id = $1`, [row.id]);
+        }
+      } catch {
+        await sql.query(`UPDATE spider_lookup_needed SET status = 'unresolved', last_seen_at = NOW() WHERE id = $1`, [row.id]);
+      }
+    }
+  } catch (err: any) {
+    log(`[auto-resolver] Warning: ${err?.message || err}`);
+  }
+}
+
+/**
  * One generation of the lifecycle (Vercel Cron, every 15 minutes).
  * Launches up to 1,000 independent spiders per generation.
  * Each spider executes its 1 assigned entity/task, spawns what it discovered, and dies.
@@ -323,7 +440,7 @@ export async function runLifecycleRound(opts: {
   const started = Date.now();
   const deadline = started + (opts.fetchDeadlineMs ?? 10 * 60_000);
   const cohortSize = opts.cohortSize ?? parseInt(process.env.SPIDER_COHORT_SIZE || "1000", 10);
-  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "35", 10);
+  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "25", 10);
 
   const stats: LifecycleStats = {
     sourcesCrawled: 0, sourcesFailed: 0, frontierPagesCrawled: 0, eventsFound: 0, eventsIngested: 0,
@@ -340,27 +457,45 @@ export async function runLifecycleRound(opts: {
 
   await ensureLifecycleSchema();
 
-  // 1. Claim leftover frontier pages from previous generation (Rule 12)
-  const frontierPages = await claimFrontierPages(100);
-  // 2. Claim up to 1,000 due sources for this generation's spiders
+  // 1. Claim up to 1,000 due entity sources for this generation's spiders (Priority 1)
   const dueSources = await claimDueSources(cohortSize);
+  // 2. Claim leftover frontier pages (only if not on hold, max 25)
+  const frontierPages = await claimFrontierPages(25);
 
-  log(`launching generation: ${frontierPages.length} frontier spiders + ${dueSources.length} entity spiders (cohort size up to ${cohortSize})`);
+  log(`launching generation: ${dueSources.length} entity spiders + ${frontierPages.length} frontier spiders (cohort size up to ${cohortSize}, in-flight: ${inFlightLimit})`);
 
-  // Each frontier spider executes its 1 page and dies
-  if (frontierPages.length > 0) {
+  // Each entity spider executes its 1 source: crawl -> spawn new spiders -> die
+  const executedSourceIds = new Set<number>();
+  if (dueSources.length > 0) {
+    await runWithPacer(dueSources, inFlightLimit, async (src) => {
+      if (Date.now() > deadline) return;
+      executedSourceIds.add(src.id);
+      await crawlOneSource(src, stats, deadline, log);
+    });
+
+    // Starvation Guard: If any claimed sources were not reached before the deadline,
+    // immediately revert their next_scrape_due to NOW() so they are NOT delayed!
+    const unexecuted = dueSources.filter((s) => !executedSourceIds.has(s.id)).map((s) => s.id);
+    if (unexecuted.length > 0) {
+      await sql.query(
+        `UPDATE sources SET next_scrape_due = NOW(), updated_at = NOW() WHERE id = ANY($1::int[])`,
+        [unexecuted]
+      );
+      log(`reverted ${unexecuted.length} unexecuted sources due to deadline; ready for next round`);
+    }
+  }
+
+  // Frontier spiders (pagination left over from earlier runs, executes after entity spiders)
+  if (frontierPages.length > 0 && Date.now() < deadline) {
     await runWithPacer(frontierPages, inFlightLimit, async (page) => {
       if (Date.now() > deadline) return;
       await crawlFrontierPage(page, stats, deadline, log);
     });
   }
 
-  // Each entity spider executes its 1 source: crawl -> spawn new spiders -> die
-  if (dueSources.length > 0) {
-    await runWithPacer(dueSources, inFlightLimit, async (src) => {
-      if (Date.now() > deadline) return;
-      await crawlOneSource(src, stats, deadline, log);
-    });
+  // Auto-drain pending backlog from spider_lookup_needed via the 4-step $0 engine
+  if (Date.now() < deadline) {
+    await drainSpiderLookupNeeded(25, stats, log);
   }
 
   // Queue visibility: what is waiting, so a stall shows up in spider_runs.
