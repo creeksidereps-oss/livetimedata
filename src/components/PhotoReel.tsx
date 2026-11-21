@@ -6,7 +6,28 @@ import PhotoSubmissionModal from "./PhotoSubmissionModal";
 import { ADS_ENABLED } from "@/config/adSlots"; 
 
 type PhotoItem = { id: string; title: string; subtitle: string; images: string[]; };
-type PhotoReelProps = { cityName: string; };
+type PhotoReelProps = { 
+  cityName: string; 
+  stateName?: string; 
+  countryName?: string; 
+};
+
+const CURATED_CITY_PHOTOS: Record<string, { url: string; order: number; title: string }[]> = {
+  "kitty hawk": [
+    { url: "/assets/photos/kitty-hawk-1.jpg", order: 1, title: "Kitty Hawk Pier Aerial View" },
+    { url: "/assets/photos/kitty-hawk-2.jpg", order: 2, title: "Outer Banks Kite Flying Festival" },
+    { url: "/assets/photos/kitty-hawk-3.jpg", order: 3, title: "Kitty Hawk Beach Sunset" },
+    { url: "/assets/photos/kitty-hawk-4.jpg", order: 4, title: "Kitty Hawk Oceanfront Coastline" },
+    { url: "/assets/photos/kitty-hawk-5.jpg", order: 5, title: "Historic Kitty Hawk Pier at Sunrise" },
+  ],
+  "outer banks": [
+    { url: "/assets/photos/kitty-hawk-1.jpg", order: 1, title: "Kitty Hawk Pier Aerial View" },
+    { url: "/assets/photos/kitty-hawk-2.jpg", order: 2, title: "Outer Banks Kite Flying Festival" },
+    { url: "/assets/photos/kitty-hawk-3.jpg", order: 3, title: "Kitty Hawk Beach Sunset" },
+    { url: "/assets/photos/kitty-hawk-4.jpg", order: 4, title: "Kitty Hawk Oceanfront Coastline" },
+    { url: "/assets/photos/kitty-hawk-5.jpg", order: 5, title: "Historic Kitty Hawk Pier at Sunrise" },
+  ],
+};
 
 // RESTORED: The logic that defines your 12 categories and 25-image rotation
 function buildDynamicReels(cityName: string): PhotoItem[] {
@@ -26,20 +47,25 @@ function buildDynamicReels(cityName: string): PhotoItem[] {
   }));
 }
 
-export default function PhotoReel({ cityName }: PhotoReelProps) {
-  const [realPhotos, setRealPhotos] = useState<{url: string, order: number, title: string}[]>([]);
-  const [stateName, setStateName] = useState("");
-  const [countryName, setCountryName] = useState("");
+export default function PhotoReel({ cityName, stateName: propStateName, countryName: propCountryName }: PhotoReelProps) {
+  const normCity = (cityName || "").toLowerCase().trim();
+  const [realPhotos, setRealPhotos] = useState<{url: string, order: number, title: string}[]>(
+    () => CURATED_CITY_PHOTOS[normCity] || []
+  );
+  const [stateName, setStateName] = useState(propStateName || "");
+  const [countryName, setCountryName] = useState(propCountryName || "");
 
   useEffect(() => {
+    if (propStateName) setStateName(propStateName);
+    if (propCountryName) setCountryName(propCountryName);
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const admin1 = params.get('admin1');
       const country = params.get('country');
-      if (admin1) setStateName(admin1);
-      if (country) setCountryName(country);
+      if (admin1 && !propStateName) setStateName(admin1);
+      if (country && !propCountryName) setCountryName(country);
     }
-  }, []);
+  }, [propStateName, propCountryName]);
   
   useEffect(() => {
     const handleOpenModal = (e: CustomEvent) => {
@@ -52,6 +78,12 @@ export default function PhotoReel({ cityName }: PhotoReelProps) {
   }, []);
   
   useEffect(() => {
+    const curCity = (cityName || "").toLowerCase().trim();
+    const curated = CURATED_CITY_PHOTOS[curCity] || [];
+    if (curated.length > 0) {
+      setRealPhotos(curated);
+    }
+
     // Fetch actual photos submitted by users!
     async function fetchPhotos() {
       try {
@@ -63,7 +95,7 @@ export default function PhotoReel({ cityName }: PhotoReelProps) {
         console.log(`[PhotoReel] Fetched for ${cityName}, ${stateName}. Status: ${res.status}`);
         const data = await res.json();
         console.log(`[PhotoReel] Data:`, data.photos?.length || 0, `photos returned.`);
-        if (data.ok && data.photos) {
+        if (data.ok && data.photos && data.photos.length > 0) {
           setRealPhotos(data.photos.map((p: any) => ({ url: p.image_url, order: p.display_order || 0, title: p.title })));
         }
       } catch (e) {
@@ -158,6 +190,8 @@ export default function PhotoReel({ cityName }: PhotoReelProps) {
             const actualPhotos = reel.images.filter(img => img !== "");
             const currentImgIdx = actualPhotos.length > 0 ? (rawIdx % actualPhotos.length) : 0;
             const imgSrc = actualPhotos.length > 0 ? actualPhotos[currentImgIdx] : "";
+            const photoMatch = realPhotos.find(p => p.url === imgSrc);
+            const titleText = photoMatch ? photoMatch.title : reel.title;
             
             return (
               <div key={reel.id} style={{
@@ -169,15 +203,15 @@ export default function PhotoReel({ cityName }: PhotoReelProps) {
                   style={{ height: "100%", background: "#f1f5f9", overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
                   onClick={() => {
                     if(!imgSrc) return;
-                    const realPhotoMatch = realPhotos.find(p => p.url === imgSrc);
-                    setActivePhoto({ url: imgSrc, title: realPhotoMatch ? realPhotoMatch.title : reel.title });
+                    setActivePhoto({ url: imgSrc, title: titleText });
                   }}
+                  title={titleText}
                 >
                   {imgSrc ? (
                     <img 
                       key={`${idx}-${currentImgIdx}`} 
                       src={imgSrc} 
-                      alt={reel.title}
+                      alt={titleText}
                       className="fade-in"
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />

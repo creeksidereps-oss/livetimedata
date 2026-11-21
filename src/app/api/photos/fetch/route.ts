@@ -10,13 +10,24 @@ export async function POST(req: Request) {
     // The Concentric Circle Fetching Logic for Photos
     
     // Priority 1: Exact City Match
-    const { rows: local } = await sql`
+    let { rows: local } = await sql`
       SELECT * FROM photos 
       WHERE city_name ILIKE ${cityName} 
-      AND (${stateName} = '' OR state_name ILIKE ${stateName} OR state_name = '') 
-      AND status = 'approved' 
+      AND (${stateName} = '' OR state_name ILIKE ${stateName} OR state_name = '' OR state_name IS NULL) 
+      AND status IN ('approved', 'live') 
       ORDER BY display_order ASC, view_count DESC LIMIT 300
     `;
+
+    // Priority 2: City fallback if state variation caused 0 matches
+    if (local.length === 0 && cityName) {
+      const { rows: fallbackRows } = await sql`
+        SELECT * FROM photos 
+        WHERE city_name ILIKE ${cityName} 
+        AND status IN ('approved', 'live') 
+        ORDER BY display_order ASC, view_count DESC LIMIT 300
+      `;
+      local = fallbackRows;
+    }
 
     // Combine them to maintain the legacy return signature for now
     let results = [...local];
@@ -36,8 +47,8 @@ export async function POST(req: Request) {
           const { rows: newlyScraped } = await sql`
             SELECT * FROM photos 
             WHERE city_name ILIKE ${cityName} 
-            AND (${stateName} = '' OR state_name ILIKE ${stateName} OR state_name = '') 
-            AND status = 'approved' 
+            AND (${stateName} = '' OR state_name ILIKE ${stateName} OR state_name = '' OR state_name IS NULL) 
+            AND status IN ('approved', 'live') 
             ORDER BY display_order ASC, view_count DESC LIMIT 300
           `;
           results = [...newlyScraped];

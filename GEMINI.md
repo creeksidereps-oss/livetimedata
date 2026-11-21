@@ -80,3 +80,17 @@
 - **True information only:** no date = no listing; no confirmed start time = `pending_review`; never fabricate times, dates or hosts. Host may be empty (time and location are what matter). Real numeric street address required.
 - **Zero-yield report:** per city + platform yield is tracked in `yardsale_city_source_stats` for admin curation (no auto-culling).
 - Runs **daily**; owner will tune per area / aggregator / season once there is data.
+
+## Reporting Standards (Daily Event Reports)
+When the user asks for a daily event report or count from today forward, always format it in this exact structure:
+1. **Header & Date Scope:** As of today (**Month DD, YYYY**), from today forward (`event_date >= CURRENT_DATE`).
+2. **Overall Totals:**
+   - **Total Records in Database**
+   - **Active / Public Events** (Total sum + breakdown of `live`, `approved`, `published`, `scheduled`)
+   - **In Curation (`pending_review`)** (Held for verified times/addresses)
+   - **Marked Duplicate**
+3. **By Event Type (`live` feed):**
+   - **Standard Community Events & Concerts** (`listing_kind = 'event'`)
+   - **Sale-Type Listings** (`listing_kind = 'sale'`)
+4. **Top Categories:** Top 8–10 categories ranked with counts.
+5. **Top Regions:** Top 10 states / regions ranked with counts.

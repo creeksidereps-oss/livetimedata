@@ -52,6 +52,7 @@ export type LifecycleStats = {
   handlerOutcomes: Record<string, Record<string, number>>;
   fetchStatus: Record<string, number>;
   log: string[];
+  hasMoreCascade?: boolean;
 };
 
 const DEFAULT_INTERVAL_DAYS = 30; // all new spiders run monthly unless otherwise directed
@@ -457,45 +458,56 @@ export async function runLifecycleRound(opts: {
 
   await ensureLifecycleSchema();
 
-  // 1. Claim up to 1,000 due entity sources for this generation's spiders (Priority 1)
-  const dueSources = await claimDueSources(cohortSize);
-  // 2. Claim leftover frontier pages (only if not on hold, max 25)
-  const frontierPages = await claimFrontierPages(25);
+  // CONTINUOUS CASCADE LOOP:
+  // Instead of a single one-and-done cohort that exits and leaves the cascade asleep for 15 minutes,
+  // this generation maintains the living cascade: as spiders crawl their entity and spawn child
+  // venues or performers, those newly born discovery spiders are claimed and executed in immediate waves!
+  let wave = 0;
+  const maxWaves = 50;
 
-  log(`launching generation: ${dueSources.length} entity spiders + ${frontierPages.length} frontier spiders (cohort size up to ${cohortSize}, in-flight: ${inFlightLimit})`);
+  while (Date.now() < deadline && wave < maxWaves) {
+    wave++;
+    // Claim next batch of due sources (discovery phase prioritized at top of queue)
+    const dueSources = await claimDueSources(inFlightLimit);
 
-  // Each entity spider executes its 1 source: crawl -> spawn new spiders -> die
-  const executedSourceIds = new Set<number>();
-  if (dueSources.length > 0) {
-    await runWithPacer(dueSources, inFlightLimit, async (src) => {
-      if (Date.now() > deadline) return;
-      executedSourceIds.add(src.id);
-      await crawlOneSource(src, stats, deadline, log);
-    });
+    if (dueSources.length > 0) {
+      log(`cascade wave #${wave}: running ${dueSources.length} spiders (in-flight: ${inFlightLimit})`);
+      const executedSourceIds = new Set<number>();
+      await runWithPacer(dueSources, inFlightLimit, async (src) => {
+        if (Date.now() > deadline) return;
+        executedSourceIds.add(src.id);
+        await crawlOneSource(src, stats, deadline, log);
+      });
 
-    // Starvation Guard: If any claimed sources were not reached before the deadline,
-    // immediately revert their next_scrape_due to NOW() so they are NOT delayed!
-    const unexecuted = dueSources.filter((s) => !executedSourceIds.has(s.id)).map((s) => s.id);
-    if (unexecuted.length > 0) {
-      await sql.query(
-        `UPDATE sources SET next_scrape_due = NOW(), updated_at = NOW() WHERE id = ANY($1::int[])`,
-        [unexecuted]
-      );
-      log(`reverted ${unexecuted.length} unexecuted sources due to deadline; ready for next round`);
+      // Starvation Guard: If any claimed sources were not reached before deadline,
+      // immediately revert their next_scrape_due so they can be picked up right away
+      const unexecuted = dueSources.filter((s) => !executedSourceIds.has(s.id)).map((s) => s.id);
+      if (unexecuted.length > 0) {
+        await sql.query(
+          `UPDATE sources SET next_scrape_due = NOW(), updated_at = NOW() WHERE id = ANY($1::int[])`,
+          [unexecuted]
+        );
+      }
     }
-  }
 
-  // Frontier spiders (pagination left over from earlier runs, executes after entity spiders)
-  if (frontierPages.length > 0 && Date.now() < deadline) {
-    await runWithPacer(frontierPages, inFlightLimit, async (page) => {
-      if (Date.now() > deadline) return;
-      await crawlFrontierPage(page, stats, deadline, log);
-    });
-  }
+    // Auto-drain pending backlog from spider_lookup_needed via the 4-step $0 engine
+    if (Date.now() < deadline) {
+      await drainSpiderLookupNeeded(15, stats, log);
+    }
 
-  // Auto-drain pending backlog from spider_lookup_needed via the 4-step $0 engine
-  if (Date.now() < deadline) {
-    await drainSpiderLookupNeeded(25, stats, log);
+    // If no entity sources were due in this wave, check frontier pages
+    if (dueSources.length === 0) {
+      const frontierPages = await claimFrontierPages(15);
+      if (frontierPages.length > 0 && Date.now() < deadline) {
+        await runWithPacer(frontierPages, inFlightLimit, async (page) => {
+          if (Date.now() > deadline) return;
+          await crawlFrontierPage(page, stats, deadline, log);
+        });
+      } else {
+        // Queue is completely caught up for now!
+        break;
+      }
+    }
   }
 
   // Queue visibility: what is waiting, so a stall shows up in spider_runs.
@@ -509,6 +521,9 @@ export async function runLifecycleRound(opts: {
   const f = await sql.query(`SELECT COUNT(*)::int AS n FROM crawl_frontier WHERE status IN ('pending', 'running')`);
   const queue = q.rows[0] || {};
   log(`queue: ${queue.due ?? 0} due now, ${queue.discovery ?? 0} in discovery, ${f.rows[0]?.n ?? 0} frontier pages, next due ${queue.next_due ? new Date(queue.next_due).toISOString() : "none"}`);
+
+  // Flag if more active cascade discovery sources remain
+  stats.hasMoreCascade = (queue.discovery ?? 0) > 0 || (queue.due ?? 0) > 0;
 
   await sql.query(
     `INSERT INTO spider_runs (started_at, finished_at, duration_ms, sources_crawled, sources_failed, events_found, events_ingested,

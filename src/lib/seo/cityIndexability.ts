@@ -23,7 +23,7 @@ export const CITY_HAS_CONTENT_SQL = `(
              AND (f.is_approved = true OR f.status IN ('approved','live'))
              AND (f.state_name IS NULL OR c.admin1 IS NULL OR LOWER(f.state_name) = LOWER(c.admin1)))
   OR EXISTS (SELECT 1 FROM photos ph
-           WHERE ph.status = 'live' AND LOWER(ph.city_name) = LOWER(c.name)
+           WHERE (ph.status = 'live' OR ph.status = 'approved') AND LOWER(ph.city_name) = LOWER(c.name)
              AND (ph.state_name IS NULL OR c.admin1 IS NULL OR LOWER(ph.state_name) = LOWER(c.admin1)))
   OR EXISTS (SELECT 1 FROM webcams w
            WHERE w.status = 'live' AND LOWER(w.city_name) = LOWER(c.name)

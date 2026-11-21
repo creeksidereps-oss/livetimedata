@@ -243,7 +243,11 @@ export default function Page(props: {
             </div>
 
             <div id="photo-reel-section">
-              <PhotoReel cityName={cityName} />
+              <PhotoReel 
+                cityName={cityName} 
+                stateName={searchParams?.admin1} 
+                countryName={searchParams?.country} 
+              />
             </div>
             <AdSlot slot={AD_SLOTS.DASHBOARD_UNDER_PHOTO_REEL} />
 
