@@ -204,7 +204,7 @@ function embeddedToEvent(o: any, pageUrl: string): ExtractedEvent | null {
   const ev: ExtractedEvent = {
     title,
     details: details && details !== title ? details : "",
-    category: categorizeEvent(title, details),
+    category: categorizeEvent(title, details, venue),
     venue: venue && venue !== street ? venue : "",
     startTime,
     eventDate,

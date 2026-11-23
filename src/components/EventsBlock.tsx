@@ -164,8 +164,8 @@ function makeIso(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] {
-  if (!dbCategory && !title) return ["Other"];
+function normalizeCategories(dbCategory: string, title?: string, venue?: string): CategoryKey[] {
+  if (!dbCategory && !title && !venue) return ["Other"];
   const parts = dbCategory ? dbCategory.split(/[,;]+/).map(s => s.trim()) : [];
   const matched: CategoryKey[] = [];
 
@@ -472,6 +472,22 @@ function normalizeCategories(dbCategory: string, title?: string): CategoryKey[] 
       if (!matched.includes("Christmas")) matched.push("Christmas");
       if (!matched.includes("Holiday")) matched.push("Holiday");
     }
+
+    // Concerts / Music Tours / Live Music / Band Shows / Music Venues
+    const isNonConcertTour = /\b(walking|walk|historic|history|heritage|cemetery|homes?|house|garden|farm|brewery|winery|distillery|ghost|segway|boat|bike|bicycle|bus tour)\b/i.test(tLow);
+    const isMusicVenue = venue ? /\b(the fillmore|fillmore|house of blues|the wiltern|the depot|the masquerade|history toronto|music hall|concert hall|amphitheat|first avenue|9:30 club|bowery ballroom|webster hall|terminal 5|brooklyn steel|ryman auditorium)\b/i.test(venue) : false;
+    const isConcertTitle = /\b(concert|concerts|live in concert|live music|acoustic set|orchestra|symphony|choir|vocalist|tribute band|dj set|world tour|north america tour|u\.?s\.? tour|live tour|album tour|headline tour|headlining tour|farewell tour|acoustic tour|anniversary tour|tour 20\d\d|tour|dragonforce|album|ep release|album release|record release|anniversary show|special guests?|feat\.?|featuring|live at|live from)\b/i.test(tLow) ||
+      /\b\d+(?:th|st|nd|rd)\s+anniversary\b/i.test(tLow) ||
+      /[-–—:]\s*.*?\b(anniversary|tour|live|album|presents)\b/i.test(tLow);
+
+    if (!isNonConcertTour && (isConcertTitle || isMusicVenue)) {
+      if (!matched.includes("Concerts")) matched.push("Concerts");
+    }
+
+    // Comedy
+    if (/\b(comedy|stand-?up|comedian|improv)\b/i.test(tLow)) {
+      if (!matched.includes("Comedy")) matched.push("Comedy");
+    }
   }
 
   return matched.length > 0 ? matched : ["Other"];
@@ -556,7 +572,7 @@ function buildTenDayBucketData(rawEvents: DBEventItem[]): DayBucket[] {
       source: e.source,
       time: e.startTime,
       venue: e.venue,
-      categories: normalizeCategories(e.category, e.title),
+      categories: normalizeCategories(e.category, e.title, e.venue),
       details: e.details,
       affiliateUrl: e.affiliateUrl,
       venue_address: e.venue_address,
@@ -1874,7 +1890,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
     venue: event.venue || "Local Venue",
     categories: Array.isArray(event.categories) && event.categories.length > 0 
       ? event.categories 
-      : normalizeCategories(event.category || (event as any).category_name || "", event.title || ""),
+      : normalizeCategories(event.category || (event as any).category_name || "", event.title || "", event.venue || ""),
     details: event.details || "",
     affiliateUrl: event.affiliateUrl || (event as any).affiliate_url,
     venue_address: event.venue_address,
@@ -1966,11 +1982,11 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                   matchedCategories: refetchData.matchedCategories || [],
                   localEvents: (refetchData.localEvents || []).map((e: any) => ({
                     ...e,
-                    categories: normalizeCategories(e.category, e.title)
+                    categories: normalizeCategories(e.category, e.title, e.venue)
                   })),
                   allEvents: (refetchData.allEvents || []).map((e: any) => ({
                     ...e,
-                    categories: normalizeCategories(e.category, e.title)
+                    categories: normalizeCategories(e.category, e.title, e.venue)
                   }))
                 });
                 fetchEvents(); // Refresh city events
@@ -1997,11 +2013,11 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           matchedCategories: data.matchedCategories || [],
           localEvents: localEvs.map((e: any) => ({
             ...e,
-            categories: normalizeCategories(e.category, e.title)
+            categories: normalizeCategories(e.category, e.title, e.venue)
           })),
           allEvents: allEvs.map((e: any) => ({
             ...e,
-            categories: normalizeCategories(e.category, e.title)
+            categories: normalizeCategories(e.category, e.title, e.venue)
           }))
         });
       } else {
@@ -2063,7 +2079,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         source: e.source,
         time: e.startTime,
         venue: e.venue,
-        categories: normalizeCategories(e.category, e.title),
+        categories: normalizeCategories(e.category, e.title, e.venue),
         details: e.details,
         affiliateUrl: e.affiliateUrl,
         venue_address: e.venue_address,
@@ -2123,7 +2139,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
         source: e.source,
         time: e.startTime,
         venue: e.venue,
-        categories: normalizeCategories(e.category, e.title),
+        categories: normalizeCategories(e.category, e.title, e.venue),
         details: e.details,
         affiliateUrl: e.affiliateUrl,
         venue_address: e.venue_address,
@@ -3054,12 +3070,12 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
                     flexShrink: 0,
                   }}
                 >
-                  All Nearby ({dbEvents.filter(e => normalizeCategories(e.category, e.title).includes(categoryModalKey)).length})
+                  All Nearby ({dbEvents.filter(e => normalizeCategories(e.category, e.title, e.venue).includes(categoryModalKey)).length})
                 </button>
                 {nearbyCities.map(({ name }) => {
                   const count = dbEvents.filter(
                     e => ((e.cityName || (e as any).city_name) || "").trim().toLowerCase() === name.trim().toLowerCase() && 
-                         normalizeCategories(e.category, e.title).includes(categoryModalKey)
+                         normalizeCategories(e.category, e.title, e.venue).includes(categoryModalKey)
                   ).length;
                   if (count === 0) return null;
                   const isSelected = selectedNearbyCity && selectedNearbyCity.trim().toLowerCase() === name.trim().toLowerCase();
@@ -3783,7 +3799,7 @@ export default function EventsBlock({ cityName, stateName: incomingStateName, sh
           if (!ev) {
             const rawEv = dbEvents.find(e => String(e.id) === String(openEventId));
             if (rawEv) {
-              ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category, rawEv.title), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName, stateName: rawEv.stateName, countryCode: rawEv.countryCode } as EventItem;
+              ev = { id: rawEv.id, title: rawEv.title, source: rawEv.source, time: rawEv.startTime, venue: rawEv.venue, categories: normalizeCategories(rawEv.category, rawEv.title, rawEv.venue), details: rawEv.details, affiliateUrl: rawEv.affiliateUrl, venue_address: rawEv.venue_address, hosting_entity: rawEv.hosting_entity, contact_email: rawEv.contact_email, contact_phone: rawEv.contact_phone, official_info_url: rawEv.official_info_url, social_urls: rawEv.social_urls, registration_url: rawEv.registration_url, event_flyer_url: rawEv.event_flyer_url, eventDate: rawEv.eventDate, cityName: rawEv.cityName, stateName: rawEv.stateName, countryCode: rawEv.countryCode } as EventItem;
             }
           }
           const eventFooterActions = ev ? (

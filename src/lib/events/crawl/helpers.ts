@@ -9,8 +9,8 @@
 /**
  * Normalizes event category based on title, description, and keywords.
  */
-export function categorizeEvent(title: string, description: string): string {
-  const text = `${title} ${description}`.toLowerCase();
+export function categorizeEvent(title: string, description: string, venue?: string): string {
+  const text = `${title} ${description} ${venue || ""}`.toLowerCase();
 
   // Yard / Garage Sales & Auctions
   if (/\b(auction|estate auction|consignment auction|yard sale|garage sale|estate sale|moving sale|rummage sale|tag sale|barn sale|porch sale)\b/i.test(text)) {
@@ -21,7 +21,14 @@ export function categorizeEvent(title: string, description: string): string {
     return "Food Trucks";
   }
   // Concerts & Live Music
-  if (/\b(music|concert|band|live music|acoustic|orchestra|choir|singer|jazz|blues|rock|country music|symphony|jam session|acoustic set)\b/i.test(text)) {
+  if (
+    /\b(music|concert|band|live music|acoustic|orchestra|choir|singer|jazz|blues|rock|country music|symphony|jam session|acoustic set|north america tour|world tour|u\.?s\.? tour|live tour|tour 20\d\d|album tour|album release|ep release|headlining tour|headline tour|farewell tour|acoustic tour|live in concert|on tour|dragonforce|album)\b/i.test(text) ||
+    /\b\d+(?:th|st|nd|rd)\s+anniversary\b/i.test(title) ||
+    (!/\b(walking|historic|cemetery|homes?|house|garden|farm|brewery|winery|ghost|boat|bike|segway)\b/i.test(text) && (
+      /[-–—:]\s*.*?\b(tour|anniversary|live|presents)\b/i.test(title) ||
+      (venue && /\b(fillmore|house of blues|the wiltern|the depot|the masquerade|history toronto|music hall|concert hall|amphitheat)\b/i.test(venue))
+    ))
+  ) {
     return "Concerts & Live Music";
   }
   // Festivals & Fairs
@@ -394,6 +401,9 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
     // 1. Must be http / https
     if (!parsed.protocol.startsWith("http")) return false;
 
+    // Reject invalid hostnames starting or ending with hyphen (e.g. www.-.com)
+    if (host.startsWith("-") || host.endsWith("-") || host.startsWith("www.-") || host.includes(".-") || host.includes("-.")) return false;
+
     // 2. Reject webmail & add-to-calendar providers
     const blockedHosts = [
       "google.com", "calendar.google.com", "outlook.live.com", "outlook.office.com", "outlook.com", "live.com",
@@ -429,6 +439,10 @@ export function isValidCalendarSourceUrl(urlStr: string): boolean {
       search.includes("eventdate") ||
       search.includes("startdt=") ||
       search.includes("enddt=") ||
+      search.includes("datefrom=") ||
+      search.includes("dateto=") ||
+      search.includes("date_from=") ||
+      search.includes("date_to=") ||
       search.includes("action=template")
     ) {
       return false;

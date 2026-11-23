@@ -7,8 +7,8 @@
 // Cascading Sources:
 //   1. MusicBrainz API: Dedicated open music database (ideal for touring musical artists & bands)
 //   2. Wikidata Entity API: Structured global knowledge graph (ideal for venues, civic centers, museums)
-//   3. Gemini Parametric Memory: System training memory only, NO search tools ($0 spend, negligible tokens)
-//   4. DuckDuckGo Instant Answers: Free web entity lookup fallback
+//   3. DuckDuckGo Instant Answers: Free web entity lookup fallback
+//   4. Gemini Parametric Memory: System training memory only, NO search tools (last resort fallback)
 //
 // Option A Gatekeeper:
 //   Every candidate domain is strictly verified via HTTP GET/HEAD (must return 200 OK).
@@ -108,32 +108,65 @@ export async function resolveViaMusicBrainz(name: string): Promise<{ url: string
 }
 
 // --------------------------------------------------------------------------
-// 2. Wikidata Resolver (Venues, Museums, Theatres, Organizations)
+// 2. Wikidata Resolver (Venues, Museums, Theatres, Organizations, Performers)
 // --------------------------------------------------------------------------
 export async function resolveViaWikidata(name: string, location?: string): Promise<{ url: string; confidence: "high" | "medium" } | null> {
+  const trySearch = async (query: string): Promise<{ url: string; confidence: "high" | "medium" } | null> => {
+    try {
+      const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=en&format=json&limit=3`;
+      const res = await fetch(searchUrl, {
+        headers: { "User-Agent": "LiveTimeDataSpider/1.0 ( contact@livetimedata.com )" },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const items = (data.search || []) as Array<{ id: string }>;
+      if (items.length === 0) return null;
+
+      for (const item of items) {
+        if (!item?.id) continue;
+        const entUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${item.id}&props=claims&languages=en&format=json`;
+        const entRes = await fetch(entUrl, {
+          headers: { "User-Agent": "LiveTimeDataSpider/1.0 ( contact@livetimedata.com )" },
+          signal: AbortSignal.timeout(6000),
+        });
+        if (!entRes.ok) continue;
+        const entData = await entRes.json();
+        const p856 = entData.entities?.[item.id]?.claims?.P856?.[0]?.mainsnak?.datavalue?.value;
+        if (p856 && typeof p856 === "string" && p856.startsWith("http") && !isTicketBrokerUrl(p856)) {
+          return { url: p856, confidence: "high" };
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   try {
-    const query = location ? `${name} ${location}` : name;
-    const searchUrl = `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${encodeURIComponent(query)}&language=en&format=json&limit=3`;
-    const res = await fetch(searchUrl, {
-      headers: { "User-Agent": "LiveTimeDataSpider/1.0 ( contact@livetimedata.com )" },
-      signal: AbortSignal.timeout(6000),
-    });
+    if (location) {
+      const resWithLoc = await trySearch(`${name} ${location}`);
+      if (resWithLoc) return resWithLoc;
+    }
+    return await trySearch(name);
+  } catch {
+    return null;
+  }
+}
+
+// --------------------------------------------------------------------------
+// 3. DuckDuckGo Instant Answer Resolver ($0 fallback)
+// --------------------------------------------------------------------------
+export async function resolveViaDuckDuckGo(name: string, location?: string): Promise<{ url: string; confidence: "medium" | "low" } | null> {
+  try {
+    const q = location ? `${name} ${location}` : name;
+    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return null;
     const data = await res.json();
-    const item = data.search?.[0];
-    if (!item?.id) return null;
-
-    // Fetch claim P856 (official website)
-    const entUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${item.id}&props=claims&languages=en&format=json`;
-    const entRes = await fetch(entUrl, {
-      headers: { "User-Agent": "LiveTimeDataSpider/1.0 ( contact@livetimedata.com )" },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!entRes.ok) return null;
-    const entData = await entRes.json();
-    const p856 = entData.entities?.[item.id]?.claims?.P856?.[0]?.mainsnak?.datavalue?.value;
-    if (p856 && typeof p856 === "string" && p856.startsWith("http") && !isTicketBrokerUrl(p856)) {
-      return { url: p856, confidence: "high" };
+    const firstUrl = data.Results?.[0]?.FirstURL;
+    if (firstUrl && firstUrl.startsWith("http") && !isTicketBrokerUrl(firstUrl)) {
+      return { url: firstUrl, confidence: "medium" };
     }
     return null;
   } catch {
@@ -142,7 +175,7 @@ export async function resolveViaWikidata(name: string, location?: string): Promi
 }
 
 // --------------------------------------------------------------------------
-// 3. Gemini Parametric Memory Resolver ($0 Google Spend, strictly NO search tools)
+// 4. Gemini Parametric Memory Resolver (Last resort fallback when 1-3 fail)
 // --------------------------------------------------------------------------
 export async function resolveBatchViaGemini(
   items: EntityLookupCandidate[]
@@ -177,7 +210,7 @@ Respond ONLY with a JSON array:
 ]
 No explanation, no markdown text outside the JSON array.`;
 
-    // Notice: STRICTLY NO tools config -> pure parametric memory, $0 Google Search spend!
+    // Notice: STRICTLY NO tools config -> pure parametric memory
     const res = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
@@ -201,26 +234,6 @@ No explanation, no markdown text outside the JSON array.`;
   }
 
   return results;
-}
-
-// --------------------------------------------------------------------------
-// 4. DuckDuckGo Instant Answer Resolver ($0 fallback)
-// --------------------------------------------------------------------------
-export async function resolveViaDuckDuckGo(name: string, location?: string): Promise<{ url: string; confidence: "medium" | "low" } | null> {
-  try {
-    const q = location ? `${name} ${location}` : name;
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const firstUrl = data.Results?.[0]?.FirstURL;
-    if (firstUrl && firstUrl.startsWith("http") && !isTicketBrokerUrl(firstUrl)) {
-      return { url: firstUrl, confidence: "medium" };
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 // --------------------------------------------------------------------------
@@ -339,7 +352,27 @@ export async function resolveCandidate(candidate: EntityLookupCandidate): Promis
     }
   }
 
-  // Step 2: Try Gemini Parametric Memory if not yet found
+  // Step 2: Try Wikidata (Venues, Museums, Theatres, Organizations, Performers)
+  if (!candidateUrl) {
+    const wd = await resolveViaWikidata(candidate.name, locStr);
+    if (wd?.url) {
+      candidateUrl = wd.url;
+      method = "wikidata";
+      confidence = wd.confidence;
+    }
+  }
+
+  // Step 3: Fallback to DuckDuckGo Instant Answer
+  if (!candidateUrl) {
+    const ddg = await resolveViaDuckDuckGo(candidate.name, locStr);
+    if (ddg?.url) {
+      candidateUrl = ddg.url;
+      method = "duckduckgo";
+      confidence = ddg.confidence;
+    }
+  }
+
+  // Step 4: Last Resort Fallback - Gemini Parametric Memory (only if all free sources fail)
   if (!candidateUrl) {
     const gpMap = await resolveBatchViaGemini([candidate]);
     const gp = gpMap.get(candidate.id ?? 0);
@@ -350,28 +383,8 @@ export async function resolveCandidate(candidate: EntityLookupCandidate): Promis
     }
   }
 
-  // Step 3: For venues or unfound entities, try Wikidata
   if (!candidateUrl) {
-    const wd = await resolveViaWikidata(candidate.name, locStr);
-    if (wd?.url) {
-      candidateUrl = wd.url;
-      method = "wikidata";
-      confidence = wd.confidence;
-    }
-  }
-
-  // Step 4: Fallback to DuckDuckGo Instant Answer
-  if (!candidateUrl) {
-    const ddg = await resolveViaDuckDuckGo(candidate.name, locStr);
-    if (ddg?.url) {
-      candidateUrl = ddg.url;
-      method = "duckduckgo";
-      confidence = ddg.confidence;
-    }
-  }
-
-  if (!candidateUrl) {
-    return { candidate, confidence: "none", ok: false, reason: "No candidate URL found across any $0 source" };
+    return { candidate, confidence: "none", ok: false, reason: "No candidate URL found across any resolver source" };
   }
 
   // Step 5: Option A Verification

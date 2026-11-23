@@ -86,21 +86,36 @@ type SourceRow = {
   parent_source_id: number | null; root_source_id: number | null; depth: number | null;
 };
 
-/** Claim a cohort of due sources for this generation (discovery first). */
+/** Claim a cohort of due sources for this generation (discovery first), strictly 1 spider per unique domain. */
 async function claimDueSources(limit: number): Promise<SourceRow[]> {
   const { rows } = await sql.query(
-    `UPDATE sources SET next_scrape_due = NOW() + interval '30 minutes', updated_at = NOW()
-     WHERE id IN (
-       SELECT id FROM sources
-       WHERE status = 'active' AND url LIKE 'http%' AND (source_type IS NULL OR source_type != 'yardsale_aggregator')
+    `WITH due_candidates AS (
+       SELECT id,
+              ROW_NUMBER() OVER (
+                PARTITION BY regexp_replace(lower(substring(url from 'https?://([^/:]+)')), '^www\\.', '')
+                ORDER BY (phase = 'discovery') DESC NULLS LAST,
+                         (last_scraped_at IS NULL) DESC,
+                         next_scrape_due ASC NULLS FIRST
+              ) AS domain_rn
+       FROM sources
+       WHERE status = 'active'
+         AND url LIKE 'http%'
+         AND (source_type IS NULL OR source_type != 'yardsale_aggregator')
          AND (next_scrape_due IS NULL OR next_scrape_due <= NOW())
-       ORDER BY (phase = 'discovery') DESC NULLS LAST,
-                (last_scraped_at IS NULL) DESC,
-                next_scrape_due ASC NULLS FIRST
+         AND url NOT LIKE 'https://www.-%' AND url NOT LIKE 'http://www.-%'
+         AND url NOT LIKE 'https://-%' AND url NOT LIKE 'http://-%'
+     ),
+     batch AS (
+       SELECT id FROM due_candidates
+       WHERE domain_rn = 1
        LIMIT $1
-       FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, url, name, scrape_interval_days, scrape_horizon_months, fail_count, parent_source_id, root_source_id, depth`,
+     UPDATE sources s
+     SET next_scrape_due = NOW() + interval '30 minutes', updated_at = NOW()
+     FROM batch
+     WHERE s.id = batch.id
+       AND (s.next_scrape_due IS NULL OR s.next_scrape_due <= NOW())
+     RETURNING s.id, s.url, s.name, s.scrape_interval_days, s.scrape_horizon_months, s.fail_count, s.parent_source_id, s.root_source_id, s.depth`,
     [limit]
   );
   return rows as SourceRow[];
@@ -137,7 +152,7 @@ async function recordLookupNeeded(name: string | undefined | null, type: string,
 }
 
 /**
- * Resolves an entity immediately via the 4-step $0 engine (MusicBrainz -> Gemini Parametric -> Wikidata -> DuckDuckGo)
+ * Resolves an entity immediately via the 4-step engine (MusicBrainz -> Wikidata -> DuckDuckGo -> Gemini Parametric)
  * and verifies over HTTP 200 before spawning into the active cascade.
  * ONLY if unresolvable across all 4 steps does it fall back to spider_lookup_needed.
  */
@@ -225,7 +240,7 @@ async function ingestCrawl(crawl: UrlCrawlResult, src: SourceRow, stats: Lifecyc
   }
 
   // Entities the page names without any URL:
-  // First attempt the 4-step $0 engine (MusicBrainz -> Gemini Parametric -> Wikidata -> DuckDuckGo + Option A verification).
+  // First attempt the 4-step engine (MusicBrainz -> Wikidata -> DuckDuckGo -> Gemini Parametric + Option A verification).
   // If resolved, immediately spawn as new source. ONLY if unresolvable, log to spider_lookup_needed.
   for (const ev of crawl.events) {
     if (ev.venue && !ev.venueUrl) {
@@ -361,7 +376,7 @@ async function runWithPacer<T>(items: T[], limit: number, fn: (item: T) => Promi
 
 /**
  * Automatically drain a batch of pending rows from spider_lookup_needed on each generation ($0 Google spend).
- * Runs through the 4-step resolver: MusicBrainz -> Gemini Parametric -> Wikidata -> DuckDuckGo -> HTTP 200 verify.
+ * Runs through the 4-step resolver: MusicBrainz -> Wikidata -> DuckDuckGo -> Gemini Parametric -> HTTP 200 verify.
  */
 async function drainSpiderLookupNeeded(limit: number = 20, stats: LifecycleStats, log: (m: string) => void) {
   try {
@@ -441,7 +456,7 @@ export async function runLifecycleRound(opts: {
   const started = Date.now();
   const deadline = started + (opts.fetchDeadlineMs ?? 10 * 60_000);
   const cohortSize = opts.cohortSize ?? parseInt(process.env.SPIDER_COHORT_SIZE || "1000", 10);
-  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "25", 10);
+  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "50", 10);
 
   const stats: LifecycleStats = {
     sourcesCrawled: 0, sourcesFailed: 0, frontierPagesCrawled: 0, eventsFound: 0, eventsIngested: 0,
@@ -465,13 +480,14 @@ export async function runLifecycleRound(opts: {
   let wave = 0;
   const maxWaves = 50;
 
-  while (Date.now() < deadline && wave < maxWaves) {
+  while (Date.now() < deadline && wave < maxWaves && stats.sourcesCrawled < cohortSize) {
     wave++;
-    // Claim next batch of due sources (discovery phase prioritized at top of queue)
-    const dueSources = await claimDueSources(inFlightLimit);
+    // Claim next batch of due sources (discovery phase prioritized at top of queue, strictly 1 spider per unique domain)
+    const batchToClaim = Math.min(inFlightLimit, cohortSize - stats.sourcesCrawled);
+    const dueSources = await claimDueSources(batchToClaim);
 
     if (dueSources.length > 0) {
-      log(`cascade wave #${wave}: running ${dueSources.length} spiders (in-flight: ${inFlightLimit})`);
+      log(`cascade wave #${wave}: running ${dueSources.length} spiders on ${dueSources.length} distinct domains (in-flight: ${inFlightLimit})`);
       const executedSourceIds = new Set<number>();
       await runWithPacer(dueSources, inFlightLimit, async (src) => {
         if (Date.now() > deadline) return;

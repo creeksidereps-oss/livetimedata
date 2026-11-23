@@ -37,7 +37,7 @@ function acceptable(ev: Pick<ExtractedEvent, "title" | "details" | "venue" | "ev
 }
 
 function make(base: Omit<ExtractedEvent, "category"> & { category?: string }): ExtractedEvent {
-  const out: ExtractedEvent = { ...base, category: base.category || categorizeEvent(base.title, base.details) };
+  const out: ExtractedEvent = { ...base, category: base.category || categorizeEvent(base.title, base.details, base.venue) };
   // Normalise empty location strings to undefined so "absent" is unambiguous.
   for (const k of ["city", "region", "country", "address"] as const) {
     const v = cleanStr(out[k]);
@@ -169,10 +169,15 @@ export function parseJsonLdEvents($: CheerioAPI, pageUrl: string, emails?: Set<s
     }
 
     const offers = Array.isArray(obj.offers) ? obj.offers[0] : obj.offers;
+    const types = Array.isArray(obj["@type"]) ? obj["@type"] : [obj["@type"]];
+    const isMusicEvent = types.some((t: any) => /MusicEvent/i.test(String(t || ""))) || Boolean(performerName);
+    const isMusicVenue = /fillmore|houseofblues|wiltern|depotslc|historytoronto|musichall|themasquerade|first-avenue|bowerypresents/i.test(pageUrl) ||
+      /fillmore|house of blues|the wiltern|the depot|history toronto|music hall|concert hall|amphitheat/i.test(loc.venue);
     const ev = make({
       title,
       details,
       venue: loc.venue,
+      category: (isMusicEvent || isMusicVenue) ? "Concerts & Live Music" : undefined,
       startTime: formatTimeFromDate(String(obj.startDate)),
       eventDate,
       city: loc.city,

@@ -82,7 +82,7 @@ export function findHubLinks($: CheerioAPI, pageUrl: string, eventUrls: Set<stri
 
 // Query keys that page through one listing, and keys that pick a date / month of one calendar.
 const PAGE_KEYS = /^(page|pg|paged|ao_pg|p|pagenum|page_num|pagenumber|tribe_paged|sf_paged|_page|offset|skip|start_index|startindex)$/i;
-const DATE_KEYS = /^(month|mon|m|year|yr|y|date|day|d|week|wk|start|start_date|startdate|end|end_date|enddate|from|to|ym|yearmonth|cal_month|cal_year|calmonth|calyear|ao_month|ao_year|event_month|event_year|eventmonth|eventyear|cal_m|cal_y|em|ey|tribe-bar-date|eventdate|eventdisplay|view_date|viewdate|selected_date|mode)$/i;
+const DATE_KEYS = /^(month|mon|m|year|yr|y|date|day|d|week|wk|start|start_date|startdate|end|end_date|enddate|from|to|ym|yearmonth|cal_month|cal_year|calmonth|calyear|ao_month|ao_year|event_month|event_year|eventmonth|eventyear|cal_m|cal_y|em|ey|tribe-bar-date|eventdate|eventdisplay|view_date|viewdate|selected_date|mode|datefrom|dateto|date_from|date_to|startdt|enddt)$/i;
 
 /**
  * Page / date settings carried by a URL (query keys or /page/N/ path).

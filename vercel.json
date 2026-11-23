@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/event-retention",
       "schedule": "15 4 * * *"
+    },
+    {
+      "path": "/api/cron/ingest-emails",
+      "schedule": "0 11,15,18,22 * * *"
     }
   ]
 }
