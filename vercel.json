@@ -2,7 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/spider-lifecycle",
-      "schedule": "*/15 * * * *"
+      "schedule": "0,15,30,45 * * * *"
+    },
+    {
+      "path": "/api/cron/spider-lifecycle-2",
+      "schedule": "5,20,35,50 * * * *"
+    },
+    {
+      "path": "/api/cron/spider-lifecycle-3",
+      "schedule": "10,25,40,55 * * * *"
     },
     {
       "path": "/api/cron/scrape-yardsales",

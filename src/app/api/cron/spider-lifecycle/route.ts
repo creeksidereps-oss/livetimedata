@@ -21,25 +21,7 @@ export async function GET(request: Request) {
 
   try {
     const stats = await runLifecycleRound({ startWindowMs: 7 * 60_000, fetchDeadlineMs: 10 * 60_000 });
-
-    // Perpetual Cascade Baton-Pass:
-    // If the active cascade still has discovery spiders waiting,
-    // fire an asynchronous pulse immediately to pass the baton so the cascade never sleeps!
-    if (stats.hasMoreCascade) {
-      try {
-        const origin = new URL(request.url).origin;
-        const pulseUrl = `${origin}/api/cron/spider-lifecycle?cascade=1`;
-        const authHeader = request.headers.get("authorization") || (secret ? `Bearer ${secret}` : "");
-        fetch(pulseUrl, {
-          method: "GET",
-          headers: authHeader ? { authorization: authHeader } : {},
-        }).catch((err) => console.warn("[CASCADE_PULSE_FAILED]", err?.message || err));
-      } catch (err: any) {
-        console.warn("[CASCADE_PULSE_DISPATCH_ERROR]", err?.message || err);
-      }
-    }
-
-    return NextResponse.json({ success: true, ...stats, timestamp: new Date().toISOString() });
+    return NextResponse.json({ success: true, ...stats, worker: 1, timestamp: new Date().toISOString() });
   } catch (error: any) {
     console.error("Spider lifecycle error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

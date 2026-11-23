@@ -456,7 +456,7 @@ export async function runLifecycleRound(opts: {
   const started = Date.now();
   const deadline = started + (opts.fetchDeadlineMs ?? 10 * 60_000);
   const cohortSize = opts.cohortSize ?? parseInt(process.env.SPIDER_COHORT_SIZE || "1000", 10);
-  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "50", 10);
+  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "100", 10);
 
   const stats: LifecycleStats = {
     sourcesCrawled: 0, sourcesFailed: 0, frontierPagesCrawled: 0, eventsFound: 0, eventsIngested: 0,
