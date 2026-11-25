@@ -515,9 +515,9 @@ export async function extractFromContent(
   // Pagination of this listing: followed inside the job (API strategies already return every page).
   //   - Numbered pages (?page=2, /page/3/): a page that repeats this crawl's events or is empty = end of list.
   //   - Month / date pages (?month=3&year=2027): empty months do NOT end the walk; it continues to the source's
-  //     look-ahead horizon (scrape_horizon_months, 6 months: events can be listed up to 6 months ahead).
+  //     look-ahead horizon (scrape_horizon_months, 12 months: events can be listed up to 12 months ahead).
   //     Past months are never followed (findPaginationLinks drops them).
-  const horizon = opts.horizonMonths ?? 6;
+  const horizon = opts.horizonMonths ?? 12;
   const withinHorizon = (u: string) => { const i = pagingInfo(u); return !i.dated || (i.monthsAhead ?? 0) <= horizon; };
   const apiStrategy = strategies.some((s) => s === "tribe_rest" || s === "simpleview_api" || s === "ical" || s === "adapter_saffire" || s === "sitemap");
   const pagination = findPaginationLinks($, url).filter(withinHorizon);

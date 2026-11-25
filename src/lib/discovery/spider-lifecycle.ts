@@ -57,7 +57,7 @@ export type LifecycleStats = {
 
 const DEFAULT_INTERVAL_DAYS = 30; // all new spiders run monthly unless otherwise directed
 const MAX_FAILS = 5; // failed task rule: retry in 1h, drop after 5 failures
-const HORIZON_MONTHS = 6; // clamped to 6 months per owner directive (stops open-ended future loops)
+const HORIZON_MONTHS = 12; // owner: events calendar scale is 12 months ahead (all source types)
 
 export async function ensureLifecycleSchema() {
   // Columns / tables are created by scripts/migrations/2026-11-10_spider_repair.sql. These guards keep an

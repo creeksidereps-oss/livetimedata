@@ -54,8 +54,8 @@ async function handleCrawlSeed(rawUrl?: string | null, name?: string) {
 
   const started = Date.now();
   try {
-    // 1. Immediately crawl the seed with 6-month horizon
-    const crawl = await crawlUrl(url, { horizonMonths: 6 });
+    // 1. Immediately crawl the seed with 12-month horizon
+    const crawl = await crawlUrl(url, { horizonMonths: 12 });
 
     // 2. Ingest found events through publishEvent()
     let ingestedCount = 0;
@@ -71,7 +71,7 @@ async function handleCrawlSeed(rawUrl?: string | null, name?: string) {
     const seedName = name || prettyName(url);
     const seedRes = await sql.query(
       `INSERT INTO sources (url, name, status, phase, scrape_interval_days, scrape_horizon_months, next_scrape_due, last_scraped_at, updated_at)
-       VALUES ($1, $2, 'active', 'priority', 30, 6, NOW() + interval '30 days', NOW(), NOW())
+       VALUES ($1, $2, 'active', 'priority', 30, 12, NOW() + interval '30 days', NOW(), NOW())
        ON CONFLICT (url)
        DO UPDATE SET phase = 'priority', status = 'active', last_scraped_at = NOW(), updated_at = NOW()
        RETURNING id`,
@@ -85,13 +85,13 @@ async function handleCrawlSeed(rawUrl?: string | null, name?: string) {
     
     // Discovered hubs
     for (const hub of crawl.subUrls) {
-      birthedCount += await spawnSource(hub, prettyName(hub), "calendar_hub", 6, lineage);
+      birthedCount += await spawnSource(hub, prettyName(hub), "calendar_hub", 12, lineage);
     }
 
     // Discovered entities
     for (const ent of crawl.entities) {
       if (ent.url) {
-        birthedCount += await spawnSource(ent.url, ent.name, ent.type, 6, lineage);
+        birthedCount += await spawnSource(ent.url, ent.name, ent.type, 12, lineage);
       }
     }
 
