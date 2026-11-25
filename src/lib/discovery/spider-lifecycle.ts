@@ -57,7 +57,7 @@ export type LifecycleStats = {
 
 const DEFAULT_INTERVAL_DAYS = 30; // all new spiders run monthly unless otherwise directed
 const MAX_FAILS = 5; // failed task rule: retry in 1h, drop after 5 failures
-const HORIZON_MONTHS = 12; // owner: events can be listed up to 12 months ahead (all source types)
+const HORIZON_MONTHS = 6; // clamped to 6 months per owner directive (stops open-ended future loops)
 
 export async function ensureLifecycleSchema() {
   // Columns / tables are created by scripts/migrations/2026-11-10_spider_repair.sql. These guards keep an
@@ -93,7 +93,8 @@ async function claimDueSources(limit: number): Promise<SourceRow[]> {
        SELECT id,
               ROW_NUMBER() OVER (
                 PARTITION BY regexp_replace(lower(substring(url from 'https?://([^/:]+)')), '^www\\.', '')
-                ORDER BY (phase = 'discovery') DESC NULLS LAST,
+                ORDER BY (phase = 'priority') DESC NULLS LAST,
+                         (phase = 'discovery') DESC NULLS LAST,
                          (last_scraped_at IS NULL) DESC,
                          next_scrape_due ASC NULLS FIRST
               ) AS domain_rn
@@ -124,16 +125,61 @@ async function claimDueSources(limit: number): Promise<SourceRow[]> {
 /** Claim unfinished pagination pages left over by earlier runs. */
 async function claimFrontierPages(limit: number): Promise<{ id: number; source_id: number; url: string; attempts: number }[]> {
   const { rows } = await sql.query(
-    `UPDATE crawl_frontier SET status = 'running', attempts = attempts + 1, updated_at = NOW()
-     WHERE id IN (
-       SELECT id FROM crawl_frontier
-       WHERE (status = 'pending' OR (status = 'running' AND updated_at < NOW() - interval '30 minutes')) AND attempts < $1
-       ORDER BY created_at ASC LIMIT $2 FOR UPDATE SKIP LOCKED
+    `WITH candidates AS (
+       SELECT id,
+              ROW_NUMBER() OVER (
+                PARTITION BY regexp_replace(lower(substring(url from 'https?://([^/:]+)')), '^www\\.', '')
+                ORDER BY created_at ASC
+              ) AS domain_rn
+       FROM crawl_frontier
+       WHERE (status = 'pending' OR (status = 'running' AND updated_at < NOW() - interval '30 minutes'))
+         AND attempts < $1
+     ),
+     batch AS (
+       SELECT id FROM candidates WHERE domain_rn = 1 LIMIT $2
      )
-     RETURNING id, source_id, url, attempts`,
+     UPDATE crawl_frontier f
+     SET status = 'running', attempts = attempts + 1, updated_at = NOW()
+     FROM batch
+     WHERE f.id = batch.id
+     RETURNING f.id, f.source_id, f.url, f.attempts`,
     [MAX_FAILS, limit]
   );
   return rows as any;
+}
+
+/** Claim 30-day maintenance recrawl sources (strictly phase = 'recrawl'). */
+async function claimDueRecrawls(limit: number): Promise<SourceRow[]> {
+  const { rows } = await sql.query(
+    `WITH due_candidates AS (
+       SELECT id,
+              ROW_NUMBER() OVER (
+                PARTITION BY regexp_replace(lower(substring(url from 'https?://([^/:]+)')), '^www\\.', '')
+                ORDER BY next_scrape_due ASC NULLS FIRST
+              ) AS domain_rn
+       FROM sources
+       WHERE status = 'active'
+         AND phase = 'recrawl'
+         AND url LIKE 'http%'
+         AND (source_type IS NULL OR source_type != 'yardsale_aggregator')
+         AND (next_scrape_due IS NULL OR next_scrape_due <= NOW())
+         AND url NOT LIKE 'https://www.-%' AND url NOT LIKE 'http://www.-%'
+         AND url NOT LIKE 'https://-%' AND url NOT LIKE 'http://-%'
+     ),
+     batch AS (
+       SELECT id FROM due_candidates
+       WHERE domain_rn = 1
+       LIMIT $1
+     )
+     UPDATE sources s
+     SET next_scrape_due = NOW() + interval '30 days', updated_at = NOW()
+     FROM batch
+     WHERE s.id = batch.id
+       AND (s.next_scrape_due IS NULL OR s.next_scrape_due <= NOW())
+     RETURNING s.id, s.url, s.name, s.scrape_interval_days, s.scrape_horizon_months, s.fail_count, s.parent_source_id, s.root_source_id, s.depth`,
+    [limit]
+  );
+  return rows as SourceRow[];
 }
 
 async function recordLookupNeeded(name: string | undefined | null, type: string, ev: any, src: { id: number; url: string }): Promise<boolean> {
@@ -551,5 +597,99 @@ export async function runLifecycleRound(opts: {
      queue.due ?? null, queue.discovery ?? null, f.rows[0]?.n ?? null, queue.next_due ?? null, stats.entitySourcesSpawned, stats.problemsQueued,
      JSON.stringify(stats.fetchStatus), JSON.stringify(stats.outcomes), JSON.stringify(stats.handlerOutcomes)]
   );
+  return stats;
+}
+
+/**
+ * Dedicated Pagination & Frontier Worker (Worker #4).
+ * Crawls deep pagination and detail pages left over from listing hubs.
+ * Birthed performers and venues are spawned into sources with phase = 'discovery'.
+ */
+export async function runFrontierRound(opts: {
+  cohortSize?: number;
+  inFlightLimit?: number;
+  fetchDeadlineMs?: number;
+  startWindowMs?: number;
+} = {}): Promise<LifecycleStats> {
+  const started = Date.now();
+  const deadline = started + (opts.fetchDeadlineMs ?? 10 * 60_000);
+  const cohortSize = opts.cohortSize ?? parseInt(process.env.SPIDER_COHORT_SIZE || "1000", 10);
+  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "100", 10);
+
+  const stats: LifecycleStats = {
+    sourcesCrawled: 0, sourcesFailed: 0, frontierPagesCrawled: 0, eventsFound: 0, eventsIngested: 0,
+    newEntities: 0, subPagesSpawned: 0, entitySourcesSpawned: 0, emailsIngested: 0, lookupsNeeded: 0, problemsQueued: 0,
+    outcomes: {}, handlerOutcomes: {}, fetchStatus: {}, log: [],
+  };
+  const log = (m: string) => {
+    if (stats.log.length < 500) {
+      stats.log.push(`[${new Date().toISOString()}] ${m}`);
+    }
+  };
+
+  await ensureLifecycleSchema();
+
+  let wave = 0;
+  const maxWaves = 50;
+  while (Date.now() < deadline && wave < maxWaves && stats.frontierPagesCrawled < cohortSize) {
+    wave++;
+    const batchToClaim = Math.min(inFlightLimit, cohortSize - stats.frontierPagesCrawled);
+    const pages = await claimFrontierPages(batchToClaim);
+    if (!pages.length) break;
+
+    log(`frontier wave #${wave}: running ${pages.length} deep pages on ${pages.length} distinct domains`);
+    await runWithPacer(pages, inFlightLimit, async (page) => {
+      if (Date.now() > deadline) return;
+      await crawlFrontierPage(page, stats, deadline, log);
+    });
+  }
+
+  return stats;
+}
+
+/**
+ * Dedicated 30-Day Recrawl Worker (Worker #5).
+ * Crawls established venues and schedules to check for updated seasons and shows.
+ * Reschedules sources by 30 days and feeds birthed performers/venues to discovery workers.
+ */
+export async function runRecrawlRound(opts: {
+  cohortSize?: number;
+  inFlightLimit?: number;
+  fetchDeadlineMs?: number;
+  startWindowMs?: number;
+} = {}): Promise<LifecycleStats> {
+  const started = Date.now();
+  const deadline = started + (opts.fetchDeadlineMs ?? 10 * 60_000);
+  const cohortSize = opts.cohortSize ?? parseInt(process.env.SPIDER_COHORT_SIZE || "1000", 10);
+  const inFlightLimit = opts.inFlightLimit ?? parseInt(process.env.SPIDER_IN_FLIGHT || "100", 10);
+
+  const stats: LifecycleStats = {
+    sourcesCrawled: 0, sourcesFailed: 0, frontierPagesCrawled: 0, eventsFound: 0, eventsIngested: 0,
+    newEntities: 0, subPagesSpawned: 0, entitySourcesSpawned: 0, emailsIngested: 0, lookupsNeeded: 0, problemsQueued: 0,
+    outcomes: {}, handlerOutcomes: {}, fetchStatus: {}, log: [],
+  };
+  const log = (m: string) => {
+    if (stats.log.length < 500) {
+      stats.log.push(`[${new Date().toISOString()}] ${m}`);
+    }
+  };
+
+  await ensureLifecycleSchema();
+
+  let wave = 0;
+  const maxWaves = 50;
+  while (Date.now() < deadline && wave < maxWaves && stats.sourcesCrawled < cohortSize) {
+    wave++;
+    const batchToClaim = Math.min(inFlightLimit, cohortSize - stats.sourcesCrawled);
+    const dueSources = await claimDueRecrawls(batchToClaim);
+    if (!dueSources.length) break;
+
+    log(`recrawl wave #${wave}: running ${dueSources.length} venues on ${dueSources.length} distinct domains`);
+    await runWithPacer(dueSources, inFlightLimit, async (src) => {
+      if (Date.now() > deadline) return;
+      await crawlOneSource(src, stats, deadline, log);
+    });
+  }
+
   return stats;
 }

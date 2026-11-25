@@ -117,6 +117,7 @@ export function pagingInfo(url: string): { paged: boolean; past: boolean; dated?
   if (!year) return { paged, past };
   const now = new Date();
   const monthsAhead = (year - now.getUTCFullYear()) * 12 + ((month || 1) - (now.getUTCMonth() + 1));
+  if (monthsAhead > 6) past = true; // Beyond 6-month horizon per owner directive (stops open-ended calendar loops)
   return { paged, past, dated: true, monthsAhead };
 }
 

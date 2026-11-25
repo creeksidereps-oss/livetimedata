@@ -16,6 +16,7 @@ import { pool } from "@/lib/db";
 import { areEventsDuplicates } from "@/lib/events/dedup";
 import { resolveLocation, type LocationHints, type VerifiedLocation } from "@/lib/events/location/resolveLocation";
 import { distanceKm, isRealCoordinate, normalizeGeoText } from "@/lib/events/location/geoReference";
+import { canonicalUrl } from "@/lib/events/crawl/discover";
 
 export type IntakeOrigin =
   | "crawler" | "rescrape" | "spider_daemon" | "discover_entity" | "admin_scraper" | "trigger" // automated
@@ -245,6 +246,10 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
   }
   if (sub.forcePending) pending.push("forced_pending");
 
+  // Sanitize official and source URLs to clean canonical URLs (strip ad trackers utm/fbclid/gclid)
+  const cleanOfficialUrl = sub.officialInfoUrl ? (canonicalUrl(sub.officialInfoUrl) || sub.officialInfoUrl) : null;
+  const cleanSourceUrl = sub.sourceUrl ? (canonicalUrl(sub.sourceUrl) || sub.sourceUrl) : null;
+
   // --- rule 7: duplicates (same verified city + same date) ---
   if (location) {
     const { rows } = await pool.query(
@@ -264,7 +269,7 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
              venue_address     = COALESCE(NULLIF(venue_address,''), $5),
              updated_at = NOW()
            WHERE id = $1`,
-          [cand.id, sub.eventFlyerUrl || null, sub.officialInfoUrl || null, sub.registrationUrl || null, address || null]
+          [cand.id, sub.eventFlyerUrl || null, cleanOfficialUrl, sub.registrationUrl || null, address || null]
         );
         return { outcome: "duplicate", id: cand.id, reasons: ["duplicate_of_" + cand.id], location };
       }
@@ -302,13 +307,13 @@ async function evaluateAndWrite(sub: EventSubmission): Promise<IntakeResult> {
       venue,
       address || null,
       sub.hostingEntity || null,
-      sub.source || sub.sourceUrl || sub.origin,
+      sub.source || cleanSourceUrl || sub.origin,
       startTime,
       isoDate,
       details,
       sub.affiliateUrl || null,
       sub.registrationUrl || null,
-      sub.officialInfoUrl || null,
+      cleanOfficialUrl,
       sub.eventFlyerUrl || null,
       sub.contactEmail || null,
       sub.contactPhone || null,
